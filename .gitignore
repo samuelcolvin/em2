@@ -1,0 +1,15 @@
+/.idea/
+/env/
+
+/sandbox/
+
+/js/node_modules/
+/js/README.md
+/js/.env.production
+
+*.py[cod]
+.pytest_cache/
+.coverage
+
+/activate.local.sh
+em2/index.*
