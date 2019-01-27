@@ -6,11 +6,11 @@ from settings import Settings
 from auth import create_app_auth
 from protocol import create_app_protocol
 from ui import create_app_ui
-from utils.views import build_index
+from utils.web import build_index
 
 
 async def startup_populate_subapps(app: Application):
-    subapp_context = dict(pg=app['pg'], redis=app['redis'])
+    subapp_context = dict(pg=app['pg'], redis=app['redis'], http_client=app['http_client'])
     app['ui_app'].update(subapp_context)
     app['protocol_app'].update(subapp_context)
     app['auth_app'].update(subapp_context)

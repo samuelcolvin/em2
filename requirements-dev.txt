@@ -1,0 +1,6 @@
+-r em2/requirements1.txt
+-r em2/requirements2.txt
+ipython
+devtools
+pgcli
+aiohttp-devtools

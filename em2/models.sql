@@ -3,9 +3,10 @@
 -- recipients includes both local and remote users
 CREATE TABLE recipients (
   id SERIAL PRIMARY KEY,
-  address VARCHAR(255) NOT NULL UNIQUE
-  -- TODO perhaps display name
+  address VARCHAR(255) NOT NULL,
+  display_name VARCHAR(127)
 );
+CREATE UNIQUE INDEX recipient_address ON recipients USING btree (address);
 
 CREATE TABLE conversations (
   id SERIAL PRIMARY KEY,
@@ -130,8 +131,10 @@ CREATE TABLE auth_users (
   otp_secret VARCHAR(20),
   recovery_address VARCHAR(63) UNIQUE,
   account_status ACCOUNT_STATUS NOT NULL DEFAULT 'pending'
+  -- TODO: node that the user is registered to
 );
-CREATE INDEX user_address ON auth_users USING btree (address);
+CREATE UNIQUE INDEX user_address ON auth_users USING btree (address);
+CREATE INDEX user_account_status ON auth_users USING btree (account_status);  -- could be a composite index with address
 
 CREATE TABLE auth_sessions (
   id SERIAL PRIMARY KEY,

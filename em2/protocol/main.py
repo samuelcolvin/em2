@@ -2,7 +2,7 @@ from aiohttp import web
 
 from protocol.views import testing_view
 from settings import Settings
-from utils.views import build_index
+from utils.web import build_index
 
 
 async def create_app_protocol(settings=None):
