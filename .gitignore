@@ -21,7 +21,6 @@ em2/index.*
 /js/.env.development.local
 /js/.env.test.local
 /js/.env.production.local
-/js/.env.production
 
 npm-debug.log*
 yarn-debug.log*

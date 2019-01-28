@@ -1,1 +1,70 @@
 @import 'variables';
+
+body {
+  padding-top: 7rem;
+  background-color: $body-back;
+  padding-bottom: 3rem;
+  overflow-y: scroll;
+}
+
+.navbar-brand {
+  color: $gray-700;
+}
+
+$stripe-width: 10px;
+@mixin stripes($colour1, $lighten, $angle: 45deg) {
+  background: repeating-linear-gradient(
+    $angle,
+    $colour1,
+    $colour1 $stripe-width,
+    lighten($colour1, $lighten) $stripe-width,
+    lighten($colour1, $lighten) 2 * $stripe-width
+  );
+}
+
+//$stripe-size: $stripe-width * 2.8284;  // sqrt(2) * 2
+//@keyframes anim_back {
+//  from {
+//    background-position-x: 0;
+//  }
+//  50% {
+//    background-position-x: $stripe-size;
+//  }
+//  to {
+//    background-position-x: 0;
+//  }
+//}
+// to use:
+//  background-size: $stripe-size $stripe-size;
+//  background-position-x: 0;
+//  animation: anim_back 500ms ease-out;
+
+
+.extra-menu {
+  top: 57.5px;
+  height: 35px;
+  transition: all 500ms ease;
+  overflow: hidden;
+  color: white;
+  padding: 4px 0;
+  @include stripes(#009688, 3%);
+
+  .container {
+    display: flex;
+    justify-content: space-between;
+  }
+  &.anon {
+    filter: brightness(70%);
+  }
+  &.offline {
+    filter: grayscale(100%) brightness(120%);
+  }
+}
+
+.box {
+  background-color: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 15px rgba(84,96,103,.25);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
