@@ -41,12 +41,14 @@ index_route = web.get('/', index_view, name='index')
 
 def add_access_control(app: web.Application):
     settings: Settings = app['settings']
-    if settings.domain != 'localhost':
+    if settings.domain == 'localhost':
+        origin = f'http://localhost:3000'
+    else:
         origin = f'https://app.{settings.domain}'
 
-        async def _run(request, response):
-            response.headers.update({
-                'Access-Control-Allow-Origin': origin,
-                'Access-Control-Allow-Credentials': 'true',
-            })
-        app.on_response_prepare.append(_run)
+    async def _run(request, response):
+        response.headers.update({
+            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Credentials': 'true',
+        })
+    app.on_response_prepare.append(_run)

@@ -74,7 +74,7 @@ class ListView extends React.Component {
   constructor (props) {
     super(props)
     this.get_page = this.get_page.bind(this)
-    this.get_uri = this.get_uri.bind(this)
+    this.get_args = this.get_args.bind(this)
   }
 
   get_page () {
@@ -82,13 +82,13 @@ class ListView extends React.Component {
     return m ? parseInt(m[1]) : 1
   }
 
-  get_uri () {
-    return `${this.props.root}?page=${this.get_page()}`
+  get_args () {
+    return {page: this.get_page()}
   }
 
   render () {
     return <RetrieveWrapper {...this.props}
-                            get_uri={this.get_uri}
+                            get_args={this.get_args}
                             get_page={this.get_page}
                             RenderChild={ListViewRender}/>
   }

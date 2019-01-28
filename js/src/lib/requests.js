@@ -1,11 +1,22 @@
-export function make_url (path) {
-  if (path.match(/^https?:\//)) {
+import {DetailedError} from './index'
+
+const request_domain = process.env.REACT_APP_DOMAIN
+
+export function make_url (path, app_name) {
+  if (!app_name) {
     return path
   } else {
     if (!path.startsWith('/')) {
       throw Error('path must start with "/"')
+    } else if (app_name !== 'ui' && app_name !== 'auth') {
+      throw Error('app_name must be "ui" or "auth"')
     }
-    return process.env.REACT_APP_REQUEST_ORIGIN + '/__' + path
+
+    if (request_domain === 'localhost') {
+      return `http://localhost:8000/${app_name}${path}`
+    } else {
+      return `https://${app_name}.${request_domain}${path}`
+    }
   }
 }
 
@@ -27,8 +38,16 @@ export function build_query (args) {
   return ''
 }
 
-export default async function (app, method, path, config) {
-  let url = make_url(path)
+function headers2obj (r) {
+  const h = r.headers
+  const entries = Array.from(h.entries())
+  if (entries.length !== 0) {
+    return Object.assign(...Array.from(h.entries()).map(([k, v]) => ({[k]: v})))
+  }
+}
+
+export async function request (method, app_name, path, config) {
+  let url = make_url(path, app_name)
 
   config = config || {}
   if (config.args) {
@@ -54,9 +73,7 @@ export default async function (app, method, path, config) {
   try {
     r = await fetch(url, init)
   } catch (error) {
-    const message = error.toString()
-    app && app.setError({message, url, init})
-    throw Error(message)
+    throw new DetailedError(error.message, {error, url, init})
   }
   if (config.expected_status.includes(r.status)) {
     const data = await r.json()
@@ -69,7 +86,16 @@ export default async function (app, method, path, config) {
       // ignore and use normal error
     }
     const message = response_data.message || `Unexpected response ${r.status}`
-    app && app.setError({message, status: r.status, url, init, response_data, response: r})
-    throw Error(message)
+    throw new DetailedError(message, {status: r.status, url, init, response_data, headers: headers2obj(r)})
+  }
+}
+
+
+export default {
+  get: (app_name, path, config) => request('GET', app_name, path, config),
+  post: (app_name, path, data, config) => {
+    config = config || {}
+    config.send_data = data
+    return request('POST', app_name, path, config)
   }
 }

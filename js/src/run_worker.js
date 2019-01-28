@@ -1,4 +1,5 @@
 import MainWorker from './WebWorker/load.js'
+import {DetailedError} from './lib'
 
 if (!window) {
   throw Error('WebWorkerRun.js should only be called from the window, not a worker')
@@ -17,8 +18,7 @@ class Worker {
     this.add_listener = this.add_listener.bind(this)
     this.remove_listener = this.remove_listener.bind(this)
     this._onmessage = this._onmessage.bind(this)
-    this.execute = this.execute.bind(this)
-    this.fetch = this.fetch.bind(this)
+    this.call = this.call.bind(this)
 
     this.worker.onmessage = this._onmessage
   }
@@ -37,8 +37,8 @@ class Worker {
     if (message.data.async_id) {
       const resolver = this.rosolvers[message.data.async_id]
       if (message.data.error) {
-        this.app.setError({message: `Error on worker: ${message.data.error}`})
-        resolver.reject(message.data.error)
+        const err = new DetailedError(message.data.error.message, message.data.error.details)
+        resolver.reject(err)
       } else {
         resolver.resolve(message.data.result)
       }
@@ -54,32 +54,29 @@ class Worker {
     }
   }
 
-  execute (method, ...args) {
-    this.worker.postMessage({method: method, args: args})
-  }
-
-  fetch (method, arg, timeout) {
+  call (method, call_args, timeout) {
     return new Promise((resolve, reject) => {
       const clear = setTimeout(() => {
         const message = `worker fetch timed out, method "${method}"`
         this.app.setError({message})
         reject(message)
       }, timeout || 2000)
+
       const id = random()
       this.rosolvers[id] = {
-        resolve: (...args) => {
+        resolve: result => {
           delete this.rosolvers[id]
           clearInterval(clear)
-          resolve(...args)
+          resolve(result)
         },
-        reject: (...args) => {
+        reject: error => {
           delete this.rosolvers[id]
           clearInterval(clear)
-          this.app.setError({message: `Error on worker: ${args}`})
-          reject(...args)
+          this.app.setError(error)
+          reject(error)
         },
       }
-      this.worker.postMessage({method: method, arg: arg, async_id: id})
+      this.worker.postMessage({method, call_args, async_id: id})
     })
   }
 }

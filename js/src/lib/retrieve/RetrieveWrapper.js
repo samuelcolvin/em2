@@ -25,8 +25,7 @@ class RetrieveWrapper extends React.Component {
   }
 
   async update () {
-    const uri = this.props.get_uri ? this.props.get_uri() : this.props.root
-    let r = await this.props.ctx.requests.get(uri)
+    let r = await this.props.ctx.worker.call(this.props.function, this.props.get_args())
     this.setState(this.props.transform ? this.props.transform(r) : r.data)
   }
 
