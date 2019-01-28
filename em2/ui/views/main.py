@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-
 from atoolbox import raw_json_response
 from atoolbox import View as DefaultView
 
@@ -26,6 +24,5 @@ class VList(View):
     """
 
     async def call(self):
-        debug(self.session)
         raw_json = await self.conn.fetchval(self.sql, self.session.recipient_id)
         return raw_json_response(raw_json or '[]')

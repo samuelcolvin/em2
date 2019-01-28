@@ -1,15 +1,33 @@
-/.idea/
+# py
 /env/
-
-/sandbox/
-
-/js/node_modules/
-/js/README.md
-/js/.env.production
 
 *.py[cod]
 .pytest_cache/
 .coverage
 
-/activate.local.sh
 em2/index.*
+
+# js
+/js/node_modules/
+/js/README.md
+/js/.pnp
+.pnp.js
+
+/js/coverage
+
+/js/build
+
+/js/.env.local
+/js/.env.development.local
+/js/.env.test.local
+/js/.env.production.local
+/js/.env.production
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# msic
+/.idea/
+/sandbox/
+/activate.local.sh
