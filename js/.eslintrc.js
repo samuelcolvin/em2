@@ -19,8 +19,7 @@ module.exports = {
     'semi': [2, 'never'],
     // allow paren-less arrow functions
     'arrow-parens': 0,
-    // allow async-await
-    'generator-star-spacing': 2,
+    'generator-star-spacing': [2, 'after'],
     // allow debugger during development
     'no-debugger': 2,
     'object-curly-spacing': 2,

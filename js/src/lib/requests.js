@@ -46,6 +46,8 @@ function headers2obj (r) {
   }
 }
 
+export const UNAUTHORISED = '__unauthorised__'
+
 export async function request (method, app_name, path, config) {
   let url = make_url(path, app_name)
 
@@ -75,9 +77,14 @@ export async function request (method, app_name, path, config) {
   } catch (error) {
     throw new DetailedError(error.message, {error, url, init})
   }
-  if (config.expected_status.includes(r.status)) {
-    const data = await r.json()
-    return {data, status: r.status}
+  if (r.status === 401) {
+    // special case, return UNAUTHORISED
+    return UNAUTHORISED
+  } else if (config.expected_status.includes(r.status)) {
+    return {
+      data: await r.json(),
+      status: r.status
+    }
   } else {
     let response_data = {}
     try {

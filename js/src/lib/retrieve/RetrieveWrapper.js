@@ -2,6 +2,7 @@ import React from 'react'
 import {render_key, render_value} from './Detail'
 import {withRouter} from 'react-router-dom'
 import WithContext from '../context'
+import {UNAUTHORISED} from '../requests'
 
 class RetrieveWrapper extends React.Component {
   constructor (props) {
@@ -26,7 +27,11 @@ class RetrieveWrapper extends React.Component {
 
   async update () {
     let r = await this.props.ctx.worker.call(this.props.function, this.props.get_args())
-    this.setState(this.props.transform ? this.props.transform(r) : r.data)
+    if (r === UNAUTHORISED) {
+      this.props.history.push('/login/')
+    } else {
+      this.setState(this.props.transform ? this.props.transform(r) : r.data)
+    }
   }
 
   render_key (key) {
