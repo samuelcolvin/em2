@@ -1,11 +1,9 @@
 from atoolbox import BaseSettings
-from typing import List, Pattern
 
 
 class Settings(BaseSettings):
     pg_dsn = 'postgres://postgres@localhost:5432/em2'
     cookie_name = 'em2'
-    csrf_cross_origin_paths: List[Pattern] = ['/auth/login/', '/login/']
 
     domain: str = 'localhost'
     commit: str = 'unknown'

@@ -1,9 +1,10 @@
 from aiohttp import web
 
-from atoolbox.middleware import csrf_middleware, pg_middleware
+from atoolbox.middleware import pg_middleware
 from cryptography import fernet
 
 from settings import Settings
+from utils.middleware import csrf_middleware
 from utils.web import add_access_control, build_index
 
 from .utils import mk_password
@@ -21,6 +22,7 @@ async def create_app_auth(settings=None):
     )
     app = web.Application(middlewares=middleware)
     app.update(
+        name='auth',
         settings=settings,
         dummy_password_hash=mk_password(settings.dummy_password, settings),
         auth_fernet=fernet.Fernet(settings.auth_key)

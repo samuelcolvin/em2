@@ -9,8 +9,11 @@ from ui import create_app_ui
 from utils.web import build_index
 
 
+copied_context = 'pg', 'redis', 'http_client', 'expected_origin'
+
+
 async def startup_populate_subapps(app: Application):
-    subapp_context = dict(pg=app['pg'], redis=app['redis'], http_client=app['http_client'])
+    subapp_context = {f: app[f] for f in copied_context}
     app['ui_app'].update(subapp_context)
     app['protocol_app'].update(subapp_context)
     app['auth_app'].update(subapp_context)
@@ -40,10 +43,12 @@ async def create_app(settings: Settings = None):
             '  /protocol/ - em2 protocol routes\n'
             '  /auth/ - auth routes'
         )
+        app['expected_origin'] = 'http://localhost:3000'
     else:
         app.add_domain('ui.' + settings.domain, app['ui_app'])
         app.add_domain('em2.' + settings.domain, app['protocol_app'])
         app.add_domain('auth.' + settings.domain, app['auth_app'])
+        app['expected_origin'] = f'https://app.{settings.domain}'
         routes_description = (
             f'  https://ui.{settings.domain}/ - user interface routes\n'
             f'  https://em2.{settings.domain}/ - em2 protocol routes\n'

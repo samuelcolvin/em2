@@ -2,14 +2,13 @@ import {DetailedError} from './index'
 
 const request_domain = process.env.REACT_APP_DOMAIN
 
-export function make_url (path, app_name) {
+export function make_url (app_name, path) {
   if (path.match(/^https?:\//)) {
     return path
   } else {
     if (!path.startsWith('/')) {
       throw Error('path must start with "/"')
     }
-    app_name = app_name || 'ui'
     if (app_name !== 'ui' && app_name !== 'auth') {
       throw Error('app_name must be "ui" or "auth"')
     }
@@ -48,10 +47,14 @@ function headers2obj (r) {
   }
 }
 
-export const UNAUTHORISED = '__unauthorised__'
+export const conn_status = {
+  unauthorised: 'unauthorised',
+  not_connected: 'not_connected',
+  connected: 'connected',
+}
 
 export async function request (method, app_name, path, config) {
-  let url = make_url(path, app_name)
+  let url = make_url(app_name, path)
 
   config = config || {}
   if (config.args) {
@@ -77,11 +80,17 @@ export async function request (method, app_name, path, config) {
   try {
     r = await fetch(url, init)
   } catch (error) {
-    throw new DetailedError(error.message, {error, url, init})
+    // generally TypeError: failed to fetch
+    if (config.allow_fail) {
+      return conn_status.not_connected
+    } else {
+      throw new DetailedError(error.message, {error: error.toString(), status: 0, url, init})
+    }
+
   }
-  if (r.status === 401) {
-    // special case, return UNAUTHORISED
-    return UNAUTHORISED
+  if (config.allow_fail && r.status === 401) {
+    // special case
+    return conn_status.unauthorised
   } else if (config.expected_status.includes(r.status)) {
     return {
       data: await r.json(),

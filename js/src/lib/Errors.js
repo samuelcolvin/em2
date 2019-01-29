@@ -2,15 +2,15 @@ import React from 'react'
 import {withRouter} from 'react-router-dom'
 
 export const Error = ({error}) => {
-  if (error.details && error.details.status === 404) {
+  if (error.status === 404) {
     return <NotFound url={error.url}/>
   } else {
     return (
       <div>
         <h1>Error</h1>
         <p>
-          {(error.details && error.details.status) ? <span>{error.details.status}: </span> : ''}
-          {error.message ? error.message.toString() : error.toString()}.
+          {error.status ? <span>{error.status}: </span> : ''}
+          {error.message ? error.message : error.toString()}.
         </p>
       </div>
     )

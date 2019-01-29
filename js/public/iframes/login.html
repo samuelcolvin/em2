@@ -66,6 +66,7 @@
         }
       }, false)
 
+      // check if we're connected and whether grecaptcha is required
       const xhr = new XMLHttpRequest()
       xhr.open('GET', form.action)
       xhr.setRequestHeader('Accept', 'application/json')
@@ -78,9 +79,7 @@
         }
         if (xhr.status === 200) {
           grecaptcha_required = data.grecaptcha_required
-          if (grecaptcha_required) {
-            window.parent.postMessage('grecaptcha-required', origin)
-          }
+          window.parent.postMessage(JSON.stringify({grecaptcha_required}), origin)
         } else {
           on_error(data.message || 'Unexpected response', xhr)
         }

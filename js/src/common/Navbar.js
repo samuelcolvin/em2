@@ -9,19 +9,24 @@ import {
   NavItem,
   NavLink,
 } from 'reactstrap'
+import {conn_status} from '../lib/requests'
 
-const Status = ({title, message, status, user}) => {
+const Status = ({title, message, connection_status, user}) => {
   const class_name = ['extra-menu', 'fixed-top']
   let nav_status
-  if (user) {
-    // online
+  if (connection_status === null) {
+    // no connection status yet
     nav_status = ''
-  } else if (status) {
-    class_name.push('anon')
-    nav_status = 'not authenticated'
-  } else {
+    class_name.push('offline')
+  } else if (connection_status === conn_status.not_connected) {
     class_name.push('offline')
     nav_status = 'offline'
+  } else if (connection_status === conn_status.connected) {
+    nav_status = 'online'
+  } else {
+    // class_name.push('anon')
+    // class_name.push('offline')
+    nav_status = 'TODO'
   }
   return (
     <div className={class_name.join(' ')}>

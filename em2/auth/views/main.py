@@ -37,7 +37,7 @@ async def login_successful(request, user):
         'ts': ts,
     }
     auth_token = encrypt_json(request.app, session)
-    return dict(status='success', auth_token=auth_token, session=session)
+    return dict(auth_token=auth_token, session=session)
 
 
 class Login(ExecView):

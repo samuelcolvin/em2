@@ -13,6 +13,7 @@ export class DetailedError extends Error {
     super()
     this.message = message
     this.details = details
+    this.status = (details && details.status) || null
   }
 }
 

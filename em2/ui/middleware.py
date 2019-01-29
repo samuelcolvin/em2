@@ -7,7 +7,7 @@ from aiohttp_session import get_session
 
 # views which don't require authentication
 
-view_whitelist = {'index', 'auth'}
+view_whitelist = {'index', 'auth-token'}
 
 
 @dataclass

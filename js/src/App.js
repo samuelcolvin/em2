@@ -3,6 +3,7 @@ import {Route, Switch, withRouter} from 'react-router-dom'
 
 import {sleep} from './lib'
 import {GlobalContext} from './lib/context'
+import {conn_status} from './lib/requests'
 import {Error, NotFound} from './lib/Errors'
 import Worker from './run_worker'
 import Navbar from './common/Navbar'
@@ -27,7 +28,7 @@ class App extends Component {
       user: null,
       error: null,
       message: null,
-      status: null,
+      connection_status: null,
     }
     this.setMessage = this.setMessage.bind(this)
     this.setError = this.setError.bind(this)
@@ -70,6 +71,7 @@ class App extends Component {
       setError: error => this.setError(error),
       setUser: user => this.setState({user}),
       setTitle: title => this.setState({title}),
+      setConnectionStatus: connection_status => this.setState({connection_status}),
       user: this.state.user,
       worker: this.worker,
     }
@@ -80,7 +82,12 @@ class App extends Component {
           {this.state.error ?
             <Error error={this.state.error} location={this.props.location}/>
             :
-            <Routes/>
+            this.state.connection_status === conn_status.not_connected && !this.state.user ?
+              <div className="text-center">
+                No internet connection and no local data, so sadly nothing much to show you. :-(
+              </div>
+              :
+              <Routes/>
           }
         </main>
       </GlobalContext.Provider>

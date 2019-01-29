@@ -4,6 +4,7 @@ import {Link} from 'react-router-dom'
 import WithContext from '../lib/context'
 import IFrame from './IFrame'
 import Recaptcha from './Recaptcha'
+import {conn_status} from '../lib/requests'
 
 function next_url (location) {
   const match = location.search.match('next=([^&]+)')
@@ -28,12 +29,8 @@ class Login extends React.Component {
 
   async authenticate (data) {
     console.log('authenticate', data)
-    // try {
-    //   await requests.post('auth-token/', {token: data.auth_token})
-    // } catch (error) {
-    //   this.props.ctx.setError(error)
-    //   return
-    // }
+    const r = await this.props.ctx.worker.call('auth-token', data)
+    console.log(r)
     // this.props.ctx.setUser(data.user)
     // this.props.history.replace(next_url(this.props.location) || '/dashboard/events/')
     // this.props.ctx.setMessage({icon: 'user', message: `Logged in successfully as ${data.user}`})
@@ -44,19 +41,18 @@ class Login extends React.Component {
     if (event.origin !== 'null') {
       return
     }
-    if (event.data === 'grecaptcha-required') {
-      if (this.state.recaptcha_shown) {
+
+    const data = JSON.parse(event.data)
+    if (data.grecaptcha_required !== undefined) {
+      if (data.grecaptcha_required && this.state.recaptcha_shown) {
         Recaptcha.reset()
-      } else {
-        this.setState({recaptcha_shown: true})
       }
-    } else {
-      const data = JSON.parse(event.data)
-      if (data.status !== 'success') {
-        this.props.ctx.setError(data)
-        return
-      }
+      this.setState({recaptcha_shown: data.grecaptcha_required})
+      this.props.ctx.setConnectionStatus(conn_status.connected)
+    } else if (data.auth_token) {
       await this.authenticate(data)
+    } else {
+      this.props.ctx.setError(data)
     }
   }
 
