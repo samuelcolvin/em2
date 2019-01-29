@@ -66,7 +66,7 @@ export default class Navbar extends React.Component {
                   <NavLink tag={Link} onClick={this.close} to="/create/">
                     Create Conversation
                   </NavLink>
-                </NavItem>
+                </NavItem>,
               ]}
             </Nav>
           </Collapse>

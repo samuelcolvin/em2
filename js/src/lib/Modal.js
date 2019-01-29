@@ -75,7 +75,7 @@ export default function AsModal (WrappedComponent) {
       this.regex = props.regex || /modal\/$/
       this.path_match = () => this.regex.test(this.props.location.pathname)
       this.state = {
-        shown: this.path_match()
+        shown: this.path_match(),
       }
       this.toggle = this.toggle.bind(this)
       this.toggle_handlers = []
@@ -84,7 +84,7 @@ export default function AsModal (WrappedComponent) {
     toggle (r) {
       const shown_new = !this.state.shown
       this.setState({
-        shown: shown_new
+        shown: shown_new,
       })
       this.toggle_handlers.map(h => h(r))
       if (!this.state.shown_new) {

@@ -3,12 +3,14 @@ import {DetailedError} from './index'
 const request_domain = process.env.REACT_APP_DOMAIN
 
 export function make_url (path, app_name) {
-  if (!app_name) {
+  if (path.match(/^https?:\//)) {
     return path
   } else {
     if (!path.startsWith('/')) {
       throw Error('path must start with "/"')
-    } else if (app_name !== 'ui' && app_name !== 'auth') {
+    }
+    app_name = app_name || 'ui'
+    if (app_name !== 'ui' && app_name !== 'auth') {
       throw Error('app_name must be "ui" or "auth"')
     }
 
@@ -83,7 +85,7 @@ export async function request (method, app_name, path, config) {
   } else if (config.expected_status.includes(r.status)) {
     return {
       data: await r.json(),
-      status: r.status
+      status: r.status,
     }
   } else {
     let response_data = {}
@@ -104,5 +106,5 @@ export default {
     config = config || {}
     config.send_data = data
     return request('POST', app_name, path, config)
-  }
+  },
 }

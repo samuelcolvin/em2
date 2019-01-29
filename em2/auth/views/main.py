@@ -3,14 +3,14 @@ import logging
 from time import time
 
 import bcrypt
-from atoolbox import get_ip, encrypt_json
+from atoolbox import get_ip, encrypt_json, json_response
 from atoolbox.auth import check_grecaptcha
 from atoolbox.class_views import ExecView
 from atoolbox.utils import JsonErrors
 from pydantic import BaseModel, EmailStr, constr
 
-HEADER_CROSS_ORIGIN = {'Access-Control-Allow-Origin': 'null'}
 logger = logging.getLogger('em2.auth')
+HEADER_CROSS_ORIGIN = {'Access-Control-Allow-Origin': 'null'}
 
 
 def session_event(request, ts, action_type):
@@ -48,16 +48,18 @@ class Login(ExecView):
     WHERE address=$1 AND account_status='active'
     """
 
-    class LoginModel(BaseModel):
+    class Model(BaseModel):
         email: EmailStr
         password: constr(min_length=6, max_length=100)
         grecaptcha_token: str = None
 
-    Model = LoginModel
+    async def schema(self):
+        repeat_cache_key, _ = self._get_repeat_cache_key()
+        v = await self.redis.get(repeat_cache_key)
+        return json_response(grecaptcha_required=int(v or 0) >= self.settings.easy_login_attempts)
 
     async def execute(self, m: Model):
-        ip = get_ip(self.request)
-        repeat_cache_key = f'login-attempt:{ip}'
+        repeat_cache_key, ip = self._get_repeat_cache_key()
         tr = self.redis.multi_exec()
         tr.incr(repeat_cache_key)
         tr.expire(repeat_cache_key, 60)
@@ -68,7 +70,7 @@ class Login(ExecView):
             raise JsonErrors.HTTPBadRequest('max login attempts exceeded')
         elif login_attempted > self.settings.easy_login_attempts:
             logger.info('%d login attempts from %s', login_attempted, ip)
-            await check_grecaptcha(m, self.request, error_headers=HEADER_CROSS_ORIGIN)
+            await check_grecaptcha(m, self.request)
 
         if m.password == self.settings.dummy_password:
             return JsonErrors.HTTPBadRequest(message='password not allowed')
@@ -81,4 +83,12 @@ class Login(ExecView):
         if bcrypt.checkpw(m.password.encode(), password_hash.encode()):
             return await login_successful(self.request, user)
         else:
-            raise JsonErrors.HTTP470(message='invalid username or password')
+            raise JsonErrors.HTTP470(
+                message='invalid username or password',
+                details={'grecaptcha_required': login_attempted >= self.settings.easy_login_attempts}
+            )
+
+    def _get_repeat_cache_key(self):
+        ip = get_ip(self.request)
+        return f'login-attempt:{ip}', ip
+

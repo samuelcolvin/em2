@@ -23,11 +23,16 @@ module.exports = {
     // allow debugger during development
     'no-debugger': 2,
     'object-curly-spacing': 2,
-    'comma-dangle': 0,
+    'comma-dangle': [2, 'always-multiline'],
     'camelcase': 0,
     'no-alert': 2,
     'space-before-function-paren': 2,
     'react/jsx-uses-react': 2,
     'react/jsx-uses-vars': 2,
+    'no-unused-vars': 2,
+    'max-len': [
+      'error', {
+        'code': 120
+    }]
   }
 }

@@ -53,7 +53,7 @@ class _Form extends React.Component {
       missing.forEach(f => {errors[f] = 'Field Required'})
       this.setState({
         form_error: 'Required fields are emtpy',
-        errors: errors
+        errors: errors,
       })
       return
     }

@@ -21,7 +21,7 @@ const ListViewRender = ({...props}) => {
       </div>,
       <div key="e">
         {Extra && <Extra/>}
-      </div>
+      </div>,
     ]
   }
   const keys = Object.keys(state.items[0])
@@ -66,7 +66,7 @@ const ListViewRender = ({...props}) => {
     ) : null,
     <div key="e">
       {Extra && <Extra/>}
-    </div>
+    </div>,
   ]
 }
 

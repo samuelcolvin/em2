@@ -15,3 +15,19 @@ export class DetailedError extends Error {
     this.details = details
   }
 }
+
+export function load_script (url) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${url}"]`)) {
+      // script already loaded
+      resolve()
+    } else {
+      const script = document.createElement('script')
+      script.src = url
+      script.onerror = e => reject(e)
+      script.onload = () => resolve()
+      document.body.appendChild(script)
+      setTimeout(() => reject(`script "${url}" timed out`), 8000)
+    }
+  })
+}

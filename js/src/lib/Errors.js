@@ -9,7 +9,7 @@ export const Error = ({error}) => {
       <div>
         <h1>Error</h1>
         <p>
-          {error.details && error.details.status && <span className="pr-1">{error.details.status}:</span>}
+          {(error.details && error.details.status) ? <span>{error.details.status}: </span> : ''}
           {error.message ? error.message.toString() : error.toString()}.
         </p>
       </div>

@@ -4,16 +4,16 @@ import {Route, Switch, withRouter} from 'react-router-dom'
 import {sleep} from './lib'
 import {GlobalContext} from './lib/context'
 import {Error, NotFound} from './lib/Errors'
-import Navbar from './common/Navbar'
-// import {Login} from './auth/Login'
 import Worker from './run_worker'
+import Navbar from './common/Navbar'
+import Login from './auth/Login'
 import ListConversations from './conversations/List'
 
 const Routes = () => (
   <Switch>
     <Route exact path="/" component={ListConversations}/>
 
-    {/*<Route exact path="/login/" component={Login}/>*/}
+    <Route exact path="/login/" component={Login}/>
 
     <Route component={NotFound}/>
   </Switch>
@@ -75,7 +75,7 @@ class App extends Component {
     }
     return (
       <GlobalContext.Provider value={ctx}>
-        <Navbar {...this.props.state} location={this.props.location}/>
+        <Navbar {...this.state} location={this.props.location}/>
         <main className="container">
           {this.state.error ?
             <Error error={this.state.error} location={this.props.location}/>
