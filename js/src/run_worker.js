@@ -37,7 +37,7 @@ class Worker {
     if (message.data.async_id) {
       const resolver = this.rosolvers[message.data.async_id]
       if (message.data.error) {
-        const err = new DetailedError(message.data.error.message, message.data.error.details)
+        const err = DetailedError(message.data.error.message, message.data.error.details)
         resolver.reject(err)
       } else {
         resolver.resolve(message.data.result)
@@ -45,8 +45,8 @@ class Worker {
     } else if (message.data.method) {
       for (const l of Object.values(this.listeners)) {
         if (l.name === message.data.method) {
-          // console.log('window running:', message.data.method, message.data.args || '')
-          l.func(message.data.args || {})
+          // console.log('window running:', message.data.method, message.data.call_args || '')
+          l.func(message.data.call_args || {})
         }
       }
     } else {

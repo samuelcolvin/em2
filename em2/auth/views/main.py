@@ -5,12 +5,12 @@ from time import time
 import bcrypt
 from atoolbox import get_ip, encrypt_json, json_response
 from atoolbox.auth import check_grecaptcha
-from atoolbox.class_views import ExecView
 from atoolbox.utils import JsonErrors
 from pydantic import BaseModel, EmailStr, constr
 
+from utils.web import ExecView
+
 logger = logging.getLogger('em2.auth')
-HEADER_CROSS_ORIGIN = {'Access-Control-Allow-Origin': 'null'}
 
 
 def session_event(request, ts, action_type):
@@ -41,7 +41,8 @@ async def login_successful(request, user):
 
 
 class Login(ExecView):
-    headers = HEADER_CROSS_ORIGIN
+    null_origin = True
+
     get_user_sql = """
     SELECT id, first_name, last_name, address, password_hash
     FROM auth_users
@@ -53,7 +54,7 @@ class Login(ExecView):
         password: constr(min_length=6, max_length=100)
         grecaptcha_token: str = None
 
-    async def schema(self):
+    async def get(self):
         repeat_cache_key, _ = self._get_repeat_cache_key()
         v = await self.redis.get(repeat_cache_key)
         return json_response(grecaptcha_required=int(v or 0) >= self.settings.easy_login_attempts)

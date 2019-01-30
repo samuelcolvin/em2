@@ -1,5 +1,6 @@
 import React from 'react'
 import {Link} from 'react-router-dom'
+import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {
   Collapse,
   Navbar as NavbarBootstrap,
@@ -13,31 +14,33 @@ import {conn_status} from '../lib/requests'
 
 const Status = ({title, message, connection_status, user}) => {
   const class_name = ['extra-menu', 'fixed-top']
-  let nav_status
+  // TODO replace connection_status_text with a symbol, eg. circle of different colour
+  let connection_status_text = 'loading...'
   if (connection_status === null) {
     // no connection status yet
-    nav_status = ''
     class_name.push('offline')
   } else if (connection_status === conn_status.not_connected) {
     class_name.push('offline')
-    nav_status = 'offline'
-  } else if (connection_status === conn_status.connected) {
-    nav_status = 'online'
+    connection_status_text = 'offline'
   } else {
-    // class_name.push('anon')
-    // class_name.push('offline')
-    nav_status = 'TODO'
+    // connection_status === conn_status.connected
+    connection_status_text = 'online'
   }
   return (
     <div className={class_name.join(' ')}>
       <div className="container">
         <span>
           {title}
-          {message && <span className="ml-2">TODO format {message}</span>}
+          {message && (
+            <span className="ml-3">
+              {message.icon && <FontAwesomeIcon icon={message.icon} className="mr-2"/>}
+              {message.message || message.toString()}
+            </span>
+          )}
         </span>
         <span>
-          {nav_status}
-          {user && <span className="ml-2">{user.address}</span>}
+          {connection_status_text}
+          {user && <span className="ml-2">{user.name}</span>}
         </span>
       </div>
     </div>
@@ -58,15 +61,15 @@ export default class Navbar extends React.Component {
 
   render () {
     return [
-      <NavbarBootstrap key="1" color="light" fixed="top" expand="md">
+      <NavbarBootstrap key="1" color="light" light fixed="top" expand="md">
         <div className="container">
           <NavbarBrand tag={Link} onClick={this.close} to="/">
             em2
           </NavbarBrand>
           <NavbarToggler onClick={() => this.setState({is_open: !this.state.is_open})}/>
           <Collapse isOpen={this.state.is_open} navbar>
-            <Nav className="ml-auto" navbar>
-              {this.props.user && [
+            <Nav navbar>
+              {this.props.app_state.user && [
                 <NavItem key="1" active={/^\/create\//.test(this.props.location.pathname)}>
                   <NavLink tag={Link} onClick={this.close} to="/create/">
                     Create Conversation
@@ -74,10 +77,13 @@ export default class Navbar extends React.Component {
                 </NavItem>,
               ]}
             </Nav>
+            <form className="form-inline ml-auto">
+              <input className="form-control" type="text" placeholder="Search"/>
+            </form>
           </Collapse>
         </div>
       </NavbarBootstrap>,
-      <Status key="2" {...this.props}/>,
+      <Status key="2" {...this.props.app_state}/>,
     ]
   }
 }

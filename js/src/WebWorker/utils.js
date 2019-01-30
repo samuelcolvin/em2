@@ -1,5 +1,5 @@
-export function window_trigger (method, args) {
-  postMessage({method: method, args: args})
+export function window_trigger (method, call_args) {
+  postMessage({method, call_args})
 }
 
 export const LISTENERS = {}

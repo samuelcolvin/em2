@@ -1,8 +1,9 @@
-from atoolbox import ExecView, decrypt_json
+from atoolbox import decrypt_json
 from aiohttp_session import new_session
 from pydantic import BaseModel
 
 from utils.db import get_create_recipient
+from utils.web import ExecView
 
 
 class AuthExchangeToken(ExecView):

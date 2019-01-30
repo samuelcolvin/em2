@@ -3,5 +3,7 @@ import ListView from '../lib/retrieve/ListView'
 
 
 export default () => (
-  <ListView function={'list-conversations'}/>
+  <div className="box">
+    <ListView function={'list-conversations'} title="Conversations"/>
+  </div>
 )

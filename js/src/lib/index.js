@@ -8,14 +8,16 @@ export const get_component_name = Comp => Comp.displayName || Comp.name || 'Comp
 
 export const on_mobile = /mobile|ip(hone|od|ad)|android|blackberry|opera mini/i.test(navigator.userAgent)
 
-export class DetailedError extends Error {
+class _DetailedError extends Error {
   constructor (message, details) {
     super()
     this.message = message
     this.details = details
-    this.status = (details && details.status) || null
+    this.status = (details && details.status !== undefined) ? details.status : null
   }
 }
+
+export const DetailedError = (message, details) => new _DetailedError(message, details)
 
 export function load_script (url) {
   return new Promise((resolve, reject) => {

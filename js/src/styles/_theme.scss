@@ -7,10 +7,6 @@ body {
   overflow-y: scroll;
 }
 
-.navbar-brand {
-  color: $gray-700;
-}
-
 $stripe-width: 10px;
 @mixin stripes($colour1, $lighten, $angle: 45deg) {
   background: repeating-linear-gradient(

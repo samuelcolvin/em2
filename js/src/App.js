@@ -1,5 +1,9 @@
 import React, {Component} from 'react'
 import {Route, Switch, withRouter} from 'react-router-dom'
+import {library as FaLibrary} from '@fortawesome/fontawesome-svg-core'
+import {far} from '@fortawesome/free-regular-svg-icons'
+import {fas} from '@fortawesome/free-solid-svg-icons'
+import {fab} from '@fortawesome/free-brands-svg-icons'
 
 import {sleep} from './lib'
 import {GlobalContext} from './lib/context'
@@ -10,6 +14,9 @@ import Navbar from './common/Navbar'
 import Login from './auth/Login'
 import ListConversations from './conversations/List'
 
+// TODO replace with specific icons
+FaLibrary.add(far, fas, fab)
+
 const Routes = () => (
   <Switch>
     <Route exact path="/" component={ListConversations}/>
@@ -19,6 +26,20 @@ const Routes = () => (
     <Route component={NotFound}/>
   </Switch>
 )
+
+const Main = ({state, ...props}) => {
+  if (state.error) {
+    return <Error error={state.error} location={props.location}/>
+  } else if (state.connection_status === conn_status.not_connected && !state.user) {
+    return (
+      <div className="text-center">
+        No internet connection and no local data, so sadly nothing much to show you. :-(
+      </div>
+    )
+  } else {
+    return <Routes/>
+  }
+}
 
 class App extends Component {
   constructor (props) {
@@ -33,6 +54,14 @@ class App extends Component {
     this.setMessage = this.setMessage.bind(this)
     this.setError = this.setError.bind(this)
     this.worker = new Worker(this)
+  }
+
+  async componentDidMount () {
+    const user = await this.worker.call('authenticate')
+    this.setState({user})
+    if (!user && this.props.location.pathname !== '/login/') {
+      this.props.history.push('/login/')
+    }
   }
 
   componentDidUpdate (prevProps) {
@@ -54,8 +83,12 @@ class App extends Component {
   }
 
   setError (error) {
-    if (error.details && error.details.status === 401 && this.props.location.pathname !== '/login/') {
+    if (error.status === 401 && this.props.location.pathname !== '/login/') {
       this.props.history.push('/login/')
+      return
+    }
+    if (error.status === 0) {
+      this.setState({connection_status: conn_status.not_connected})
       return
     }
     console.warn('setting error:', error)
@@ -77,18 +110,9 @@ class App extends Component {
     }
     return (
       <GlobalContext.Provider value={ctx}>
-        <Navbar {...this.state} location={this.props.location}/>
+        <Navbar app_state={this.state} location={this.props.location}/>
         <main className="container">
-          {this.state.error ?
-            <Error error={this.state.error} location={this.props.location}/>
-            :
-            this.state.connection_status === conn_status.not_connected && !this.state.user ?
-              <div className="text-center">
-                No internet connection and no local data, so sadly nothing much to show you. :-(
-              </div>
-              :
-              <Routes/>
-          }
+          <Main state={this.state} {...this.props}/>
         </main>
       </GlobalContext.Provider>
     )

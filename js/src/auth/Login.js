@@ -4,6 +4,7 @@ import {Link} from 'react-router-dom'
 import WithContext from '../lib/context'
 import IFrame from './IFrame'
 import Recaptcha from './Recaptcha'
+import {DetailedError} from '../lib'
 import {conn_status} from '../lib/requests'
 
 function next_url (location) {
@@ -29,12 +30,10 @@ class Login extends React.Component {
 
   async authenticate (data) {
     console.log('authenticate', data)
-    const r = await this.props.ctx.worker.call('auth-token', data)
-    console.log(r)
-    // this.props.ctx.setUser(data.user)
-    // this.props.history.replace(next_url(this.props.location) || '/dashboard/events/')
-    // this.props.ctx.setMessage({icon: 'user', message: `Logged in successfully as ${data.user}`})
-    // window.sessionStorage.clear()
+    const user = await this.props.ctx.worker.call('auth-token', data)
+    this.props.ctx.setUser(user)
+    this.props.ctx.setMessage({icon: 'user', message: `Logged in successfully as ${data.user}`})
+    this.props.history.replace(next_url(this.props.location) || '/')
   }
 
   async on_message (event) {
@@ -51,8 +50,11 @@ class Login extends React.Component {
       this.props.ctx.setConnectionStatus(conn_status.connected)
     } else if (data.auth_token) {
       await this.authenticate(data)
+    } else if (data.error) {
+      console.log(data.error)
+      this.props.ctx.setError(DetailedError(data.error.message, data.error.details))
     } else {
-      this.props.ctx.setError(data)
+      throw DetailedError('unknown message from iframe', data)
     }
   }
 

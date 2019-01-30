@@ -32,8 +32,9 @@ class RetrieveWrapper extends React.Component {
     } else if (r === conn_status.unauthorised) {
       this.props.history.push('/login/')
     } else {
-      this.props.ctx.setConnectionStatus(conn_status.connected)
-      this.setState(this.props.transform ? this.props.transform(r) : r.data)
+      this.props.ctx.setConnectionStatus(conn_status.connected)  // TODO remove once we have websockets to do the same
+      this.props.ctx.setTitle(this.props.title)
+      this.setState(this.props.transform ? this.props.transform(r) : r)
     }
   }
 

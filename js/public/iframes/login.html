@@ -41,17 +41,14 @@
 
       function on_error (message, xhr, error) {
         console.warn('Error:', message, xhr, error, form)
-        window.parent.postMessage(JSON.stringify({
+        const error_details = {
           message,
           details: {
-            error,
-            origin,
-            status: xhr.status,
-            xhr_response: xhr.responseText,
-            method: form.method,
-            action: form.action,
+            error, origin, status: xhr.status, xhr_response: xhr.responseText,
+            method: form.method, action: form.action
           },
-        }), origin)
+        }
+        window.parent.postMessage(JSON.stringify({error: error_details}), origin)
       }
 
       let grecaptcha_token = null

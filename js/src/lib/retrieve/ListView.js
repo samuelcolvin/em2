@@ -7,7 +7,7 @@ import Buttons from './Buttons'
 import RetrieveWrapper from './RetrieveWrapper'
 
 const ListViewRender = ({...props}) => {
-  const no_items_found = props.no_items_found || `No ${as_title(props.item_name || 'Items')} found`
+  const no_items_found = props.no_items_found || `No ${as_title(props.title || 'Items')} found`
   const get_link = props.get_link || (item => `${props.root}${item.id}/`)
   const Extra = props.Extra
   const state = props.state

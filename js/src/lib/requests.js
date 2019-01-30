@@ -84,7 +84,7 @@ export async function request (method, app_name, path, config) {
     if (config.allow_fail) {
       return conn_status.not_connected
     } else {
-      throw new DetailedError(error.message, {error: error.toString(), status: 0, url, init})
+      throw DetailedError(error.message, {error: error.toString(), status: 0, url, init})
     }
 
   }
@@ -104,7 +104,7 @@ export async function request (method, app_name, path, config) {
       // ignore and use normal error
     }
     const message = response_data.message || `Unexpected response ${r.status}`
-    throw new DetailedError(message, {status: r.status, url, init, response_data, headers: headers2obj(r)})
+    throw DetailedError(message, {status: r.status, url, init, response_data, headers: headers2obj(r)})
   }
 }
 
