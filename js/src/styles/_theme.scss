@@ -93,3 +93,12 @@ $stripe-width: 10px;
     height: 220px;
   }
 }
+
+.participants-input {
+  .rbt-token {
+    width: 100%;
+  }
+  .form-control {
+    height: auto;
+  }
+}

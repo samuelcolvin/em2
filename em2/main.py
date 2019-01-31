@@ -21,7 +21,8 @@ async def startup_populate_subapps(app: Application):
 
 async def create_app(settings: Settings = None):
     settings = settings or Settings()
-    app = Application(middlewares=(error_middleware,), client_max_size=settings.max_request_size)
+    middleware = () if settings.domain == 'localhost' else (error_middleware,)
+    app = Application(middlewares=middleware, client_max_size=settings.max_request_size)
 
     app.update(
         settings=settings,

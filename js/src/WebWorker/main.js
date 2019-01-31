@@ -1,5 +1,6 @@
+import debounce from 'debounce-async'
 import {request as basic_request, conn_status} from '../lib/requests'
-import {add_listener, window_trigger} from './utils'
+import {add_listener} from './utils'
 import db from './db'
 
 async function request (method, app_name, path, config) {
@@ -59,4 +60,16 @@ add_listener('auth-token', async data => {
 add_listener('create-conversation', async data => {
   console.log('worker, conv data:', data)
   return {status: 200}
+})
+
+
+const request_contacts = debounce(
+  data => requests.get('ui', '/contacts/lookup-address/', {args: data}),
+  1000
+)
+
+add_listener('contacts-lookup-address', async data => {
+  const r = await request_contacts(data)
+  console.log()
+  return r.data
 })

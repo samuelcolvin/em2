@@ -11,7 +11,7 @@ from utils.web import add_access_control, build_index
 
 from .middleware import user_middleware
 from .views.auth import AuthExchangeToken
-from .views.main import VList
+from .views.main import VList, ContactSearch
 
 
 async def create_app_ui(settings=None):
@@ -19,6 +19,7 @@ async def create_app_ui(settings=None):
     routes = [
         web.route('*', '/auth-token/', AuthExchangeToken.view(), name='auth-token'),
         web.get('/list/', VList.view(), name='list'),
+        web.get('/contacts/lookup-address/', ContactSearch.view(), name='contacts-lookup-address'),
     ]
     middleware = (
         session_middleware(EncryptedCookieStorage(settings.auth_key, cookie_name=settings.cookie_name)),

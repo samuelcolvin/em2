@@ -4,7 +4,9 @@ import AsModal from '../Modal'
 import Input from './Input'
 import WithContext from '../context'
 
-const DefaultRenderFields = ({fields, RenderField}) => fields.map((field, i) => <RenderField key={i} field={field}/>)
+const DefaultRenderFields = ({fields, RenderField}) => (
+  Object.values(fields).map(field => <RenderField key={field.name} field={field}/>)
+)
 
 
 const DefaultFormButtons = ({state, form_props}) => (
@@ -34,15 +36,20 @@ class _Form extends React.Component {
     this.errors = {}
     this.onFieldChange = this.onFieldChange.bind(this)
     this.render_field = this.render_field.bind(this)
+    if (this.props.fields) {
+      for (const [k, v] of Object.entries(this.props.fields)) {
+        v['name'] = k
+      }
+    }
   }
 
   componentDidMount () {
     if (this.props.submit_initial && this.props.fields) {
       const form_data = {}
-      for (const field of this.props.fields) {
-        const initial = this.props.initial[field.name]
+      for (const field_name of Object.keys(this.props.fields)) {
+        const initial = this.props.initial[field_name]
         if (initial) {
-          form_data[field.name] = initial
+          form_data[field_name] = initial
         }
       }
       this.props.onChange(form_data)
@@ -60,7 +67,7 @@ class _Form extends React.Component {
     }
     const initial = this.props.initial || {}
     const missing = (
-      this.props.fields
+      Object.values(this.props.fields)
       .filter(f => f.required && !initial[f.name] && !this.props.form_data[f.name])
       .map(f => f.name)
     )
@@ -122,7 +129,7 @@ class _Form extends React.Component {
       <BootstrapForm onSubmit={this.submit.bind(this)} className="highlight-required">
         <div className={this.props.form_body_class}>
           <div className="form-error text-right">{this.props.form_error || this.state.form_error}</div>
-          <RenderFields fields={this.props.fields || []} RenderField={this.render_field}/>
+          <RenderFields fields={this.props.fields || {}} RenderField={this.render_field}/>
         </div>
         <Buttons state={this.state} form_props={this.props}/>
       </BootstrapForm>

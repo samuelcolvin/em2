@@ -60,7 +60,7 @@ class Worker {
         const message = `worker fetch timed out, method "${method}"`
         this.app.setError({message})
         reject(message)
-      }, timeout || 2000)
+      }, timeout || 8000)
 
       const id = random()
       this.rosolvers[id] = {
@@ -72,7 +72,7 @@ class Worker {
         reject: error => {
           delete this.rosolvers[id]
           clearInterval(clear)
-          this.app.setError(error)
+          // this.app.setError(error)
           reject(error)
         },
       }

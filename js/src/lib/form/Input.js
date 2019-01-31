@@ -8,6 +8,7 @@ import {
   FormFeedback,
 } from 'reactstrap'
 import {as_title} from '../index'
+import ParticipantsInput from './Participants'
 
 const Label = ({field, children}) => (
   field.show_label !== false ? (
@@ -93,6 +94,20 @@ const Select = ({className, field, disabled, error, value, onChange, onBlur}) =>
   </FormGroup>
 )
 
+const Participants = ({className, field, disabled, error, value, onChange}) => (
+  <FormGroup className={className || field.className}>
+    <Label field={field}/>
+    <ParticipantsInput value={value || []}
+                       disabled={disabled}
+                       name={field.name}
+                       id={field.name}
+                       required={field.required}
+                       onChange={onChange}/>
+    {error && <FormFeedback>{error}</FormFeedback>}
+    <HelpText field={field}/>
+  </FormGroup>
+)
+
 const IntegerInput = props => (
   <GeneralInput {...props} custom_type="number" step="1" min={props.field.min} max={props.field.max}
                 onChange={v => props.onChange(v ? parseInt(v) : null)}/>
@@ -108,6 +123,7 @@ const INPUT_LOOKUP = {
   select: Select,
   int: IntegerInput,
   number: NumberInput,
+  participants: Participants,
 }
 
 const Input = props => {
