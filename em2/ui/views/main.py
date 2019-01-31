@@ -1,10 +1,20 @@
 from atoolbox import raw_json_response
 from atoolbox import View as DefaultView
+from pydantic import constr, EmailStr, BaseModel
+from typing import Set
 
+from utils.db import create_missing_recipients
+from utils.web import ExecView as DefaultExecView
 from ..middleware import Session
 
 
 class View(DefaultView):
+    def __init__(self, request):
+        super().__init__(request)
+        self.session: Session = request['session']
+
+
+class ExecView(DefaultExecView):
     def __init__(self, request):
         super().__init__(request)
         self.session: Session = request['session']
@@ -26,3 +36,26 @@ class VList(View):
     async def call(self):
         raw_json = await self.conn.fetchval(self.sql, self.session.recipient_id)
         return raw_json_response(raw_json or '[]')
+
+
+class Create(ExecView):
+    sql = """
+    INSERT INTO conversations (key, creator, subject, published)
+    VALUES                    ($1,  $2,      $3,      $4       )
+    ON CONFLICT (key) DO NOTHING
+    RETURNING id
+    """
+    add_participants_sql = 'INSERT INTO participants (conv, recipient) VALUES ($1, $2)'
+    add_message_sql = 'INSERT INTO messages (conv, key, body) VALUES ($1, $2, $3)'
+
+    class Model(BaseModel):
+        subject: constr(max_length=255, strip_whitespace=True)
+        message: constr(max_length=2047, strip_whitespace=True)
+        participants: Set[EmailStr] = []
+        publish = False
+
+    async def execute(self, conv: Model):
+        debug(conv.dict())
+        conv.participants.add(self.session.address)
+        recip_ids = await create_missing_recipients(self.conn, conv.participants)
+        ...

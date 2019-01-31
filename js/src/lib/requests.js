@@ -81,17 +81,9 @@ export async function request (method, app_name, path, config) {
     r = await fetch(url, init)
   } catch (error) {
     // generally TypeError: failed to fetch
-    if (config.allow_fail) {
-      return conn_status.not_connected
-    } else {
-      throw DetailedError(error.message, {error: error.toString(), status: 0, url, init})
-    }
-
+    throw DetailedError(error.message, {error: error.toString(), status: 0, url, init})
   }
-  if (config.allow_fail && r.status === 401) {
-    // special case
-    return conn_status.unauthorised
-  } else if (config.expected_status.includes(r.status)) {
+  if (config.expected_status.includes(r.status)) {
     return {
       data: await r.json(),
       status: r.status,
@@ -106,14 +98,4 @@ export async function request (method, app_name, path, config) {
     const message = response_data.message || `Unexpected response ${r.status}`
     throw DetailedError(message, {status: r.status, url, init, response_data, headers: headers2obj(r)})
   }
-}
-
-
-export default {
-  get: (app_name, path, config) => request('GET', app_name, path, config),
-  post: (app_name, path, data, config) => {
-    config = config || {}
-    config.send_data = data
-    return request('POST', app_name, path, config)
-  },
 }

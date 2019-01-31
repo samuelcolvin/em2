@@ -21,18 +21,18 @@ html, body {
 }
 
 .form-item input {
-  padding: 1.5rem 0.75rem;
+  padding: 1.6rem 0.75rem 1.4rem;
 }
 
 .form-item > label {
-  padding: 0.75rem 0.75rem;
+  padding: 0.8rem 0.75rem;
   position: absolute;
   top: 0;
   left: 0;
   display: block;
   width: 100%;
   color: #495057;
-  border: 1px solid transparent;
+  border: 0 solid transparent;
   transition: all .1s ease-in-out;
   user-select: none;
   cursor: text;

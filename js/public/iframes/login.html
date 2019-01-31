@@ -39,12 +39,12 @@
       const email_el = document.getElementById('email')
       const password_el = document.getElementById('password')
 
-      function on_error (message, xhr, error) {
+      function on_error (message, status, xhr, error) {
         console.warn('Error:', message, xhr, error, form)
         const error_details = {
           message,
           details: {
-            error, origin, status: xhr.status, xhr_response: xhr.responseText,
+            error, origin, status, xhr_response: xhr.responseText,
             method: form.method, action: form.action
           },
         }
@@ -72,16 +72,16 @@
         try {
           data = JSON.parse(xhr.responseText)
         } catch (error) {
-          on_error('Error decoding response', xhr, error)
+          on_error('Error decoding response', xhr.status, xhr, error)
         }
         if (xhr.status === 200) {
           grecaptcha_required = data.grecaptcha_required
           window.parent.postMessage(JSON.stringify({grecaptcha_required}), origin)
         } else {
-          on_error(data.message || 'Unexpected response', xhr)
+          on_error(data.message || 'Unexpected response', xhr.status, xhr)
         }
       }
-      xhr.onerror = function (e) {on_error('Network Error', xhr, e)}
+      xhr.onerror = function (e) {on_error('Network Error', 0, xhr, e)}
       xhr.send()
 
       function on_submit (e) {
@@ -113,7 +113,7 @@
           try {
             data = JSON.parse(xhr.responseText)
           } catch (error) {
-            on_error('Error decoding response', xhr, error)
+            on_error('Error decoding response', xhr.status, xhr, error)
           }
           if (xhr.status === 470) {
             user_error.innerText = 'Email address or password incorrect.'
@@ -127,10 +127,10 @@
           } else if (xhr.status === 200) {
             window.parent.postMessage(JSON.stringify(data), origin)
           } else {
-            on_error(data.message || 'Unexpected response', xhr)
+            on_error(data.message || 'Unexpected response', xhr.status, xhr)
           }
         }
-        xhr.onerror = function (e) {on_error('Network Error', xhr, e)}
+        xhr.onerror = function (e) {on_error('Network Error', 0, xhr, e)}
         xhr.send(data)
       }
       form.addEventListener('submit', on_submit, true)

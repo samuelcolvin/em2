@@ -5,3 +5,18 @@
 .zero-height {
   height: 0;
 }
+
+
+.btn-group.flex-row-reverse {
+  // reversed buttons, reverse corners
+  > .btn:last-child {
+    border-radius: $border-radius 0 0 $border-radius;
+  }
+  > .btn:first-child {
+    border-radius: 0 $border-radius $border-radius 0;
+  }
+}
+
+.h-150 {
+  height: 150px !important;
+}

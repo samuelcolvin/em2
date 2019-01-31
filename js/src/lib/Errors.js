@@ -6,7 +6,7 @@ export const Error = ({error}) => {
     return <NotFound url={error.url}/>
   } else {
     return (
-      <div>
+      <div className="box">
         <h1>Error</h1>
         <p>
           {error.status ? <span>{error.status}: </span> : ''}
@@ -18,9 +18,9 @@ export const Error = ({error}) => {
 }
 
 export const NotFound = withRouter(({url, children, location}) => (
-  <div>
+  <div className="box">
     <h1>Page not found</h1>
-    <p>The page <code>{url || location.pathname}</code> doesn't exist.</p>
+    <p>The page <code>{url || location.pathname}</code> does not exist.</p>
     {children}
   </div>
 ))

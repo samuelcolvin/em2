@@ -35,6 +35,20 @@ $stripe-width: 10px;
 //  background-position-x: 0;
 //  animation: anim_back 500ms ease-out;
 
+@keyframes hide_msg {
+  from {
+    opacity: 1;
+    top: 0;
+  }
+  90% {
+    opacity: 1;
+    top: 0;
+  }
+  to {
+    opacity: 0;
+    top: -5px;
+  }
+}
 
 .extra-menu {
   top: 57.5px;
@@ -54,6 +68,10 @@ $stripe-width: 10px;
   }
   &.offline {
     filter: grayscale(100%) brightness(120%);
+  }
+  .message {
+    position: relative;
+    animation: hide_msg 8s;
   }
 }
 

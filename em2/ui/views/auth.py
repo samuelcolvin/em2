@@ -18,6 +18,7 @@ class AuthExchangeToken(ExecView):
         s = {
             'recipient_id': await get_create_recipient(self.conn, d['address'], d['name']),
             'session_id': d['session_id'],
+            'address': d['address'],
             'ts': d['ts'],
         }
         session = await new_session(self.request)

@@ -29,10 +29,9 @@ class Login extends React.Component {
   }
 
   async authenticate (data) {
-    console.log('authenticate', data)
     const user = await this.props.ctx.worker.call('auth-token', data)
     this.props.ctx.setUser(user)
-    this.props.ctx.setMessage({icon: 'user', message: `Logged in successfully as ${data.user}`})
+    this.props.ctx.setMessage({icon: 'user', message: `Logged in successfully as ${user.name}`})
     this.props.history.replace(next_url(this.props.location) || '/')
   }
 

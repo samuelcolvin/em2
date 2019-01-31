@@ -1,13 +1,48 @@
-import requests, {conn_status} from '../lib/requests'
+import {request as basic_request, conn_status} from '../lib/requests'
 import {add_listener, window_trigger} from './utils'
 import db from './db'
 
+async function request (method, app_name, path, config) {
+  // wraps basic_request and re-authenticates when a session has expired, also takes care of allow_fail
+  try {
+    return await basic_request(method, app_name, path, config)
+  } catch (e) {
+    if (e.status === 401) {
+      // TODO check and reauthenticate
+      await db.sessions.toCollection().delete()
+    }
+    if (config.allow_fail) {
+      if (e.status === 0) {
+        return conn_status.not_connected
+      } else if (e.status === 401) {
+        return conn_status.unauthorised
+      }
+    }
+    throw e
+  }
+}
+
+const requests = {
+  get: (app_name, path, config) => request('GET', app_name, path, config),
+  post: (app_name, path, data, config) => {
+    config = config || {}
+    config.send_data = data
+    return request('POST', app_name, path, config)
+  },
+}
+
+const get_session = () => db.sessions.toCollection().first()
+
 add_listener('authenticate', async () => {
-  return await db.sessions.toCollection().first()
+  return await get_session()
 })
 
 add_listener('list-conversations', async data => {
-  const r = await requests.get('ui', `/list/?page=${data.page}`, {allow_fail: true})
+  const session = await get_session()
+  if (!session) {
+    return conn_status.unauthorised
+  }
+  const r = await requests.get('ui', '/list/', {allow_fail: true, args: {page: data.page}})
   if (conn_status[r]) {
     return r
   }
@@ -15,9 +50,13 @@ add_listener('list-conversations', async data => {
 })
 
 add_listener('auth-token', async data => {
-  console.log('auth-token data:', data)
   await requests.post('ui', '/auth-token/', {auth_token: data.auth_token})
   delete data.session.ts
   await db.sessions.put(data.session)
-  window_trigger('setUser', {address: data.session.address, name: data.session.name})
+  return {address: data.session.address, name: data.session.name}
+})
+
+add_listener('create-conversation', async data => {
+  console.log('worker, conv data:', data)
+  return {status: 200}
 })

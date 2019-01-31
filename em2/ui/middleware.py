@@ -14,6 +14,7 @@ view_whitelist = {'index', 'auth-token'}
 class Session:
     recipient_id: int
     session_id: int
+    address: str
     ts: int
 
 

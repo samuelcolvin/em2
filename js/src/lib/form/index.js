@@ -6,6 +6,23 @@ import WithContext from '../context'
 
 const DefaultRenderFields = ({fields, RenderField}) => fields.map((field, i) => <RenderField key={i} field={field}/>)
 
+
+const DefaultFormButtons = ({state, form_props}) => (
+  <div className={form_props.form_footer_class || 'text-right'}>
+    <ButtonGroup>
+      <Button type="button"
+              color="secondary"
+              disabled={state.disabled}
+              onClick={() => form_props.finished && form_props.finished()}>
+        {form_props.cancel_label || 'Cancel'}
+      </Button>
+      <Button type="submit" color="primary" disabled={state.disabled}>
+        {form_props.save_label || 'Save'}
+      </Button>
+    </ButtonGroup>
+  </div>
+)
+
 class _Form extends React.Component {
   constructor (props) {
     super(props)
@@ -59,7 +76,7 @@ class _Form extends React.Component {
     }
     this.setState({disabled: true, errors: {}, form_error: null})
     const data = this.props.submit_data ? this.props.submit_data() : Object.assign({}, this.props.form_data)
-    const r = await this.props.ctx.requests.post(this.props.action, data, {expected_status: [200, 201, 202, 400, 409]})
+    const r = await this.props.ctx.worker.call(this.props.function, data)
     if (r.status >= 400) {
       console.warn('form error', r)
       const errors = {}
@@ -70,13 +87,13 @@ class _Form extends React.Component {
     } else {
       this.props.update && this.props.update()
       this.props.success_msg && this.props.ctx.setMessage(this.props.success_msg)
-      this.props.finished(r)
+      this.props.finished && this.props.finished(r)
       this.props.submitted && this.props.submitted(r)
     }
   }
 
   onFieldChange (name, value) {
-    let form_data = Object.assign({}, this.props.form_data, {[name]: value})
+    const form_data = Object.assign({}, this.props.form_data, {[name]: value})
     this.props.onChange && this.props.onChange(form_data)
   }
 
@@ -100,25 +117,14 @@ class _Form extends React.Component {
       this.errors = this.state.errors
     }
     const RenderFields = this.props.RenderFields || DefaultRenderFields
+    const Buttons = this.props.Buttons || DefaultFormButtons
     return (
       <BootstrapForm onSubmit={this.submit.bind(this)} className="highlight-required">
         <div className={this.props.form_body_class}>
           <div className="form-error text-right">{this.props.form_error || this.state.form_error}</div>
           <RenderFields fields={this.props.fields || []} RenderField={this.render_field}/>
         </div>
-        <div className={this.props.form_footer_class || 'text-right'}>
-          <ButtonGroup>
-            <Button type="button"
-                    color="secondary"
-                    disabled={this.state.disabled}
-                    onClick={() => this.props.finished && this.props.finished()}>
-              {this.props.cancel || 'Cancel'}
-            </Button>
-            <Button type="submit" color="primary" disabled={this.state.disabled}>
-              {this.props.save || 'Save'}
-            </Button>
-          </ButtonGroup>
-        </div>
+        <Buttons state={this.state} form_props={this.props}/>
       </BootstrapForm>
     )
   }

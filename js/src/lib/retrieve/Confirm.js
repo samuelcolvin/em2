@@ -9,7 +9,6 @@ import {
 } from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import WithContext from '../context'
-import requests from '../requests'
 
 export class ButtonConfirm extends React.Component {
   constructor (props) {
@@ -24,18 +23,18 @@ export class ButtonConfirm extends React.Component {
   }
 
   async fire () {
-    this.setState({enabled: false})
-    let data
-    try {
-      data = await requests.post(this.props.action, this.props.data || null)
-    } catch (error) {
-      this.props.ctx.setError(error)
-      return
-    }
-    this.setState({open: false, enabled: true})
-    this.props.done && this.props.done(data)
-    this.props.redirect_to && this.props.history.push(this.props.redirect_to)
-    this.props.success_msg && this.props.ctx.setMessage(this.props.success_msg)
+    // this.setState({enabled: false})
+    // let data
+    // try {
+    //   data = await requests.post(this.props.action, this.props.data || null)
+    // } catch (error) {
+    //   this.props.ctx.setError(error)
+    //   return
+    // }
+    // this.setState({open: false, enabled: true})
+    // this.props.done && this.props.done(data)
+    // this.props.redirect_to && this.props.history.push(this.props.redirect_to)
+    // this.props.success_msg && this.props.ctx.setMessage(this.props.success_msg)
   }
 
   render () {

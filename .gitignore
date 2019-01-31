@@ -16,6 +16,7 @@ em2/index.*
 /js/coverage
 
 /js/build
+/js/src/styles/bootstrap
 
 /js/.env.local
 /js/.env.development.local

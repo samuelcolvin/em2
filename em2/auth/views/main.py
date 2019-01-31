@@ -34,9 +34,8 @@ async def login_successful(request, user):
         'session_id': session_id,
         'name': '{first_name} {last_name}'.format(**user).strip(' '),
         'address': user['address'],
-        'ts': ts,
     }
-    auth_token = encrypt_json(request.app, session)
+    auth_token = encrypt_json(request.app, {'ts': ts, **session})
     return dict(auth_token=auth_token, session=session)
 
 

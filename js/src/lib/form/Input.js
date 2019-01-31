@@ -35,6 +35,7 @@ const GeneralInput = ({className, field, error, disabled, value, onChange, onBlu
   <FormGroup className={className || field.className}>
     <Label field={field}/>
     <BsInput type={custom_type || field.type || 'text'}
+             className={field.inputClassName}
              invalid={!!error}
              disabled={disabled}
              name={field.name}
@@ -52,7 +53,7 @@ const GeneralInput = ({className, field, error, disabled, value, onChange, onBlu
 )
 
 const Checkbox = ({className, field, disabled, value, onChange, onBlur}) => (
-  <FormGroup className={className || 'py-2'} check>
+  <FormGroup className={className || field.className || 'py-2'} check>
     <Label field={field}>
       <BsInput type="checkbox"
                label={field.title}
@@ -69,7 +70,7 @@ const Checkbox = ({className, field, disabled, value, onChange, onBlur}) => (
 )
 
 const Select = ({className, field, disabled, error, value, onChange, onBlur}) => (
-  <FormGroup className={className}>
+  <FormGroup className={className || field.className}>
     <Label field={field}/>
     <CustomInput type="select"
                  invalid={!!error}

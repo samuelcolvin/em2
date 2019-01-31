@@ -32,7 +32,7 @@ const Status = ({title, message, connection_status, user}) => {
         <span>
           {title}
           {message && (
-            <span className="ml-3">
+            <span className="ml-3 message">
               {message.icon && <FontAwesomeIcon icon={message.icon} className="mr-2"/>}
               {message.message || message.toString()}
             </span>
