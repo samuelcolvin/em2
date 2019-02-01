@@ -12,6 +12,7 @@ import Worker from './run_worker'
 import Navbar from './common/Navbar'
 import Login from './auth/Login'
 import ListConversations from './conversations/List'
+import ConversationDetails from './conversations/Details'
 import CreateConversation from './conversations/Create'
 
 // TODO replace with specific icons
@@ -22,6 +23,7 @@ const Routes = () => (
     <Route exact path="/" component={ListConversations}/>
     <Route exact path="/create/" component={CreateConversation}/>
     <Route exact path="/login/" component={Login}/>
+    <Route exact path="/:key([a-f0-9]{10,64})/" component={ConversationDetails}/>
 
     <Route component={NotFound}/>
   </Switch>

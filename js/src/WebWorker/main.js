@@ -50,6 +50,18 @@ add_listener('list-conversations', async data => {
   return {items: r.data}
 })
 
+add_listener('get-conversation', async data => {
+  const session = await get_session()
+  if (!session) {
+    return conn_status.unauthorised
+  }
+  const r = await requests.get('ui', `/conv/${data.key}/`, {allow_fail: true})
+  if (conn_status[r]) {
+    return r
+  }
+  return {actions: r.data}
+})
+
 add_listener('auth-token', async data => {
   await requests.post('ui', '/auth-token/', {auth_token: data.auth_token})
   delete data.session.ts
@@ -60,7 +72,6 @@ add_listener('auth-token', async data => {
 add_listener('create-conversation', async data => {
   console.log('worker, conv data:', data)
   const r = await requests.post('ui', '/create/', data, {expected_status: [201, 400]})
-  console.log(r)
   return r
 })
 
@@ -72,6 +83,5 @@ const request_contacts = debounce(
 
 add_listener('contacts-lookup-address', async data => {
   const r = await request_contacts(data)
-  console.log()
   return r.data
 })

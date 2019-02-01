@@ -7,7 +7,7 @@ import {withRouter} from 'react-router-dom'
 
 const ignored_keys = ['id', 'name']
 
-const DetailDetailRender = ({...props}) => {
+const DetailDefaultRender = ({...props}) => {
   const Extra = props.Extra
   const state = props.state
   const formats = props.formats
@@ -41,9 +41,9 @@ const DetailDetailRender = ({...props}) => {
 }
 
 const DetailView = ({...props}) => {
-  const get_uri = () => `${props.root}${props.match.params.id}/`
-  const transform = r => ({item: r.data})
-  return <RetrieveWrapper {...props} get_uri={get_uri} transform={transform} Render={DetailDetailRender}/>
+  const get_args = () => props.match.params
+  const Render = props.Render || DetailDefaultRender
+  return <RetrieveWrapper {...props} get_args={get_args} Render={Render}/>
 }
 
 export default withRouter(DetailView)

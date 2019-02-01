@@ -74,29 +74,14 @@ const DefaultListRender = ({...props}) => {
   ]
 }
 
-class ListView extends React.Component {
-  constructor (props) {
-    super(props)
-    this.get_page = this.get_page.bind(this)
-    this.get_args = this.get_args.bind(this)
-  }
-
-  get_page () {
-    const m = this.props.location.search.match(/page=(\d+)/)
+const ListView = ({...props}) => {
+  const get_page = () => {
+    const m = props.location.search.match(/page=(\d+)/)
     return m ? parseInt(m[1]) : 1
   }
-
-  get_args () {
-    return {page: this.get_page()}
-  }
-
-  render () {
-    const Render = this.props.Render || DefaultListRender
-    return <RetrieveWrapper {...this.props}
-                            get_args={this.get_args}
-                            get_page={this.get_page}
-                            Render={Render}/>
-  }
+  const get_args = () => ({page: get_page()})
+  const Render = props.Render || DefaultListRender
+  return <RetrieveWrapper {...props} get_args={get_args} get_page={get_page} Render={Render}/>
 }
 
 export default withRouter(ListView)
