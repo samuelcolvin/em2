@@ -15,7 +15,7 @@ const DefaultFormButtons = ({state, form_props}) => (
       <Button type="button"
               color="secondary"
               disabled={state.disabled}
-              onClick={() => form_props.finished && form_props.finished()}>
+              onClick={() => form_props.done && form_props.done()}>
         {form_props.cancel_label || 'Cancel'}
       </Button>
       <Button type="submit" color="primary" disabled={state.disabled}>
@@ -92,10 +92,9 @@ class _Form extends React.Component {
       }
       this.setState({disabled: false, errors, form_error: Object.keys(errors).length ? 'Error occurred' : null})
     } else {
-      this.props.update && this.props.update()
       this.props.success_msg && this.props.ctx.setMessage(this.props.success_msg)
-      this.props.finished && this.props.finished(r)
       this.props.submitted && this.props.submitted(r)
+      this.props.done && this.props.done(r)
     }
   }
 

@@ -11,20 +11,25 @@ from utils.web import add_access_control, build_index
 
 from .middleware import user_middleware
 from .views.auth import AuthExchangeToken
-from .views.main import VList, ContactSearch
+from .views.contacts import ContactSearch
+from .views.conversations import ConvCreate, ConvList
 
 
 async def create_app_ui(settings=None):
     settings = settings or Settings()
+    conv_match = r'{conv:[a-z0-9\-]{10,64}}'
     routes = [
         web.route('*', '/auth-token/', AuthExchangeToken.view(), name='auth-token'),
-        web.get('/list/', VList.view(), name='list'),
+        web.get('/list/', ConvList.view(), name='list'),
+        web.route('*', '/create/', ConvCreate.view(), name='create'),
+        web.get(f'/conv/{conv_match}/', ContactSearch.view(), name='get-conv'),
+
         web.get('/contacts/lookup-address/', ContactSearch.view(), name='contacts-lookup-address'),
     ]
     middleware = (
+        csrf_middleware,
         session_middleware(EncryptedCookieStorage(settings.auth_key, cookie_name=settings.cookie_name)),
         user_middleware,
-        csrf_middleware,
         pg_middleware,
     )
     app = web.Application(middlewares=middleware)

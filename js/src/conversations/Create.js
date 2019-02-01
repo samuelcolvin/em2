@@ -33,11 +33,13 @@ const FormButtons = ({state, form_props}) => (
     <Col md="8" className="text-right">
       <ButtonGroup className="flex-row-reverse">
 
-        <Button type="submit" color="primary" disabled={state.disabled} onClick={() => form_props.set_publish(true)}>
+        <Button type="submit" color="primary" disabled={state.disabled}
+                onClick={() => form_props.onFieldChange('publish', true)}>
           Send
         </Button>
 
-        <Button type="submit" color="primary" disabled={state.disabled} onClick={() => form_props.set_publish(false)}>
+        <Button type="submit" color="primary" disabled={state.disabled}
+                onClick={() => form_props.onFieldChange('publish', false)}>
           Save Draft
         </Button>
 
@@ -53,9 +55,9 @@ const FormButtons = ({state, form_props}) => (
 class Create extends React.Component {
   state = {form_data: {}}
 
-  set_publish (publish) {
-    const form_data = Object.assign({}, this.state.form_data, {publish})
-    this.setState({form_data})
+  submitted (r) {
+    console.log(r)
+    this.props.history.push(`/conv/${r.data.key}/`)
   }
 
   render () {
@@ -65,10 +67,8 @@ class Create extends React.Component {
               form_data={this.state.form_data}
               function="create-conversation"
               Buttons={FormButtons}
-              cancel={this.props.history.goBack}
-              show_cancel={false}
-              set_publish={this.set_publish.bind(this)}
               RenderFields={RenderFields}
+              submitted={this.submitted.bind(this)}
               onChange={form_data => this.setState({form_data})}/>
       </div>
     )

@@ -1,6 +1,6 @@
 -- TODO add domains, organisations and teams, perhaps new db/app.
 
--- recipients includes both local and remote users
+-- recipients includes both local and remote users, TODO rename to users
 CREATE TABLE recipients (
   id SERIAL PRIMARY KEY,
   address VARCHAR(255) NOT NULL,
@@ -19,6 +19,7 @@ CREATE TABLE conversations (
   snippet JSONB
   -- TODO expiry, ref?
 );
+CREATE INDEX conversations_created_ts ON conversations USING btree (created_ts);
 
 CREATE TABLE participants (
   id SERIAL PRIMARY KEY,
@@ -116,7 +117,7 @@ CREATE INDEX action_state_ref ON action_states USING btree (ref);
 
 ----------------------------------------------------------------------------------
 -- Auth tables, currently in the the same database as everything else, but with --
--- no links so could go in a separate db.                                       --
+-- no links so could easily be moved to a separate db.                          --
 ----------------------------------------------------------------------------------
 -- TODO table of supported domains
 

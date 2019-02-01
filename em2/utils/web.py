@@ -1,14 +1,9 @@
 from pathlib import Path
 
 from aiohttp import web
-from aiohttp.hdrs import METH_POST
 from aiohttp.web_fileresponse import FileResponse
-from aiohttp.web_response import Response
-from atoolbox.class_views import ExecView as _ExecView
-from atoolbox.middleware import CROSS_ORIGIN_ANY
-from atoolbox.utils import slugify, JsonErrors
-
-from settings import Settings
+from atoolbox.class_views import ExecView as _ExecView, View as _View
+from atoolbox.utils import JsonErrors, slugify
 
 ROOT_DIR = Path(__file__).parent.parent
 
@@ -54,28 +49,35 @@ def add_access_control(app: web.Application):
     app.on_response_prepare.append(_run)
 
 
-class ExecView(_ExecView):
-    null_origin = False
+async def _fetch404(func, sql, *args, msg_=None, **kwargs):
+    """
+    fetch from the db, raise not found if the value is doesn't exist
+    """
+    val = await func(sql, *args, **kwargs)
+    if not val:
+        raise JsonErrors.HTTPNotFound(msg_ or 'unable to find value in db')
+    return val
 
-    def build_headers(self):
-        headers = super().build_headers()
-        if not headers and self.null_origin:
-            headers = {'Access-Control-Allow-Origin': 'null'}
-        return headers
 
-    async def options(self):
-        acrm = self.request.headers.get('Access-Control-Request-Method')
-        if acrm != METH_POST or self.request.headers.get('Access-Control-Request-Headers').lower() != 'content-type':
-            raise JsonErrors.HTTPForbidden('Access-Control checks failed', headers=CROSS_ORIGIN_ANY)
+class Fetch404Mixin:
+    conn = NotImplemented
 
-        origin = 'null' if self.null_origin else self.request.app['expected_origin']
+    async def fetchval404(self, sql, *args, msg_=None):
+        return await _fetch404(self.conn.fetchval, sql, *args, msg_=msg_)
 
-        if self.request.headers['origin'] != origin:
-            raise JsonErrors.HTTPForbidden('Access-Control checks failed, wrong origin', headers=CROSS_ORIGIN_ANY)
+    async def fetchrow404(self, sql, *args, msg_=None):
+        return await _fetch404(self.conn.fetchrow, sql, *args, msg_=msg_)
 
-        headers = {
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Origin': origin,
-            'Access-Control-Allow-Credentials': 'true',
-        }
-        return Response(text='ok', headers=headers)
+    async def fetchval404_b(self, sql, *args, msg_=None, **kwargs):
+        return await _fetch404(self.conn.fetchval_b, sql, *args, **kwargs, msg_=msg_)
+
+    async def fetchrow404_b(self, sql, *args, msg_=None, **kwargs):
+        return await _fetch404(self.conn.fetchrow_b, sql, *args, **kwargs, msg_=msg_)
+
+
+class View(Fetch404Mixin, _View):
+    pass
+
+
+class ExecView(Fetch404Mixin, _ExecView):
+    pass

@@ -1,5 +1,6 @@
-from aiohttp.hdrs import METH_OPTIONS, METH_GET
+from aiohttp.hdrs import METH_OPTIONS, METH_GET, METH_POST
 from aiohttp.web_middlewares import middleware
+from aiohttp.web_response import Response
 from aiohttp.web_urldispatcher import MatchInfoError
 from atoolbox import JsonErrors
 from atoolbox.middleware import CROSS_ORIGIN_ANY
@@ -12,14 +13,18 @@ CSRF_UPLOAD_VIEW = set()
 NULL_ORIGIN_VIEWS = {'auth.login'}
 
 
+def _view_name(request):
+    return request.app['name'] + '.' + request.match_info.route.name
+
+
 def csrf_checks(request):
     """
     Content-Type, Origin and Referrer checks for CSRF.
     """
-    if request.method in {METH_OPTIONS, METH_GET} or isinstance(request.match_info, MatchInfoError):
+    if isinstance(request.match_info, MatchInfoError):
         return
 
-    view_name = request.app['name'] + '.' + request.match_info.route.name
+    view_name = _view_name(request)
 
     if view_name in CSRF_IGNORE_VIEWS:
         return
@@ -53,10 +58,32 @@ def csrf_checks(request):
         return f'Referer root wrong {referrer_root!r} != {expected_referrer!r}'
 
 
+def preflight_check(request, acrm):
+    if acrm != METH_POST or request.headers.get('Access-Control-Request-Headers').lower() != 'content-type':
+        raise JsonErrors.HTTPForbidden('Access-Control checks failed', headers=CROSS_ORIGIN_ANY)
+
+    origin = 'null' if _view_name(request) in NULL_ORIGIN_VIEWS else request.app['expected_origin']
+
+    if request.headers['origin'] != origin:
+        raise JsonErrors.HTTPForbidden('Access-Control checks failed, wrong origin', headers=CROSS_ORIGIN_ANY)
+
+    headers = {
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Credentials': 'true',
+    }
+    return Response(text='ok', headers=headers)
+
+
 @middleware
 async def csrf_middleware(request, handler):
-    csrf_error = csrf_checks(request)
-    if csrf_error:
-        raise JsonErrors.HTTPForbidden('CSRF failure: ' + csrf_error, headers=CROSS_ORIGIN_ANY)
-    else:
-        return await handler(request)
+    if request.method == METH_OPTIONS:
+        acrm = request.headers.get('Access-Control-Request-Method')
+        if acrm:
+            return preflight_check(request, acrm)
+    elif request.method != METH_GET:
+        csrf_error = csrf_checks(request)
+        if csrf_error:
+            raise JsonErrors.HTTPForbidden('CSRF failure: ' + csrf_error, headers=CROSS_ORIGIN_ANY)
+
+    return await handler(request)

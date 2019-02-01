@@ -102,3 +102,45 @@ $stripe-width: 10px;
     height: auto;
   }
 }
+
+
+.conv-list {
+  padding: 0;
+  a {
+    display: block;
+    color: $gray-800;
+    padding: 0.5rem 1rem;
+    border-top: 1px solid $gray-200;
+    &:hover {
+      text-decoration: none;
+      background-color: $gray-100;
+    }
+    span {
+      vertical-align: middle;
+      display: inline-block;
+    }
+    .subject {
+      font-size: 1.1rem;
+      min-width: 150px;
+      margin-right: 0.5rem;
+      max-width: 220px;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .body {
+      color: #7790a9;
+      font-size: 0.9em;
+      vertical-align: bottom;
+    }
+
+    .icon {
+      color: #627384;
+      font-size: 0.8em;
+      margin-right: 0.6rem;
+      .fa {
+        margin-right: 0.2rem;
+      }
+    }
+  }
+}

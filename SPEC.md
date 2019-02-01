@@ -336,8 +336,8 @@ People can create forks of deleted conversations but not rejoin them.
 # Consensus
 
 Could run a proper consensus algorithm such as raft or paxos, however:
-* neither work well with just two machines, a very common case here
-* neither cope with malicious failure which is entirely possible here
+* neither work well with just two machines, a very common case
+* neither cope with malicious failure which is entirely possible
 * raft would require lots of ongoing communication between platforms, that's obviously not possible. Could replace
   heartbeats but then it's not raft and down the rabbit whole we go.
 
@@ -351,9 +351,11 @@ In future we can (maybe) build solution to cope with leader failure, for now the
 
 The leader can't do anything "illegal" since conversations are "append only", also all actions should be signed.
 
-Some actions require a check before they can occur, eg.:
-* locking a message before modifying it, eg. need to make sure that that message isn't locked.
+Some actions require a check before they can occur eg.:
+* locking a message before modifying it
+* deleting a message
 * locking the subject before editing it
+* changing participants? (adding should be fine, just deleting or changing perms)
 * any others?
 
 I guess these special actions should require a version number equal or more recent that the last action

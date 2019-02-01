@@ -13,10 +13,10 @@ import WithContext from './context'
 import {as_title, get_component_name} from './index'
 import Detail, {render} from './retrieve/Detail'
 
-export const ModalFooter = ({finished, disabled, label, cancel_disabled}) => (
+export const ModalFooter = ({done, disabled, label, cancel_disabled}) => (
   <BsModalFooter>
     <ButtonGroup>
-      <Button type="button" color="secondary" onClick={() => finished()} disabled={cancel_disabled}>
+      <Button type="button" color="secondary" onClick={() => done()} disabled={cancel_disabled}>
         Cancel
       </Button>
       <Button type="submit" color="primary" disabled={disabled}>
@@ -25,13 +25,9 @@ export const ModalFooter = ({finished, disabled, label, cancel_disabled}) => (
     </ButtonGroup>
   </BsModalFooter>
 )
-const DEFAULT_EXTRA_FIELDS = {
-  ip: {title: 'IP Address'},
-  ua: {title: 'User Agent'},
-}
 
 export const InfoModal = ({onClose, isOpen, title, fields, extra_fields, object, children}) => {
-  const e_fields = Object.assign({}, DEFAULT_EXTRA_FIELDS, extra_fields)
+  const e_fields = Object.assign({}, extra_fields)
   return (
     <Modal isOpen={isOpen} toggle={onClose} size="lg">
       <ModalHeader toggle={onClose}>{title}</ModalHeader>
@@ -108,7 +104,7 @@ export default function AsModal (WrappedComponent) {
           </ModalHeader>
           <WrappedComponent
             {...this.props}
-            finished={this.toggle}
+            done={this.toggle}
             register_toggle_handler={h => this.toggle_handlers.push(h)}
             form_body_class="modal-body"
             form_footer_class="modal-footer"/>

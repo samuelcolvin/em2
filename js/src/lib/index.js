@@ -1,3 +1,5 @@
+import moment from 'moment'
+
 export const unique = (value, index, array) => array.indexOf(value) === index
 
 export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -7,6 +9,13 @@ export const as_title = s => s.replace(/(_|-)/g, ' ').replace(/(_|\b)\w/g, l => 
 export const get_component_name = Comp => Comp.displayName || Comp.name || 'Component'
 
 export const on_mobile = /mobile|ip(hone|od|ad)|android|blackberry|opera mini/i.test(navigator.userAgent)
+
+const DF = 'Do MMM'
+const DFY = 'Do MMM YYYY'
+const DTF = 'Do MMM, h:mma'
+
+export const format_date = (ts, y) => moment(ts).format(y ? DFY : DF)
+export const format_ts = ts => moment(ts).format(DTF)
 
 class _DetailedError extends Error {
   constructor (message, details) {

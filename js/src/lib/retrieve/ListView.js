@@ -6,7 +6,21 @@ import {Loading} from '../Errors'
 import Buttons from './Buttons'
 import RetrieveWrapper from './RetrieveWrapper'
 
-const ListViewRender = ({...props}) => {
+export const Paginate = ({pages, current_page}) => (
+  pages > 1 ? (
+    <nav aria-label="Page navigation example">
+      <ul className="pagination justify-content-center">
+        {[...Array(pages).keys()].map(i => i + 1).map(p => (
+          <li key={p} className={'page-item' + (p === current_page ? ' active' : '')}>
+            <Link className="page-link" to={`?page=${p}`}>{p}</Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  ) : null
+)
+
+const DefaultListRender = ({...props}) => {
   const no_items_found = props.no_items_found || `No ${as_title(props.title || 'Items')} found`
   const get_link = props.get_link || (item => `${props.root}${item.id}/`)
   const Extra = props.Extra
@@ -53,17 +67,7 @@ const ListViewRender = ({...props}) => {
         ))}
       </tbody>
     </table>,
-    state['pages'] > 1 ? (
-      <nav key="p" aria-label="Page navigation example">
-        <ul className="pagination justify-content-center">
-          {[...Array(state['pages']).keys()].map(i => i + 1).map(p => (
-            <li key={p} className={'page-item' + (p === current_page ? ' active' : '')}>
-              <Link className="page-link" to={`?page=${p}`}>{p}</Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
-    ) : null,
+    <Paginate key="p" pages={state['pages']} current_page={current_page}/>,
     <div key="e">
       {Extra && <Extra/>}
     </div>,
@@ -87,10 +91,11 @@ class ListView extends React.Component {
   }
 
   render () {
+    const Render = this.props.Render || DefaultListRender
     return <RetrieveWrapper {...this.props}
                             get_args={this.get_args}
                             get_page={this.get_page}
-                            RenderChild={ListViewRender}/>
+                            Render={Render}/>
   }
 }
 

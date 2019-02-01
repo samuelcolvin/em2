@@ -1,3 +1,7 @@
+import hashlib
+import secrets
+from datetime import datetime, timezone
+
 from typing import Set
 
 get_recipient_id_sql = 'select id, display_name from recipients where address = $1'
@@ -35,4 +39,28 @@ async def create_missing_recipients(conn, addresses: Set[str]):
 
     if remaining:
         recips.update(dict(await conn.fetch(set_missing_recips_sql, remaining)))
-    return recips
+    return set(recips.values())
+
+
+EPOCH = datetime(1970, 1, 1)
+EPOCH_TZ = EPOCH.replace(tzinfo=timezone.utc)
+
+
+def to_unix_ms(dt: datetime) -> int:
+    if dt.utcoffset() is None:
+        diff = dt - EPOCH
+    else:
+        diff = dt - EPOCH_TZ
+    return int(diff.total_seconds() * 1000)
+
+
+def generate_conv_key(creator, ts, subject):
+    to_hash = creator, to_unix_ms(ts), subject
+    to_hash = '_'.join(map(str, to_hash)).encode()
+    return hashlib.sha256(to_hash).hexdigest()
+
+
+def gen_random(prefix):
+    assert len(prefix) == 3
+    # 3 + 1 + 8 * 2 == 20
+    return prefix + '-' + secrets.token_hex(8)

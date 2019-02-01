@@ -59,7 +59,9 @@ add_listener('auth-token', async data => {
 
 add_listener('create-conversation', async data => {
   console.log('worker, conv data:', data)
-  return {status: 200}
+  const r = await requests.post('ui', '/create/', data, {expected_status: [201, 400]})
+  console.log(r)
+  return r
 })
 
 

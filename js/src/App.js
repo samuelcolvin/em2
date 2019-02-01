@@ -12,7 +12,7 @@ import Worker from './run_worker'
 import Navbar from './common/Navbar'
 import Login from './auth/Login'
 import ListConversations from './conversations/List'
-import Create from './conversations/Create'
+import CreateConversation from './conversations/Create'
 
 // TODO replace with specific icons
 FaLibrary.add(far, fas, fab)
@@ -20,9 +20,8 @@ FaLibrary.add(far, fas, fab)
 const Routes = () => (
   <Switch>
     <Route exact path="/" component={ListConversations}/>
-
+    <Route exact path="/create/" component={CreateConversation}/>
     <Route exact path="/login/" component={Login}/>
-    <Route exact path="/create/" component={Create}/>
 
     <Route component={NotFound}/>
   </Switch>

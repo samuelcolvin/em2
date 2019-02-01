@@ -47,10 +47,10 @@ class RetrieveWrapper extends React.Component {
   }
 
   render () {
-    const RenderChild = this.props.RenderChild
+    const Render = this.props.Render
     return (
-      <RenderChild {...this.props} state={this.state} formats={this.formats}
-                   render_key={this.render_key} render_value={this.render_value}/>
+      <Render {...this.props} state={this.state} formats={this.formats}
+              render_key={this.render_key} render_value={this.render_value}/>
     )
   }
 }
