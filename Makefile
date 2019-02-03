@@ -2,6 +2,7 @@
 
 .PHONY: install
 install:
+	pip install -U pip setuptools
 	pip install -r tests/requirements.txt
 	pip install -r em2/requirements1.txt
 	pip install -r em2/requirements2.txt
@@ -15,8 +16,10 @@ format:
 .PHONY: lint
 lint:
 	flake8 em2/ tests/
-	pytest -p no:sugar -q --cache-clear --isort em2
+	pytest -p no:sugar -q --cache-clear --isort -W ignore em2
 	black -S -l 120 --py36 --check em2 tests
+	./tests/check_debug.sh
+	cd js && yarn lint && cd ..
 
 .PHONY: test
 test:

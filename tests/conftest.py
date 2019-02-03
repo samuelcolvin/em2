@@ -145,7 +145,7 @@ class Factory:
         self.cli = cli
         self.url = url
         self.settings: Settings = cli.server.app['settings']
-        self.email_index = 0
+        self.email_index = 1
 
     @dataclass
     class User:

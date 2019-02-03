@@ -17,7 +17,7 @@ const static_props = {
   labelKey: render_option,
   renderToken: token,
   useCache: false,
-  allowNew: false
+  allowNew: false,
 }
 
 class Participants extends React.Component {

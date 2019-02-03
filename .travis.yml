@@ -1,0 +1,32 @@
+language: python
+
+addons:
+  postgresql: '9.6'
+
+services:
+- postgresql
+- redis-server
+
+python:
+- '3.6'
+
+dist: xenial
+sudo: required
+
+node_js:
+- '8'
+
+cache:
+  pip: true
+  yarn: true
+  directories:
+  - node_modules
+
+install:
+- make install
+- cd js && yarn && cd ..
+
+script:
+- make lint
+- make test && bash <(curl -s https://codecov.io/bash)
+- ls -lha

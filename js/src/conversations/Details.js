@@ -1,8 +1,8 @@
 import React from 'react'
-import {Link} from 'react-router-dom'
-import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+// import {Link} from 'react-router-dom'
+// import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import DetailView from '../lib/retrieve/DetailView'
-import {format_ts} from '../lib'
+// import {format_ts} from '../lib'
 import {Loading} from '../lib/Errors'
 
 const ConvDetail = ({state}) => {

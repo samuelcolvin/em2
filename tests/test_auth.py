@@ -16,6 +16,6 @@ async def test_login(cli, url, factory: Factory):
     obj = await r.json()
     assert obj == {
         'auth_token': RegexStr('.*'),
-        'session': {'session_id': AnyInt(), 'name': 'Tes Ting', 'email': 'testing-0@example.com'},
+        'session': {'session_id': AnyInt(), 'name': 'Tes Ting', 'email': 'testing-1@example.com'},
     }
     # auth_token is tested in ui
