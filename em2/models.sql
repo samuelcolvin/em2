@@ -1,142 +1,142 @@
 -- includes both local and remote users
-CREATE TABLE users (
-  id BIGSERIAL PRIMARY KEY,
-  address VARCHAR(255) NOT NULL,
-  display_name VARCHAR(127)
+create table users (
+  id bigserial primary key,
+  address varchar(255) not null,
+  display_name varchar(127)
 );
-CREATE UNIQUE INDEX user_address ON users USING btree (address);
+create unique index user_address on users using btree (address);
 
-CREATE TABLE conversations (
-  id BIGSERIAL PRIMARY KEY,
-  key VARCHAR(64) UNIQUE,
-  published BOOL DEFAULT False,
-  creator INT NOT NULL REFERENCES users ON DELETE RESTRICT,
-  created_ts TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_ts TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  subject VARCHAR(255) NOT NULL,
-  last_action_id INT NOT NULL DEFAULT 0 CHECK (last_action_id >= 0),
-  snippet JSON
-  -- TODO expiry, ref?
+create table conversations (
+  id bigserial primary key,
+  key varchar(64) unique,
+  published bool default false,
+  creator int not null references users on delete restrict,
+  created_ts timestamptz not null default current_timestamp,
+  updated_ts timestamptz not null default current_timestamp,
+  subject varchar(255) not null,
+  last_action_id int not null default 0 check (last_action_id >= 0),
+  snippet json
+  -- todo expiry, ref?
 );
-CREATE INDEX conversations_created_ts ON conversations USING btree (created_ts);
+create index conversations_created_ts on conversations using btree (created_ts);
 
-CREATE TABLE participants (
-  id BIGSERIAL PRIMARY KEY,
-  conv INT NOT NULL REFERENCES conversations ON DELETE CASCADE,
-  user_id INT NOT NULL REFERENCES users ON DELETE RESTRICT,
-  -- TODO permissions, hidden, status, has_seen/unread
-  UNIQUE (conv, user_id)
+create table participants (
+  id bigserial primary key,
+  conv int not null references conversations on delete cascade,
+  user_id int not null references users on delete restrict,
+  -- todo permissions, hidden, status, has_seen/unread
+  unique (conv, user_id)
 );
 
--- see core.Relationships enum which matches this
-CREATE TYPE RELATIONSHIP AS ENUM ('sibling', 'child');
-CREATE TYPE MSG_FORMAT AS ENUM ('markdown', 'plain', 'html');
+-- see core.relationships enum which matches this
+create type relationship as enum ('sibling', 'child');
+create type msg_format as enum ('markdown', 'plain', 'html');
 
--- see core.Verbs enum which matches this
-CREATE TYPE VERB AS ENUM ('create', 'publish', 'add', 'modify', 'delete', 'recover', 'lock', 'unlock');
--- see core.Components enum which matches this
-CREATE TYPE COMPONENT AS ENUM ('subject', 'expiry', 'label', 'message', 'participant', 'attachment');
+-- see core.verbs enum which matches this
+create type verb as enum ('create', 'publish', 'add', 'modify', 'delete', 'recover', 'lock', 'unlock');
+-- see core.components enum which matches this
+create type component as enum ('subject', 'expiry', 'label', 'message', 'participant', 'attachment');
 
-CREATE TABLE actions (
-  _id BIGSERIAL PRIMARY KEY,
-  id INT NOT NULL CHECK (id >= 0),
-  conv INT NOT NULL REFERENCES conversations ON DELETE CASCADE,
-  verb VERB NOT NULL,
-  component COMPONENT NOT NULL,
-  actor INT NOT NULL REFERENCES users ON DELETE RESTRICT,
-  timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+create table actions (
+  _id bigserial primary key,
+  id int not null check (id >= 0),
+  conv int not null references conversations on delete cascade,
+  verb verb not null,
+  component component not null,
+  actor int not null references users on delete restrict,
+  timestamp timestamptz not null default current_timestamp,
 
-  participant INT REFERENCES participants,
+  participant int references participants,
 
-  body TEXT,
-  msg INT REFERENCES actions,  -- follows or modifies depending on whether the verb is add or modify
-  msg_relationship RELATIONSHIP,
-  msg_position INT[] DEFAULT ARRAY[1],
-  msg_format MSG_FORMAT,
+  body text,
+  msg int references actions,  -- follows or modifies depending on whether the verb is add or modify
+  msg_relationship relationship,
+  msg_position int[] default array[1],
+  msg_format msg_format,
 
-  -- TODO participant details, attachment details, perhaps JSON for other types
+  -- todo participant details, attachment details, perhaps json for other types
 
-  UNIQUE (conv, id)
+  unique (conv, id)
 );
-CREATE INDEX action_conv_comp_verb_id ON actions USING btree (conv, component, verb, id);
+create index action_conv_comp_verb_id on actions using btree (conv, component, verb, id);
 
 -- this could be run on every "migration"
-CREATE OR REPLACE FUNCTION action_inserted() RETURNS trigger AS $$
+create or replace function action_inserted() returns trigger as $$
   -- could replace all this with plv8
-  DECLARE
-    -- TODO add actor name when we have it, could add attachment count etc. here too
-    snippet_ JSON = json_build_object(
-      'comp', NEW.component,
-      'verb', NEW.verb,
-      'addr', (SELECT address FROM users WHERE id=NEW.actor),
+  declare
+    -- todo add actor name when we have it, could add attachment count etc. here too
+    snippet_ json = json_build_object(
+      'comp', new.component,
+      'verb', new.verb,
+      'addr', (select address from users where id=new.actor),
       'body', left(
-          CASE WHEN NEW.component='message' AND NEW.body IS NOT NULL THEN
-            NEW.body
-          ELSE
-            (SELECT body FROM actions WHERE conv=NEW.conv and component='message' ORDER BY id DESC LIMIT 1)
-          END, 100
+          case when new.component='message' and new.body is not null then
+            new.body
+          else
+            (select body from actions where conv=new.conv and component='message' order by id desc limit 1)
+          end, 100
       ),
-      'prts', (SELECT COUNT(*) FROM participants WHERE conv=NEW.conv),
+      'prts', (select count(*) from participants where conv=new.conv),
       'msgs', (
-        SELECT COUNT(*) FILTER (WHERE verb='add') - COUNT(*) FILTER (WHERE verb='delete')
-        FROM actions WHERE conv=NEW.conv and component='message'
+        select count(*) filter (where verb='add') - count(*) filter (where verb='delete')
+        from actions where conv=new.conv and component='message'
       )
     );
-  BEGIN
+  begin
     -- update the conversation timestamp and snippet on new actions
-    UPDATE conversations SET updated_ts=NEW.timestamp, snippet=snippet_ WHERE id=NEW.conv;
-    RETURN NULL;
-  END;
-$$ LANGUAGE plpgsql;
+    update conversations set updated_ts=new.timestamp, snippet=snippet_ where id=new.conv;
+    return null;
+  end;
+$$ language plpgsql;
 
-CREATE TRIGGER action_insert AFTER INSERT ON actions FOR EACH ROW EXECUTE PROCEDURE action_inserted();
+create trigger action_insert after insert on actions for each row execute procedure action_inserted();
 
--- see core.ActionStatuses enum which matches this
-CREATE TYPE ACTION_STATUS AS ENUM ('temporary_failure', 'failed', 'successful');
+-- see core.actionstatuses enum which matches this
+create type action_status as enum ('temporary_failure', 'failed', 'successful');
 
-CREATE TABLE action_states (
-  action INT NOT NULL REFERENCES actions ON DELETE CASCADE,
-  ref VARCHAR(100),
-  status ACTION_STATUS NOT NULL,
-  node VARCHAR(255),  -- null for fallback TODO rename to node
-  errors JSONB[],
-  UNIQUE (action, node)
+create table action_states (
+  action int not null references actions on delete cascade,
+  ref varchar(100),
+  status action_status not null,
+  node varchar(255),  -- null for fallback todo rename to node
+  errors jsonb[],
+  unique (action, node)
 );
-CREATE INDEX action_state_ref ON action_states USING btree (ref);
+create index action_state_ref on action_states using btree (ref);
 -- might need index on platform
 
--- TODO attachments
+-- todo attachments
 
 
 ----------------------------------------------------------------------------------
--- Auth tables, currently in the the same database as everything else, but with --
+-- auth tables, currently in the the same database as everything else, but with --
 -- no links so could easily be moved to a separate db.                          --
 ----------------------------------------------------------------------------------
--- TODO table of supported domains/nodes
+-- todo table of supported domains/nodes
 
-CREATE TYPE ACCOUNT_STATUS AS ENUM ('pending', 'active', 'suspended');
+create type account_status as enum ('pending', 'active', 'suspended');
 
-CREATE TABLE auth_users (
-  id BIGSERIAL PRIMARY KEY,
-  address VARCHAR(255) NOT NULL UNIQUE,
-  first_name VARCHAR(63),
-  last_name VARCHAR(63),
-  password_hash VARCHAR(63),
-  otp_secret VARCHAR(20),
-  recovery_address VARCHAR(63) UNIQUE,
-  account_status ACCOUNT_STATUS NOT NULL DEFAULT 'pending'
-  -- TODO: node that the user is registered to
+create table auth_users (
+  id bigserial primary key,
+  address varchar(255) not null unique,
+  first_name varchar(63),
+  last_name varchar(63),
+  password_hash varchar(63),
+  otp_secret varchar(20),
+  recovery_address varchar(63) unique,
+  account_status account_status not null default 'pending'
+  -- todo: node that the user is registered to
 );
-CREATE UNIQUE INDEX auth_users_address ON auth_users USING btree (address);
-CREATE INDEX auth_users_account_status ON auth_users USING btree (account_status);  -- could be a composite index with address
+create unique index auth_users_address on auth_users using btree (address);
+create index auth_users_account_status on auth_users using btree (account_status);  -- could be a composite index with address
 
-CREATE TABLE auth_sessions (
-  id BIGSERIAL PRIMARY KEY,
-  auth_user INT NOT NULL REFERENCES auth_users ON DELETE CASCADE,
-  started TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  last_active TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  active BOOLEAN DEFAULT TRUE,  -- TODO need a cron job to close expired sessions just so they look sensible
-  events JSONB[]
+create table auth_sessions (
+  id bigserial primary key,
+  auth_user int not null references auth_users on delete cascade,
+  started timestamptz not null default current_timestamp,
+  last_active timestamptz not null default current_timestamp,
+  active boolean default true,  -- todo need a cron job to close expired sessions just so they look sensible
+  events jsonb[]
 );
 
--- TODO add domains, organisations and teams, perhaps new db/app.
+-- todo add domains, organisations and teams, perhaps new db/app.

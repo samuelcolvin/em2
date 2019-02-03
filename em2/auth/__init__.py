@@ -1,1 +1,1 @@
-from .main import create_app_auth
+from .main import create_app_auth  # noqa

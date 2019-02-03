@@ -1,4 +1,4 @@
-from aiohttp.hdrs import METH_OPTIONS, METH_GET, METH_POST
+from aiohttp.hdrs import METH_GET, METH_OPTIONS, METH_POST
 from aiohttp.web_middlewares import middleware
 from aiohttp.web_response import Response
 from aiohttp.web_urldispatcher import MatchInfoError
@@ -6,7 +6,6 @@ from atoolbox import JsonErrors
 from atoolbox.middleware import CROSS_ORIGIN_ANY
 from atoolbox.utils import JSON_CONTENT_TYPE
 from yarl import URL
-
 
 CSRF_IGNORE_VIEWS = set()
 CSRF_UPLOAD_VIEW = set()

@@ -4,8 +4,9 @@
 *.py[cod]
 .pytest_cache/
 .coverage
+/htmlcov/
 
-em2/index.*
+/em2/.index/
 
 # js
 /js/node_modules/

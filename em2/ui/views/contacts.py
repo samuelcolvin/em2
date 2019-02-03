@@ -1,5 +1,5 @@
-from atoolbox import parse_request_query, json_response
-from pydantic import constr, BaseModel, EmailError
+from atoolbox import json_response, parse_request_query
+from pydantic import BaseModel, EmailError, constr
 from pydantic.utils import validate_email
 
 from .utils import View

@@ -1,5 +1,4 @@
 from aiohttp import web
-
 from atoolbox.middleware import pg_middleware
 from cryptography import fernet
 
@@ -13,19 +12,14 @@ from .views.main import Login
 
 async def create_app_auth(settings=None):
     settings = settings or Settings()
-    routes = [
-        web.route('*', '/login/', Login.view(), name='login'),
-    ]
-    middleware = (
-        csrf_middleware,
-        pg_middleware,
-    )
+    routes = [web.route('*', '/login/', Login.view(), name='login')]
+    middleware = (csrf_middleware, pg_middleware)
     app = web.Application(middlewares=middleware)
     app.update(
         name='auth',
         settings=settings,
         dummy_password_hash=mk_password(settings.dummy_password, settings),
-        auth_fernet=fernet.Fernet(settings.auth_key)
+        auth_fernet=fernet.Fernet(settings.auth_key),
     )
     add_access_control(app)
     app.add_routes(routes)

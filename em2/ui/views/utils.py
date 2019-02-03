@@ -1,6 +1,6 @@
-from ..middleware import Session
-
 from utils.web import ExecView as _ExecView, View as _View
+
+from ..middleware import Session
 
 
 class View(_View):

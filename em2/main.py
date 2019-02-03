@@ -1,13 +1,12 @@
 from aiohttp.web import Application
+from atoolbox.create_app import cleanup, startup
 from atoolbox.middleware import error_middleware
-from atoolbox.create_app import startup, cleanup
 
-from settings import Settings
 from auth import create_app_auth
 from protocol import create_app_protocol
+from settings import Settings
 from ui import create_app_ui
 from utils.web import build_index
-
 
 copied_context = 'pg', 'redis', 'http_client', 'expected_origin'
 
@@ -40,9 +39,7 @@ async def create_app(settings: Settings = None):
         app.add_subapp('/protocol/', app['protocol_app'])
         app.add_subapp('/auth/', app['auth_app'])
         routes_description = (
-            '  /ui/ - user interface routes\n'
-            '  /protocol/ - em2 protocol routes\n'
-            '  /auth/ - auth routes'
+            '  /ui/ - user interface routes\n' '  /protocol/ - em2 protocol routes\n' '  /auth/ - auth routes'
         )
         app['expected_origin'] = 'http://localhost:3000'
     else:

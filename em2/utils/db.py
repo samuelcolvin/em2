@@ -1,14 +1,13 @@
 import hashlib
 import secrets
 from datetime import datetime, timezone
-
 from typing import Set
 
 get_recipient_id_sql = 'select id, display_name from recipients where address = $1'
 # update here should happen very rarely
 set_recipient_id_sql = """
 insert into recipients (address, display_name) values ($1, $2)
-on conflict (address) do update set display_name=EXCLUDED.display_name 
+on conflict (address) do update set display_name=EXCLUDED.display_name
 returning id
 """
 update_recipient_display_name = 'update recipients set display_name=$2 where id=$1'

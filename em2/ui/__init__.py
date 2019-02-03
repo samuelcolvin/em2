@@ -1,1 +1,1 @@
-from .main import create_app_ui
+from .main import create_app_ui  # noqa

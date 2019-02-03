@@ -29,7 +29,10 @@ async def create_user(*, conn, settings, args, logger, **kwargs):
         VALUES ($1, $2, $3, $4, 'active')
         ON CONFLICT (address) DO NOTHING RETURNING id
         """,
-        ns.email_address, ns.first_name, ns.last_name, password_hash
+        ns.email_address,
+        ns.first_name,
+        ns.last_name,
+        password_hash,
     )
     if not user_id:
         logger.error('user with email address %s already exists', ns.email_address)

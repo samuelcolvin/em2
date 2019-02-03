@@ -1,11 +1,12 @@
 from datetime import datetime
+from typing import List, Set
 
-from atoolbox import raw_json_response, JsonErrors
+from atoolbox import JsonErrors, raw_json_response
 from buildpg import V, funcs
-from pydantic import constr, EmailStr, BaseModel
-from typing import Set, List
+from pydantic import BaseModel, EmailStr, constr
 
-from utils.db import create_missing_recipients, generate_conv_key, gen_random
+from utils.db import create_missing_recipients, gen_random, generate_conv_key
+
 from .utils import ExecView, View
 
 
@@ -78,8 +79,7 @@ class ConvActions(View):
         else:
             # can happen legitimately when they were deleted from the conversation
             conv_id, published, creator, last_action = await self.fetchrow404(
-                self.get_conv_was_deleted_sql,
-                self.session.recipient_id, conv_key + '%',
+                self.get_conv_was_deleted_sql, self.session.recipient_id, conv_key + '%'
             )
             where_logic.append(V('a.id') <= last_action)
 
@@ -115,31 +115,13 @@ async def publish_create(conn, creator_id, conv_id, subject, recip_ids, publish)
     values              ($1,  $2,   $3,    $4,   $5,     $6  )
     returning id
     """
-    parent_id = await conn.fetchval(
-        create_msg_action_sql,
-        gen_random('act'),
-        conv_id,
-        creator_id,
-    )
+    parent_id = await conn.fetchval(create_msg_action_sql, gen_random('act'), conv_id, creator_id)
     for recipient in recip_ids:
         parent_id = await conn.fetchval(
-            create_prt_action_sql,
-            gen_random('act'),
-            conv_id,
-            creator_id,
-            recipient,
-            parent_id,
+            create_prt_action_sql, gen_random('act'), conv_id, creator_id, recipient, parent_id
         )
     verb = 'publish' if publish else 'create'
-    return await conn.fetchval(
-        create_action_sql,
-        gen_random(verb[:3]),
-        conv_id,
-        creator_id,
-        subject,
-        parent_id,
-        verb,
-    )
+    return await conn.fetchval(create_action_sql, gen_random(verb[:3]), conv_id, creator_id, subject, parent_id, verb)
 
 
 class ConvCreate(ExecView):
@@ -167,16 +149,16 @@ class ConvCreate(ExecView):
         msg_key = gen_random('msg')
         async with self.conn.transaction():
             conv_id = await self.conn.fetchval(
-                self.create_conv_sql,
-                conv_key, self.session.recipient_id, conv.subject, conv.publish, ts
+                self.create_conv_sql, conv_key, self.session.recipient_id, conv.subject, conv.publish, ts
             )
             if conv_id is None:
                 raise JsonErrors.HTTPConflict(error='key conflicts with existing conversation')
             await self.conn.executemany(self.add_participants_sql, {(conv_id, rid) for rid in recip_ids})
             await self.conn.execute(self.add_message_sql, conv_id, msg_key, conv.message)
 
-            create_action_id = await publish_create(self.conn, self.session.recipient_id,
-                                                    conv_id, conv.subject, recip_ids, conv.publish)
+            create_action_id = await publish_create(
+                self.conn, self.session.recipient_id, conv_id, conv.subject, recip_ids, conv.publish
+            )
 
         assert create_action_id
         # await self.pusher.push(create_action_id, actor_only=True)

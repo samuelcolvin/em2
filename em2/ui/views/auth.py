@@ -1,5 +1,5 @@
-from atoolbox import decrypt_json
 from aiohttp_session import new_session
+from atoolbox import decrypt_json
 from pydantic import BaseModel
 
 from utils.db import get_create_recipient
@@ -10,6 +10,7 @@ class AuthExchangeToken(ExecView):
     """
     Exchange a token from auth login to set the session cookie.
     """
+
     class Model(BaseModel):
         auth_token: bytes
 

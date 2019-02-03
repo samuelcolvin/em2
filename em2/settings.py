@@ -1,9 +1,14 @@
+from pathlib import Path
+
 from atoolbox import BaseSettings
+
+SRC_DIR = Path(__file__).parent
 
 
 class Settings(BaseSettings):
     pg_dsn = 'postgres://postgres@localhost:5432/em2'
     cookie_name = 'em2'
+    sql_path: Path = SRC_DIR / 'models.sql'
 
     domain: str = 'localhost'
     commit: str = 'unknown'

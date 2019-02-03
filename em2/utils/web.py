@@ -1,12 +1,9 @@
-from pathlib import Path
-
 from aiohttp import web
 from aiohttp.web_fileresponse import FileResponse
 from atoolbox.class_views import ExecView as _ExecView, View as _View
 from atoolbox.utils import JsonErrors, slugify
 
-ROOT_DIR = Path(__file__).parent.parent
-
+from settings import SRC_DIR
 
 index_text = """\
 em2 {name}
@@ -21,12 +18,10 @@ def build_index(app: web.Application, name: str, routes: str = None):
     app.add_routes([index_route])
     routes = routes or '\n'.join(f'  {r.canonical} - {r.name}' for r in app.router.values())
     text = index_text.format(
-        commit=app['settings'].commit,
-        build_time=app['settings'].build_time,
-        name=name,
-        routes=routes
+        commit=app['settings'].commit, build_time=app['settings'].build_time, name=name, routes=routes
     )
-    p = ROOT_DIR / f'index.{slugify(name)}.txt'
+    p = SRC_DIR / '.index' / f'index.{slugify(name)}.txt'
+    p.parent.mkdir(exist_ok=True)
     p.write_text(text)
     return p
 
@@ -39,13 +34,15 @@ index_route = web.get('/', index_view, name='index')
 
 
 def add_access_control(app: web.Application):
-
     async def _run(request, response):
         if 'Access-Control-Allow-Origin' not in response.headers:
-            response.headers.update({
-                'Access-Control-Allow-Origin': request.app['expected_origin'],
-                'Access-Control-Allow-Credentials': 'true',
-            })
+            response.headers.update(
+                {
+                    'Access-Control-Allow-Origin': request.app['expected_origin'],
+                    'Access-Control-Allow-Credentials': 'true',
+                }
+            )
+
     app.on_response_prepare.append(_run)
 
 

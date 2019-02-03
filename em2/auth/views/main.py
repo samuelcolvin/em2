@@ -3,7 +3,7 @@ import logging
 from time import time
 
 import bcrypt
-from atoolbox import get_ip, encrypt_json, json_response
+from atoolbox import encrypt_json, get_ip, json_response
 from atoolbox.auth import check_grecaptcha
 from atoolbox.utils import JsonErrors
 from pydantic import BaseModel, EmailStr, constr
@@ -14,13 +14,15 @@ logger = logging.getLogger('em2.auth')
 
 
 def session_event(request, ts, action_type):
-    return json.dumps({
-        'ip': get_ip(request),
-        'ts': ts,
-        'ua': request.headers.get('User-Agent'),
-        'ac': action_type,
-        # TODO include info about which session this is when multiple sessions are active
-    })
+    return json.dumps(
+        {
+            'ip': get_ip(request),
+            'ts': ts,
+            'ua': request.headers.get('User-Agent'),
+            'ac': action_type,
+            # TODO include info about which session this is when multiple sessions are active
+        }
+    )
 
 
 create_session_sql = 'INSERT INTO auth_sessions (auth_user, events) VALUES ($1, ARRAY[$2::JSONB]) RETURNING id'
@@ -83,10 +85,9 @@ class Login(ExecView):
         else:
             raise JsonErrors.HTTP470(
                 message='invalid username or password',
-                details={'grecaptcha_required': login_attempted >= self.settings.easy_login_attempts}
+                details={'grecaptcha_required': login_attempted >= self.settings.easy_login_attempts},
             )
 
     def _get_repeat_cache_key(self):
         ip = get_ip(self.request)
         return f'login-attempt:{ip}', ip
-
