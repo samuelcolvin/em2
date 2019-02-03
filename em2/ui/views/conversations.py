@@ -5,7 +5,7 @@ from atoolbox import JsonErrors, raw_json_response
 from buildpg import V, funcs
 from pydantic import BaseModel, EmailStr, constr
 
-from utils.db import create_missing_recipients, gen_random, generate_conv_key
+from utils.db import create_missing_users, gen_random, generate_conv_key
 
 from .utils import ExecView, View
 
@@ -19,14 +19,14 @@ class ConvList(View):
         c.published as published, c.snippet as snippet
       from conversations as c
       left join participants on c.id = participants.conv
-      where participants.recipient=$1
+      where participants.user_id=$1
       order by c.created_ts, c.id desc
       limit 50
     ) t;
     """
 
     async def call(self):
-        raw_json = await self.conn.fetchval(self.sql, self.session.recipient_id)
+        raw_json = await self.conn.fetchval(self.sql, self.session.user_id)
         return raw_json_response(raw_json or '[]')
 
 
@@ -34,15 +34,15 @@ class ConvActions(View):
     get_conv_sql = """
     select c.id, c.published, c.creator from conversations as c
     join participants as p on c.id=p.conv
-    where p.recipient=$1 and c.key like $2
+    where p.user_id=$1 and c.key like $2
     order by c.created_ts desc
     limit 1
     """
-    # used when the recipient was part of the conversation, but got removed
+    # used when the user was part of the conversation, but got removed
     get_conv_was_deleted_sql = """
     select c.id, c.published, c.creator, a.id from actions as a
     join conversations as c on a.conv = c.id
-    where a.recipient=$1 and c.key like $2 and a.component='participant' and a.verb='delete'
+    where a.user=$1 and c.key like $2 and a.component='participant' and a.verb='delete'
     order by c.created_ts desc, a.id desc
     limit 1
     """
@@ -51,18 +51,18 @@ class ConvActions(View):
     select array_to_json(array_agg(row_to_json(t)), true)
     from (
       select a.key as key, a.verb as verb, a.component as component, a.body as body, a.timestamp as timestamp,
-      actor_recipient.address as actor,
+      actor_user.email as actor,
       a_parent.key as parent,
       m.key as message,
-      prt_recipient.address as participant
+      prt_user.email as participant
       from actions as a
 
       left join actions as a_parent on a.parent = a_parent.id
       left join messages as m on a.message = m.id
 
-      join recipients as actor_recipient on a.actor = actor_recipient.id
+      join users as actor_user on a.actor = actor_user.id
 
-      left join recipients as prt_recipient on a.recipient = prt_recipient.id
+      left join users as prt_user on a.user = prt_user.id
       where :where
       order by a.id
     ) t;
@@ -72,18 +72,18 @@ class ConvActions(View):
 
     async def call(self):
         conv_key = self.request.match_info['conv'] + '%'
-        r = await self.conn.fetchrow(self.get_conv_sql, self.session.recipient_id, conv_key + '%')
+        r = await self.conn.fetchrow(self.get_conv_sql, self.session.user_id, conv_key + '%')
         where_logic: List[V] = []
         if r:
             conv_id, published, creator = r
         else:
             # can happen legitimately when they were deleted from the conversation
             conv_id, published, creator, last_action = await self.fetchrow404(
-                self.get_conv_was_deleted_sql, self.session.recipient_id, conv_key + '%'
+                self.get_conv_was_deleted_sql, self.session.user_id, conv_key + '%'
             )
             where_logic.append(V('a.id') <= last_action)
 
-        if not published and self.session.recipient_id != creator:
+        if not published and self.session.user_id != creator:
             raise JsonErrors.HTTPForbidden(error='conversation is unpublished and you are not the creator')
 
         since_action = self.request.query.get('since')
@@ -106,7 +106,7 @@ async def publish_create(conn, creator_id, conv_id, subject, recip_ids, publish)
     returning id
     """
     create_prt_action_sql = """
-    insert into actions (key, conv, actor, recipient, parent, component,     verb)
+    insert into actions (key, conv, actor, user, parent, component,     verb)
     values              ($1,  $2,   $3,    $4,        $5,     'participant', 'add')
     returning id
     """
@@ -116,10 +116,8 @@ async def publish_create(conn, creator_id, conv_id, subject, recip_ids, publish)
     returning id
     """
     parent_id = await conn.fetchval(create_msg_action_sql, gen_random('act'), conv_id, creator_id)
-    for recipient in recip_ids:
-        parent_id = await conn.fetchval(
-            create_prt_action_sql, gen_random('act'), conv_id, creator_id, recipient, parent_id
-        )
+    for user in recip_ids:
+        parent_id = await conn.fetchval(create_prt_action_sql, gen_random('act'), conv_id, creator_id, user, parent_id)
     verb = 'publish' if publish else 'create'
     return await conn.fetchval(create_action_sql, gen_random(verb[:3]), conv_id, creator_id, subject, parent_id, verb)
 
@@ -131,7 +129,7 @@ class ConvCreate(ExecView):
     on conflict (key) do nothing
     returning id
     """
-    add_participants_sql = 'insert into participants (conv, recipient) values ($1, $2)'
+    add_participants_sql = 'insert into participants (conv, user) values ($1, $2)'
     add_message_sql = 'insert into messages (conv, key, body) values ($1, $2, $3)'
 
     class Model(BaseModel):
@@ -141,15 +139,15 @@ class ConvCreate(ExecView):
         publish = False
 
     async def execute(self, conv: Model):
-        conv.participants.add(self.session.address)
-        recip_ids = await create_missing_recipients(self.conn, conv.participants)
+        conv.participants.add(self.session.email)
+        recip_ids = await create_missing_users(self.conn, conv.participants)
 
         ts = datetime.utcnow()
-        conv_key = generate_conv_key(self.session.address, ts, conv.subject) if conv.publish else gen_random('dft')
+        conv_key = generate_conv_key(self.session.email, ts, conv.subject) if conv.publish else gen_random('dft')
         msg_key = gen_random('msg')
         async with self.conn.transaction():
             conv_id = await self.conn.fetchval(
-                self.create_conv_sql, conv_key, self.session.recipient_id, conv.subject, conv.publish, ts
+                self.create_conv_sql, conv_key, self.session.user_id, conv.subject, conv.publish, ts
             )
             if conv_id is None:
                 raise JsonErrors.HTTPConflict(error='key conflicts with existing conversation')
@@ -157,7 +155,7 @@ class ConvCreate(ExecView):
             await self.conn.execute(self.add_message_sql, conv_id, msg_key, conv.message)
 
             create_action_id = await publish_create(
-                self.conn, self.session.recipient_id, conv_id, conv.subject, recip_ids, conv.publish
+                self.conn, self.session.user_id, conv_id, conv.subject, recip_ids, conv.publish
             )
 
         assert create_action_id

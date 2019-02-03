@@ -66,7 +66,7 @@ add_listener('auth-token', async data => {
   await requests.post('ui', '/auth-token/', {auth_token: data.auth_token})
   delete data.session.ts
   await db.sessions.put(data.session)
-  return {address: data.session.address, name: data.session.name}
+  return {email: data.session.email, name: data.session.name}
 })
 
 add_listener('create-conversation', async data => {
@@ -77,11 +77,11 @@ add_listener('create-conversation', async data => {
 
 
 const request_contacts = debounce(
-  data => requests.get('ui', '/contacts/lookup-address/', {args: data}),
+  data => requests.get('ui', '/contacts/lookup-email/', {args: data}),
   1000
 )
 
-add_listener('contacts-lookup-address', async data => {
+add_listener('contacts-lookup-email', async data => {
   const r = await request_contacts(data)
   return r.data
 })

@@ -5,6 +5,8 @@ import pytest
 from aiohttp.test_utils import teardown_test_loop
 from atoolbox.test_utils import DummyServer, create_dummy_server
 
+from auth.utils import mk_password
+from dataclasses import dataclass
 from em2.main import create_app
 from em2.settings import Settings
 
@@ -14,7 +16,7 @@ def pytest_addoption(parser):
 
 
 settings_args = dict(
-    DATABASE_URL='postgres://postgres@localhost:5432/em2_testing',
+    DATABASE_URL='postgres://postgres@localhost:5432/em2_test',
     REDISCLOUD_URL='redis://localhost:6379/6',
     bcrypt_work_factor=6,
     max_request_size=1024 ** 2,
@@ -100,8 +102,8 @@ async def _fix_cli(settings, db_conn, aiohttp_client, redis, loop):
             data=data,
             headers={
                 'Content-Type': 'application/json',
-                'Referer': f'http://127.0.0.1:{cli.server.port}/dummy-referer/',
-                'Origin': origin or f'http://127.0.0.1:{cli.server.port}',
+                'Referer': 'http://localhost:3000/dummy-referer/',
+                'Origin': origin or 'http://localhost:3000',
             },
         )
 
@@ -135,3 +137,68 @@ def _fix_url(cli):
         return url
 
     return f
+
+
+class Factory:
+    def __init__(self, conn, cli, url):
+        self.conn = conn
+        self.cli = cli
+        self.url = url
+        self.settings: Settings = cli.server.app['settings']
+        self.email_index = 0
+
+    @dataclass
+    class User:
+        user_id: int
+        email: str
+        first_name: str
+        last_name: str
+        password: str
+
+    async def create_user(self, *, email=None, first_name='Tes', last_name='Ting', pw='testing', login=False) -> User:
+        if email is None:
+            email = f'testing-{self.email_index}@example.com'
+            self.email_index += 1
+
+        password_hash = mk_password(pw, self.settings)
+        user_id = await self.conn.fetchval(
+            """
+            INSERT INTO auth_users (email, first_name, last_name, password_hash, account_status)
+            VALUES ($1, $2, $3, $4, 'active')
+            ON CONFLICT (email) DO NOTHING RETURNING id
+            """,
+            email,
+            first_name,
+            last_name,
+            password_hash,
+        )
+        if not user_id:
+            raise RuntimeError(f'user with email {email} already exists')
+
+        if login:
+            await self.login(email, pw)
+
+        return self.User(user_id, email, first_name, last_name, pw)
+
+    async def login(self, email, password, *, captcha=False):
+        data = dict(email=email, password=password)
+        if captcha:
+            data['grecaptcha_token'] = '__ok__'
+
+        r = await self.cli.post(
+            self.url('auth:login'),
+            data=json.dumps(data),
+            headers={'Content-Type': 'application/json', 'Origin': 'null'},
+        )
+        assert r.status == 200, await r.text()
+        obj = await r.json()
+
+        r = await self.cli.post_json(self.url('ui:auth-token'), data={'auth_token': obj['auth_token']})
+        assert r.status == 200, await r.text()
+        assert len(self.cli.session.cookie_jar) == 1
+        return r
+
+
+@pytest.fixture
+async def factory(db_conn, cli, url):
+    return Factory(db_conn, cli, url)

@@ -22,7 +22,7 @@ async def create_app_ui(settings=None):
         web.get('/list/', ConvList.view(), name='list'),
         web.route('*', '/create/', ConvCreate.view(), name='create'),
         web.get(f'/conv/{conv_match}/', ConvActions.view(), name='get-conv'),
-        web.get('/contacts/lookup-address/', ContactSearch.view(), name='contacts-lookup-address'),
+        web.get('/contacts/lookup-email/', ContactSearch.view(), name='contacts-lookup-email'),
     ]
     middleware = (
         csrf_middleware,

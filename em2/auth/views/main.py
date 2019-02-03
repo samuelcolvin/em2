@@ -35,7 +35,7 @@ async def login_successful(request, user):
     session = {
         'session_id': session_id,
         'name': '{first_name} {last_name}'.format(**user).strip(' '),
-        'address': user['address'],
+        'email': user['email'],
     }
     auth_token = encrypt_json(request.app, {'ts': ts, **session})
     return dict(auth_token=auth_token, session=session)
@@ -43,9 +43,9 @@ async def login_successful(request, user):
 
 class Login(ExecView):
     get_user_sql = """
-    SELECT id, first_name, last_name, address, password_hash
+    SELECT id, first_name, last_name, email, password_hash
     FROM auth_users
-    WHERE address=$1 AND account_status='active'
+    WHERE email=$1 AND account_status='active'
     """
 
     class Model(BaseModel):

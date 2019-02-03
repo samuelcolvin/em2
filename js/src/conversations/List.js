@@ -23,7 +23,7 @@ const ListConvs = ({state, get_page}) => {
           <Link to={`/${conv.key.substr(0, 10)}/`}>
             <span className="subject">{conv.subject}</span>
             <span className="body">
-              {conv.snippet.addr === 'props.user.address' ? '' : conv.snippet.addr + ':'} {conv.snippet.body}
+              {conv.snippet.email === 'props.user.email' ? '' : conv.snippet.addr + ':'} {conv.snippet.body}
             </span>
 
             <span className="float-right">

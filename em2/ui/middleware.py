@@ -11,9 +11,9 @@ AUTH_WHITELIST = {'index', 'auth-token'}
 
 @dataclass
 class Session:
-    recipient_id: int
+    user_id: int
     session_id: int
-    address: str
+    email: str
     ts: int
 
 
@@ -22,7 +22,7 @@ async def user_middleware(request, handler):
     if isinstance(request.match_info, MatchInfoError) or request.match_info.route.name in AUTH_WHITELIST:
         return await handler(request)
     session_obj = await get_session(request)
-    if not session_obj.get('recipient_id'):
+    if not session_obj.get('user_id'):
         raise JsonErrors.HTTPUnauthorized('request not authorised')
     session = Session(**dict(session_obj))
     # TODO check session.ts is not too old

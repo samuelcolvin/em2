@@ -1,10 +1,10 @@
 -- includes both local and remote users
 create table users (
   id bigserial primary key,
-  address varchar(255) not null,
+  email varchar(255) not null,
   display_name varchar(127)
 );
-create unique index user_address on users using btree (address);
+create unique index user_email on users using btree (email);
 
 create table conversations (
   id bigserial primary key,
@@ -68,7 +68,7 @@ create or replace function action_inserted() returns trigger as $$
     snippet_ json = json_build_object(
       'comp', new.component,
       'verb', new.verb,
-      'addr', (select address from users where id=new.actor),
+      'email', (select email from users where id=new.actor),
       'body', left(
           case when new.component='message' and new.body is not null then
             new.body
@@ -118,17 +118,17 @@ create type account_status as enum ('pending', 'active', 'suspended');
 
 create table auth_users (
   id bigserial primary key,
-  address varchar(255) not null unique,
+  email varchar(255) not null unique,
   first_name varchar(63),
   last_name varchar(63),
   password_hash varchar(63),
   otp_secret varchar(20),
-  recovery_address varchar(63) unique,
+  recovery_email varchar(63) unique,
   account_status account_status not null default 'pending'
   -- todo: node that the user is registered to
 );
-create unique index auth_users_address on auth_users using btree (address);
-create index auth_users_account_status on auth_users using btree (account_status);  -- could be a composite index with address
+create unique index auth_users_email on auth_users using btree (email);
+create index auth_users_account_status on auth_users using btree (account_status);  -- could be a composite index with email
 
 create table auth_sessions (
   id bigserial primary key,

@@ -14,14 +14,14 @@ class ContactSearch(View):
         m = parse_request_query(self.request, self.Model)
 
         options = [
-            {'name': 'anne', 'address': 'anne@example.com'},
-            {'name': 'ben', 'address': 'ben@example.com'},
-            {'name': 'charlie', 'address': 'charlie@example.com'},
+            {'name': 'anne', 'email': 'anne@example.com'},
+            {'name': 'ben', 'email': 'ben@example.com'},
+            {'name': 'charlie', 'email': 'charlie@example.com'},
         ]
         try:
-            query_name, query_address = validate_email(m.query)
+            query_name, query_email = validate_email(m.query)
         except EmailError:
             pass
         else:
-            options.append({'name': query_name, 'address': query_address})
+            options.append({'name': query_name, 'email': query_email})
         return json_response(list_=options)
