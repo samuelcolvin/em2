@@ -32,12 +32,3 @@ export const Loading = ({className, children}) => (
     {children}
   </div>
 )
-
-
-export const Waiting = ({light, className}) => (
-  <div className={`wait-circle${className ? ' ' + className : ''}`}>
-    {[...Array(12).keys()].map(i => (
-      <div key={i} className={`${light ? 'light' : 'dark'} el-${i}`}/>
-    ))}
-  </div>
-)

@@ -12,7 +12,7 @@ from utils.web import add_access_control, build_index
 from .middleware import user_middleware
 from .views.auth import AuthExchangeToken
 from .views.contacts import ContactSearch
-from .views.conversations import ConvCreate, ConvList
+from .views.conversations import ConvCreate, ConvList, ConvActions
 
 
 async def create_app_ui(settings=None):
@@ -22,7 +22,7 @@ async def create_app_ui(settings=None):
         web.route('*', '/auth-token/', AuthExchangeToken.view(), name='auth-token'),
         web.get('/list/', ConvList.view(), name='list'),
         web.route('*', '/create/', ConvCreate.view(), name='create'),
-        web.get(f'/conv/{conv_match}/', ContactSearch.view(), name='get-conv'),
+        web.get(f'/conv/{conv_match}/', ConvActions.view(), name='get-conv'),
 
         web.get('/contacts/lookup-address/', ContactSearch.view(), name='contacts-lookup-address'),
     ]

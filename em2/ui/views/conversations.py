@@ -10,6 +10,7 @@ from .utils import ExecView, View
 
 
 class ConvList(View):
+    # TODO add count (max 999)
     sql = """
     select array_to_json(array_agg(row_to_json(t)), true)
     from (
@@ -28,7 +29,7 @@ class ConvList(View):
         return raw_json_response(raw_json or '[]')
 
 
-class ConvActions(ExecView):
+class ConvActions(View):
     get_conv_sql = """
     select c.id, c.published, c.creator from conversations as c
     join participants as p on c.id=p.conv
@@ -90,6 +91,7 @@ class ConvActions(ExecView):
             first_action_id = await self.fetchval404(self.action_id_sql, conv_id, since_action)
             where_logic.append(V('a.id') > first_action_id)
 
+        where_logic.append(V('a.conv') == conv_id)
         json_str = await self.conn.fetchval_b(self.actions_sql, where=funcs.AND(*where_logic))
         return raw_json_response(json_str or '[]')
 
