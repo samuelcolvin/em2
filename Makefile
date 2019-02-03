@@ -16,7 +16,7 @@ format:
 .PHONY: lint
 lint:
 	flake8 em2/ tests/
-	pytest -p no:sugar -q --cache-clear --isort -W ignore em2
+	PYTHONPATH=em2 pytest -p no:sugar -q --cache-clear --isort -W ignore em2
 	black -S -l 120 --py36 --check em2 tests
 	./tests/check_debug.sh
 	cd js && yarn lint && cd ..
