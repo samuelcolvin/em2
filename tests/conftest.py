@@ -149,11 +149,12 @@ class Factory:
 
     @dataclass
     class User:
-        user_id: int
         email: str
         first_name: str
         last_name: str
         password: str
+        auth_user_id: int
+        ui_user_id: str = None
 
     async def create_user(self, *, email=None, first_name='Tes', last_name='Ting', pw='testing', login=False) -> User:
         if email is None:
@@ -175,10 +176,12 @@ class Factory:
         if not user_id:
             raise RuntimeError(f'user with email {email} already exists')
 
+        ui_user_id = None
         if login:
             await self.login(email, pw)
+            ui_user_id = await self.conn.fetchval('select id from users where email=$1', email)
 
-        return self.User(user_id, email, first_name, last_name, pw)
+        return self.User(email, first_name, last_name, pw, user_id, ui_user_id)
 
     async def login(self, email, password, *, captcha=False):
         data = dict(email=email, password=password)

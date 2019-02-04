@@ -1,0 +1,66 @@
+"""
+raw db tests
+"""
+import json
+from datetime import datetime
+
+
+async def test_update_conv(db_conn):
+    user_id = await db_conn.fetchval("insert into users (email) values ('testing@example.com') returning id")
+    ts = datetime.utcnow()
+    conv_id = await db_conn.fetchval(
+        """
+        insert into conversations (key, creator, subject, created_ts, updated_ts)
+        values ('key', $1, 'Subject', $2, $2) returning id
+        """,
+        user_id,
+        ts,
+    )
+    v = dict(await db_conn.fetchrow('select snippet, last_action_id from conversations where id=$1', conv_id))
+    assert v == {'snippet': None, 'last_action_id': 0}
+
+    global_id = await db_conn.fetchval(
+        """
+        insert into actions (conv, verb, component, actor, body) values ($1, 'add', 'message', $2, 'msg body')
+        returning _id, id
+        """,
+        conv_id,
+        user_id,
+    )
+    assert global_id == 1
+    changes = await db_conn.fetchrow('select snippet, last_action_id from conversations where id=$1', conv_id)
+    assert changes['last_action_id'] == 1
+    assert json.loads(changes['snippet']) == {
+        'comp': 'message',
+        'verb': 'add',
+        'email': 'testing@example.com',
+        'body': 'msg body',
+        'prts': 0,
+        'msgs': 1,
+    }
+
+    user2_id = await db_conn.fetchval("insert into users (email) values ('second@example.com') returning id")
+    part_id = await db_conn.fetchval('insert into participants (conv, user_id) values ($1, $2)', conv_id, user2_id)
+    global_id = await db_conn.fetchval(
+        """
+        insert into actions (conv, verb, component, actor, participant) values ($1, 'add', 'participant', $2, $3)
+        returning _id, id
+        """,
+        conv_id,
+        user_id,
+        part_id,
+    )
+    assert global_id == 2
+    changes = await db_conn.fetchrow('select snippet, last_action_id from conversations where id=$1', conv_id)
+    assert changes['last_action_id'] == 2
+    assert json.loads(changes['snippet']) == {
+        'comp': 'participant',
+        'verb': 'add',
+        'email': 'testing@example.com',
+        'body': 'msg body',
+        'prts': 1,
+        'msgs': 1,
+    }
+
+
+# TODO tests for message count and tests for body choices

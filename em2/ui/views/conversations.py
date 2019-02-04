@@ -5,7 +5,7 @@ from atoolbox import JsonErrors, raw_json_response
 from buildpg import V, funcs
 from pydantic import BaseModel, EmailStr, constr
 
-from utils.db import create_missing_users, gen_random, generate_conv_key
+from core import MsgFormat, draft_conv_key, generate_conv_key, get_create_multiple_users
 
 from .utils import ExecView, View
 
@@ -96,68 +96,75 @@ class ConvActions(View):
         return raw_json_response(json_str or '[]')
 
 
-async def publish_create(conn, creator_id, conv_id, subject, recip_ids, publish):
-    create_msg_action_sql = """
-    insert into actions (key, conv, actor, message, body,   component, verb)
-    select               $1,  $2,   $3,    m.id,    m.body, 'message', 'add'
-    from messages as m
-    where m.conv=$2
-    limit 1
-    returning id
-    """
-    create_prt_action_sql = """
-    insert into actions (key, conv, actor, user, parent, component,     verb)
-    values              ($1,  $2,   $3,    $4,        $5,     'participant', 'add')
-    returning id
-    """
-    create_action_sql = """
-    insert into actions (key, conv, actor, body, parent, verb)
-    values              ($1,  $2,   $3,    $4,   $5,     $6  )
-    returning id
-    """
-    parent_id = await conn.fetchval(create_msg_action_sql, gen_random('act'), conv_id, creator_id)
-    for user in recip_ids:
-        parent_id = await conn.fetchval(create_prt_action_sql, gen_random('act'), conv_id, creator_id, user, parent_id)
-    verb = 'publish' if publish else 'create'
-    return await conn.fetchval(create_action_sql, gen_random(verb[:3]), conv_id, creator_id, subject, parent_id, verb)
-
-
 class ConvCreate(ExecView):
-    create_conv_sql = """
-    insert into conversations (key, creator, subject, published, created_ts, updated_ts)
-    values                    ($1,  $2,      $3,      $4       , $5        , $5        )
-    on conflict (key) do nothing
-    returning id
-    """
-    add_participants_sql = 'insert into participants (conv, user) values ($1, $2)'
-    add_message_sql = 'insert into messages (conv, key, body) values ($1, $2, $3)'
-
     class Model(BaseModel):
         subject: constr(max_length=255, strip_whitespace=True)
         message: constr(max_length=2047, strip_whitespace=True)
         participants: Set[EmailStr] = set()
+        msg_format: MsgFormat = MsgFormat.markdown
         publish = False
 
     async def execute(self, conv: Model):
-        conv.participants.add(self.session.email)
-        recip_ids = await create_missing_users(self.conn, conv.participants)
-
         ts = datetime.utcnow()
-        conv_key = generate_conv_key(self.session.email, ts, conv.subject) if conv.publish else gen_random('dft')
-        msg_key = gen_random('msg')
+        conv_key = generate_conv_key(self.session.email, ts, conv.subject) if conv.publish else draft_conv_key()
+        creator_id = self.session.user_id
         async with self.conn.transaction():
             conv_id = await self.conn.fetchval(
-                self.create_conv_sql, conv_key, self.session.user_id, conv.subject, conv.publish, ts
+                """
+                insert into conversations (key, creator, subject, published, created_ts, updated_ts)
+                values                    ($1,  $2,      $3,      $4       , $5        , $5        )
+                on conflict (key) do nothing
+                returning id
+                """,
+                conv_key,
+                creator_id,
+                conv.subject,
+                conv.publish,
+                ts,
             )
             if conv_id is None:
                 raise JsonErrors.HTTPConflict(error='key conflicts with existing conversation')
-            await self.conn.executemany(self.add_participants_sql, {(conv_id, rid) for rid in recip_ids})
-            await self.conn.execute(self.add_message_sql, conv_id, msg_key, conv.message)
 
-            create_action_id = await publish_create(
-                self.conn, self.session.user_id, conv_id, conv.subject, recip_ids, conv.publish
+            part_users = await get_create_multiple_users(self.conn, conv.participants)
+            user_ids = [creator_id] + list(part_users.values())
+
+            await self.conn.execute(
+                """
+                with parts as (
+                  insert into participants (conv, user_id) (select $1, unnest ($2::int[])) returning id as p
+                )
+                insert into actions (conv, verb, component, actor, participant) (
+                  select $1, 'add', 'participant', $3, p from parts
+                )
+                """,
+                conv_id,
+                user_ids,
+                creator_id,
             )
+            await self.conn.execute(
+                """
+                insert into actions (conv, verb , component, actor, body, msg_format)
+                values              ($1,   'add', 'message', $2   , $3  , $4)
+                """,
+                conv_id,
+                creator_id,
+                conv.message,
+                conv.msg_format,
+            )
+            publish_id = None
+            if conv.publish:
+                publish_id = await self.conn.fetchrow(
+                    """
+                    insert into actions (conv, verb    , component, actor, ts)
+                    values              ($1,  'publish', 'conv'   , $2   , $3)
+                    returning id
+                    """,
+                    conv_id,
+                    creator_id,
+                    ts,
+                )
+                await self.conn.execute('update actions set ts=$2 where conv=$1', conv_id, ts)
 
-        assert create_action_id
+        print(publish_id)
         # await self.pusher.push(create_action_id, actor_only=True)
         return dict(key=conv_key, status_=201)

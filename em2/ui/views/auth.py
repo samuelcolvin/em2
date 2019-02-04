@@ -2,7 +2,7 @@ from aiohttp_session import new_session
 from atoolbox import decrypt_json
 from pydantic import BaseModel
 
-from utils.db import get_create_user
+from core import get_create_user
 from utils.web import ExecView
 
 
@@ -17,7 +17,7 @@ class AuthExchangeToken(ExecView):
     async def execute(self, m: Model):
         d = decrypt_json(self.app, m.auth_token, ttl=30)
         s = {
-            'user_id': await get_create_user(self.conn, d['email'], d['name']),
+            'user_id': await get_create_user(self.conn, d['email']),
             'session_id': d['session_id'],
             'email': d['email'],
             'ts': d['ts'],

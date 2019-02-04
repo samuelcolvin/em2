@@ -2,7 +2,7 @@
 
 **Much of this is out of date.**
 
-### Recipient
+### User (aka Recipient)
 
 * id
 * address
@@ -12,7 +12,7 @@
 ### Conversations
 
 * hash - of conversation basics
-* creator - recipient
+* creator - user
 * timestamp
 * expiration
 * subject
@@ -24,7 +24,7 @@ also: cryptographic signature, status?
 ### Participant
 
 * conversation
-* recipient
+* user
 * read/unread - perhaps null for remote participants
 
 Also: display name, permissions, hidden, status: active, archived, muted, left?
@@ -36,7 +36,7 @@ Also: notes & personal labels.
 * conversation
 * key
 * timestamp
-* recipient
+* user
 * remote/local
 * parent key
 * action: add, modify, delete, lock, release lock
@@ -226,9 +226,9 @@ IDs and subjects of conversations matching search
 1. Action received
 2. If the conversation exists: Action instance created, else see below
 3. Job `propagate(action_id)` fired, in job:
-4. Get all participants for conversation, create a set in redis for recipient_ids `recipients:{action_id}`
-5. For each active frontend application (see below), check if there are recipients in this conv: `SINTER`
-6. If recipients are found for any applications: get action details and add to list of "jobs" for that application.
+4. Get all participants for conversation, create a set in redis for user_ids `users:{action_id}`
+5. For each active frontend application (see below), check if there are users in this conv: `SINTER`
+6. If users are found for any applications: get action details and add to list of "jobs" for that application.
 Should be possible to add action data to all `frontend:jobs:{app-name}` lists in one pipeline operation.
 
 If conv doesn't exist:
@@ -242,7 +242,7 @@ If conv doesn't exist:
 If conv is not published: app `call_later`s `app.send_draft_action` which does the same as `propagate` but only
 sends action to the creator.
 
-Otherwise, fires `propagate(action_id, push=True)`. `propagate` gets the list of recipients,
+Otherwise, fires `propagate(action_id, push=True)`. `propagate` gets the list of users,
 calls `push`, then continues as with foreign actions.
 
 ### Frontend Applications
@@ -250,13 +250,13 @@ calls `push`, then continues as with foreign actions.
 Apps should have random name, they should delete all keys on termination.
 
 Redis keys:
-* `frontend:recipients:{app-name}` - contains a set of recipient ids associated with the app. Named such 
-that `propagate` can find all frontend apps with `frontend:recipients:*`. Expires fairly regularly such that if 
+* `frontend:users:{app-name}` - contains a set of user ids associated with the app. Named such 
+that `propagate` can find all frontend apps with `frontend:users:*`. Expires fairly regularly such that if 
 the app dies this record of the app's existence dies soon too.
 * `frontend:jobs:{app-name}` - list of actions to push to clients, not created by the app, just waited upon.
 
 Task `process_actions`, running constantly in infinite `BLPOP` loop, when an action arrives sends it to clients. 
-`BLPOP` timesout occasionally and extends `EXPIRE` on `frontend:recipients:{app-name}`.
+`BLPOP` timesout occasionally and extends `EXPIRE` on `frontend:users:{app-name}`.
 
 ----------------------------------
 
@@ -316,7 +316,7 @@ Forks are copies of existing conversations that can "go differently" to the fork
 
 When a participant is removed from a conversation the 'participant' is deleted but the person can still see the 
 conversation in "deleted conversations", this does a query for actions where 
-'prt__recipient=me, component=prt action=delete' and reconstructs conversations up to the point of deletion.
+'prt__user=me, component=prt action=delete' and reconstructs conversations up to the point of deletion.
 
 People can create forks of deleted conversations but not rejoin them.
 
