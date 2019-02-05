@@ -47,8 +47,7 @@ create table actions (
   actor int not null references users on delete restrict,
   ts timestamptz not null default current_timestamp,
 
-  participant int references participants,
-
+  participant_user int references users on delete restrict,
   body text,
   msg_follows int references actions,  -- follows or modifies depending on whether it's add or modify
   msg_relationship Relationship,

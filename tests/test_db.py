@@ -37,12 +37,12 @@ async def test_update_conv(db_conn):
     }
 
     user2_id = await db_conn.fetchval("insert into users (email) values ('second@example.com') returning id")
-    part_id = await db_conn.fetchval('insert into participants (conv, user_id) values ($1, $2)', conv_id, user2_id)
+    await db_conn.fetchval('insert into participants (conv, user_id) values ($1, $2)', conv_id, user2_id)
     global_id = await db_conn.fetchval(
-        "insert into actions (conv, act, actor, participant) values ($1, 'participant:add', $2, $3) returning id",
+        "insert into actions (conv, act, actor, participant_user) values ($1, 'participant:add', $2, $3) returning id",
         conv_id,
         user_id,
-        part_id,
+        user2_id,
     )
     assert global_id == 2
     changes = await db_conn.fetchrow('select details, last_action_id from conversations where id=$1', conv_id)

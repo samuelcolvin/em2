@@ -48,8 +48,7 @@ class ConvActions(View):
 
       join users as actor_user on a.actor = actor_user.id
 
-      left join participants as p on a.participant = p.id
-      left join users as prt_user on p.user_id = prt_user.id
+      left join users as prt_user on a.participant_user = prt_user.id
       where :where
       order by a.id
     ) t;
@@ -105,18 +104,18 @@ class ConvCreate(ExecView):
             user_ids = [creator_id] + list(part_users.values())
 
             await self.conn.execute(
+                'insert into participants (conv, user_id) (select $1, unnest($2::int[]))', conv_id, user_ids
+            )
+            await self.conn.execute(
                 """
-                with parts as (
-                  insert into participants (conv, user_id) (select $1, unnest ($2::int[])) returning id as p
-                )
-                insert into actions (conv, act, actor, ts, participant) (
-                  select $1, 'participant:add', $3, $4, p from parts
+                insert into actions (conv, act             , actor, ts, participant_user) (
+                  select             $1  , 'participant:add', $2  , $3, unnest($4::int[])
                 )
                 """,
                 conv_id,
-                user_ids,
                 creator_id,
                 ts,
+                user_ids,
             )
             await self.conn.execute(
                 """
@@ -179,44 +178,46 @@ class ConvAct(ExecView):
             raise JsonErrors.HTTPNotFound(message='Conversation not found')
 
         action_id = None
-        if action.act in prt_action_types:
-            action_id = await self._act_on_participant(conv_id, action)
+        async with self.conn.transaction():
+            if action.act in prt_action_types:
+                action_id = await self._act_on_participant(conv_id, action)
         assert action_id
 
     async def _act_on_participant(self, conv_id, action: Model):
         if action.act == ActionsTypes.prt_add:
-            new_user_id = await get_create_user(self.conn, action.participant)
+            prt_user_id = await get_create_user(self.conn, action.participant)
             prt_id = await self.conn.fetchval(
                 """
                 insert into participants (conv, user_id) values ($1, $2)
                 on conflict (conv, user_id) do nothing returning id
                 """,
                 conv_id,
-                new_user_id,
+                prt_user_id,
             )
             if not prt_id:
                 raise JsonErrors.HTTPConflict(error='user already a participant in this conversation')
         elif action.act == ActionsTypes.prt_remove:
-            prt_id = await self.conn.fetchval(
+            r = await self.conn.fetchrow(
                 """
-                select p.id from participants as p join users as u on p.user_id = u.id
+                select p.id, u.id from participants as p join users as u on p.user_id = u.id
                 where conv=$1 and email=$2
                 """,
                 conv_id,
                 action.participant,
             )
-            if not prt_id:
+            if not r:
                 raise JsonErrors.HTTPNotFound('user not found on conversation')
+            prt_id, prt_user_id = r
             await self.conn.execute('delete from participants where id=$1', prt_id)
         else:
             raise NotImplementedError('"participant:modify" not yet implemented')
         return await self.conn.fetchval(
             """
-            insert into actions (conv, act, actor, participant)
+            insert into actions (conv, act, actor, participant_user)
             values ($1, $2, $3, $5) returning id
             """,
             conv_id,
             action.act,
             self.session.user_id,
-            prt_id,
+            prt_user_id,
         )

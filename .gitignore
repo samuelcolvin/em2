@@ -32,3 +32,4 @@ yarn-error.log*
 /.idea/
 /sandbox/
 /activate.local.sh
+/TODO.md

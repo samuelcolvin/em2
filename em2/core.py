@@ -122,12 +122,11 @@ async def get_conv_for_user(conn: BuildPgConnection, user_id: int, conv_key_pref
     else:
         # can happen legitimately when a user was removed from the conversation,
         # but can still view it up to that point
-        r = await conn.fetchrow(
+        r = await conn.fetchrow(  # TODO move fetchval404... to the connection and use it here
             """
             select c.id, c.published, c.creator, a.id from actions as a
             join conversations as c on a.conv = c.id
-            join participants as p on a.participant = p.id
-            where p.user_id=$1 and c.key like $2 and a.component='participant' and a.verb='remove'
+            where c.key like $2 and a.participant_user=$1 and a.act='participant:remove'
             order by c.created_ts desc, a.id desc
             limit 1
             """,
