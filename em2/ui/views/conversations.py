@@ -5,7 +5,7 @@ from atoolbox import JsonErrors, raw_json_response
 from buildpg import V, funcs
 from pydantic import BaseModel, EmailStr, constr
 
-from core import MsgFormat, draft_conv_key, generate_conv_key, get_create_multiple_users
+from em2.core import MsgFormat, draft_conv_key, generate_conv_key, get_create_multiple_users
 
 from .utils import ExecView, View
 

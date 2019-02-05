@@ -4,9 +4,9 @@ from aiohttp_session.cookie_storage import EncryptedCookieStorage
 from atoolbox.middleware import pg_middleware
 from cryptography import fernet
 
-from settings import Settings
-from utils.middleware import csrf_middleware
-from utils.web import add_access_control, build_index
+from em2.settings import Settings
+from em2.utils.middleware import csrf_middleware
+from em2.utils.web import add_access_control, build_index
 
 from .middleware import user_middleware
 from .views.auth import AuthExchangeToken

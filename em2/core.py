@@ -6,7 +6,7 @@ from typing import Dict, Set
 
 from buildpg.asyncpg import BuildPgConnection
 
-from utils.datetime import to_unix_ms
+from em2.utils.datetime import to_unix_ms
 
 
 @unique

@@ -8,7 +8,7 @@ from atoolbox.auth import check_grecaptcha
 from atoolbox.utils import JsonErrors
 from pydantic import BaseModel, EmailStr, constr
 
-from utils.web import ExecView
+from em2.utils.web import ExecView
 
 logger = logging.getLogger('em2.auth')
 

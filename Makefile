@@ -16,14 +16,14 @@ format:
 .PHONY: lint
 lint:
 	flake8 em2/ tests/
-	PYTHONPATH=em2 pytest -p no:sugar -q --cache-clear --isort -W ignore em2
+	pytest -p no:sugar -q --cache-clear --isort -W ignore em2
 	black -S -l 120 --py36 --check em2 tests
 	./tests/check_debug.sh
 	cd js && yarn lint && cd ..
 
 .PHONY: test
 test:
-	PYTHONPATH=em2 pytest --cov=em2
+	pytest --cov=em2
 
 .PHONY: testcov
 testcov: test

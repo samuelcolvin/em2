@@ -1,12 +1,12 @@
 import asyncio
 import json
+from dataclasses import dataclass
 
 import pytest
 from aiohttp.test_utils import teardown_test_loop
 from atoolbox.test_utils import DummyServer, create_dummy_server
 
-from auth.utils import mk_password
-from dataclasses import dataclass
+from em2.auth.utils import mk_password
 from em2.main import create_app
 from em2.settings import Settings
 

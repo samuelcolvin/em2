@@ -3,7 +3,7 @@ from aiohttp.web_fileresponse import FileResponse
 from atoolbox.class_views import ExecView as _ExecView, View as _View
 from atoolbox.utils import JsonErrors, slugify
 
-from settings import SRC_DIR
+from em2.settings import SRC_DIR
 
 index_text = """\
 em2 {name}

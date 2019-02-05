@@ -2,11 +2,11 @@ from aiohttp.web import Application
 from atoolbox.create_app import cleanup, startup
 from atoolbox.middleware import error_middleware
 
-from auth import create_app_auth
-from protocol import create_app_protocol
-from settings import Settings
-from ui import create_app_ui
-from utils.web import build_index
+from em2.auth import create_app_auth
+from em2.protocol import create_app_protocol
+from em2.settings import Settings
+from em2.ui import create_app_ui
+from em2.utils.web import build_index
 
 copied_context = 'pg', 'redis', 'http_client', 'expected_origin'
 

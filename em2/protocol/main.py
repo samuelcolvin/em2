@@ -1,8 +1,8 @@
 from aiohttp import web
 
-from protocol.views import testing_view
-from settings import Settings
-from utils.web import build_index
+from em2.protocol.views import testing_view
+from em2.settings import Settings
+from em2.utils.web import build_index
 
 
 async def create_app_protocol(settings=None):

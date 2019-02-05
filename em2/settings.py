@@ -8,7 +8,8 @@ SRC_DIR = Path(__file__).parent
 class Settings(BaseSettings):
     pg_dsn = 'postgres://postgres@localhost:5432/em2'
     cookie_name = 'em2'
-    sql_path: Path = SRC_DIR / 'models.sql'
+    sql_path = SRC_DIR / 'models.sql'
+    create_app = 'em2.main.create_app'
 
     domain: str = 'localhost'
     commit: str = 'unknown'

@@ -1,6 +1,6 @@
 import bcrypt
 
-from settings import Settings
+from em2.settings import Settings
 
 
 def mk_password(password: str, settings: Settings) -> str:
