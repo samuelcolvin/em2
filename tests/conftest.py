@@ -156,7 +156,7 @@ class Factory:
         auth_user_id: int
         ui_user_id: str = None
 
-    async def create_user(self, *, email=None, first_name='Tes', last_name='Ting', pw='testing', login=False) -> User:
+    async def create_user(self, *, email=None, first_name='Tes', last_name='Ting', pw='testing', login=False) -> 'User':
         if email is None:
             email = f'testing-{self.email_index}@example.com'
             self.email_index += 1
