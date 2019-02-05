@@ -26,36 +26,39 @@ create table participants (
   unique (conv, user_id)
 );
 
--- see core.relationships enum which matches this
-create type relationship as enum ('sibling', 'child');
-create type msg_format as enum ('markdown', 'plain', 'html');
-
--- see core.verbs enum which matches this
-create type verb as enum ('publish', 'add', 'modify', 'remove', 'recover', 'lock', 'unlock');
--- see core.components enum which matches this
-create type component as enum ('conv', 'subject', 'expiry', 'label', 'message', 'participant', 'attachment');
+-- see core.ActionsTypes enum which matches this
+create type ActionTypes as enum (
+  'conv:publish', 'conv:create',
+  'subject:modify',
+  'expiry:modify',
+  'message:add', 'message:modify', 'message:remove', 'message:recover', 'message:lock', 'message:unlock',
+  'participant:add', 'participant:remove', 'participant:modify'
+);
+-- see core.Relationships enum which matches this
+create type Relationship as enum ('sibling', 'child');
+-- see core.MsgFormat enum which matches this
+create type MsgFormat as enum ('markdown', 'plain', 'html');
 
 create table actions (
-  _id bigserial primary key,
+  pk bigserial primary key,
   id int not null check (id >= 0),
   conv int not null references conversations on delete cascade,
-  verb verb not null,
-  component component not null,
+  act ActionTypes not null,
   actor int not null references users on delete restrict,
   ts timestamptz not null default current_timestamp,
 
   participant int references participants,
 
   body text,
-  msg_follows int references actions,  -- follows or modifies depending on whether the verb is add or modify
-  msg_relationship relationship,
-  msg_format msg_format,
+  msg_follows int references actions,  -- follows or modifies depending on whether it's add or modify
+  msg_relationship Relationship,
+  msg_format MsgFormat,
 
   -- todo participant details, attachment details, perhaps json for other types
 
   unique (conv, id)
 );
-create index action_conv_comp_verb_id on actions using btree (conv, component, verb, id);
+create index action_act_id on actions using btree (conv, act, id);
 create index action_conv on actions using btree (conv);
 create index action_id on actions using btree (id);
 
@@ -67,32 +70,34 @@ create or replace function action_insert() returns trigger as $$
     -- if this ends up being a bottle neck, we could cache particular values on the the conversation
     -- and update them individually
     details_ json = json_build_object(
-      'comp', new.component,
-      'verb', new.verb,
+      'act', new.act,
       'sub', (
-        case when new.component=any(array['conv', 'subject']::component[]) then
+        case when new.act=any(array['conv:publish', 'conv:create', 'subject:modify']::ActionTypes[]) then
           new.body
         else
           (select body
            from actions
-           where conv=new.conv and component=any(array['conv', 'subject']::component[])
+           where conv=new.conv and act=any(array['conv:publish', 'conv:create', 'subject:modify']::ActionTypes[])
            order by id desc limit 1)
         end
       ),
       'email', (select email from users where id=new.actor),
       'body', left(
-        case when new.component='message' and new.body is not null then
+        case when new.act=any(array['message:add', 'message:modify']::ActionTypes[]) then
           new.body
         else
-          (select body from actions where conv=new.conv and component='message' order by id desc limit 1)
+          (select body
+           from actions
+           where conv=new.conv and act=any(array['message:add', 'message:modify']::ActionTypes[])
+           order by id desc limit 1)
         end, 100
       ),
       'prts', (select count(*) from participants where conv=new.conv),
       'msgs', (
-        select count(*) filter (where verb='add') - count(*) filter (where verb='remove')
-        from actions where conv=new.conv and component='message'
-      ) + case when new.component='message' and new.verb='add' then 1
-               when new.component='message' and new.verb='remove' then -1
+        select count(*) filter (where act='message:add') - count(*) filter (where act='message:remove')
+        from actions where conv=new.conv and act=any(array['message:add', 'message:remove']::ActionTypes[])
+      ) + case when new.act='message:add' then 1
+               when new.act='message:remove' then -1
                else 0 end
     );
   begin

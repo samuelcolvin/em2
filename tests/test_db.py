@@ -20,10 +20,7 @@ async def test_update_conv(db_conn):
     assert v == {'details': None, 'last_action_id': 0}
 
     global_id = await db_conn.fetchval(
-        """
-        insert into actions (conv, verb, component, actor, body) values ($1, 'add', 'message', $2, 'msg body')
-        returning _id, id
-        """,
+        "insert into actions (conv, act, actor, body) values ($1, 'message:add', $2, 'msg body') returning id",
         conv_id,
         user_id,
     )
@@ -31,8 +28,7 @@ async def test_update_conv(db_conn):
     changes = await db_conn.fetchrow('select details, last_action_id from conversations where id=$1', conv_id)
     assert changes['last_action_id'] == 1
     assert json.loads(changes['details']) == {
-        'comp': 'message',
-        'verb': 'add',
+        'act': 'message:add',
         'sub': None,
         'email': 'testing@example.com',
         'body': 'msg body',
@@ -43,10 +39,7 @@ async def test_update_conv(db_conn):
     user2_id = await db_conn.fetchval("insert into users (email) values ('second@example.com') returning id")
     part_id = await db_conn.fetchval('insert into participants (conv, user_id) values ($1, $2)', conv_id, user2_id)
     global_id = await db_conn.fetchval(
-        """
-        insert into actions (conv, verb, component, actor, participant) values ($1, 'add', 'participant', $2, $3)
-        returning _id, id
-        """,
+        "insert into actions (conv, act, actor, participant) values ($1, 'participant:add', $2, $3) returning id",
         conv_id,
         user_id,
         part_id,
@@ -55,8 +48,7 @@ async def test_update_conv(db_conn):
     changes = await db_conn.fetchrow('select details, last_action_id from conversations where id=$1', conv_id)
     assert changes['last_action_id'] == 2
     assert json.loads(changes['details']) == {
-        'comp': 'participant',
-        'verb': 'add',
+        'act': 'participant:add',
         'sub': None,
         'email': 'testing@example.com',
         'body': 'msg body',

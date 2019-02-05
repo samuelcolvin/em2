@@ -1,11 +1,20 @@
 from datetime import datetime
-from typing import List, Set
+from typing import Set
 
 from atoolbox import JsonErrors, parse_request_query, raw_json_response
-from buildpg import V, funcs
-from pydantic import BaseModel, EmailStr, constr
+from buildpg import V
+from pydantic import BaseModel, EmailStr, constr, validator
 
-from em2.core import MsgFormat, draft_conv_key, generate_conv_key, get_create_multiple_users
+from em2.core import (
+    ActionsTypes,
+    MsgFormat,
+    Relationships,
+    draft_conv_key,
+    generate_conv_key,
+    get_conv_for_user,
+    get_create_multiple_users,
+    get_create_user,
+)
 
 from .utils import ExecView, View
 
@@ -33,7 +42,7 @@ class ConvActions(View):
     actions_sql = """
     select array_to_json(array_agg(json_strip_nulls(row_to_json(t))), true)
     from (
-      select a.id as id, verb, component, a.ts as ts, actor_user.email as actor,
+      select a.id as id, act, a.ts as ts, actor_user.email as actor,
       body, msg_follows, msg_relationship, msg_format, prt_user.email as participant
       from actions as a
 
@@ -50,48 +59,17 @@ class ConvActions(View):
         since: int = None
 
     async def call(self):
-        conv_key = self.request.match_info['conv'] + '%'
-        where_logic: List[V] = []
-        r = await self.conn.fetchrow(
-            """
-            select c.id, c.published, c.creator from conversations as c
-            join participants as p on c.id=p.conv
-            where p.user_id=$1 and c.key like $2
-            order by c.created_ts desc
-            limit 1
-            """,
-            self.session.user_id,
-            conv_key,
-        )
-        if r:
-            conv_id, published, creator = r
-        else:
-            # can happen legitimately when a user was removed from the conversation,
-            # but can still view it up to that point
-            conv_id, published, creator, last_action = await self.fetchrow404(
-                """
-                select c.id, c.published, c.creator, a.id from actions as a
-                join conversations as c on a.conv = c.id
-                join participants as p on a.participant = p.id
-                where p.user_id=$1 and c.key like $2 and a.component='participant' and a.verb='remove'
-                order by c.created_ts desc, a.id desc
-                limit 1
-                """,
-                self.session.user_id,
-                conv_key,
-            )
-            where_logic.append(V('a.id') <= last_action)
-
-        if not published and self.session.user_id != creator:
-            raise JsonErrors.HTTPForbidden(error='conversation is unpublished and you are not the creator')
+        conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
+        where_logic = V('a.conv') == conv_id
+        if last_action:
+            where_logic &= V('a.id') <= last_action
 
         m = parse_request_query(self.request, self.QueryModel)
         if m.since:
             await self.fetchval404('select 1 from actions where conv=$1 and id=$1', conv_id, m.since)
-            where_logic.append(V('a.id') > m.since)
+            where_logic &= V('a.id') > m.since
 
-        where_logic.append(V('a.conv') == conv_id)
-        json_str = await self.conn.fetchval_b(self.actions_sql, where=funcs.AND(*where_logic))
+        json_str = await self.conn.fetchval_b(self.actions_sql, where=where_logic)
         return raw_json_response(json_str or '[]')
 
 
@@ -131,38 +109,114 @@ class ConvCreate(ExecView):
                 with parts as (
                   insert into participants (conv, user_id) (select $1, unnest ($2::int[])) returning id as p
                 )
-                insert into actions (conv, verb, component, actor, participant) (
-                  select $1, 'add', 'participant', $3, p from parts
+                insert into actions (conv, act, actor, ts, participant) (
+                  select $1, 'participant:add', $3, $4, p from parts
                 )
                 """,
                 conv_id,
                 user_ids,
                 creator_id,
+                ts,
             )
             await self.conn.execute(
                 """
-                insert into actions (conv, verb , component, actor, body, msg_format)
-                values              ($1,   'add', 'message', $2   , $3  , $4)
+                insert into actions (conv, act          , actor, ts, body, msg_format)
+                values              ($1  , 'message:add', $2   , $3, $4  , $5)
                 """,
                 conv_id,
                 creator_id,
+                ts,
                 conv.message,
                 conv.msg_format,
             )
             publish_id = await self.conn.fetchrow(
                 """
-                insert into actions (conv, verb, component, actor, ts, body)
-                values              ($1  ,  $2 , 'conv'   , $3   , $4, $5)
+                insert into actions (conv, act, actor, ts, body)
+                values              ($1  , $2 , $3   , $4, $5)
                 returning id
                 """,
                 conv_id,
-                'publish' if conv.publish else 'add',
+                'conv:publish' if conv.publish else 'conv:create',
                 creator_id,
                 ts,
                 conv.subject,
             )
-            await self.conn.execute('update actions set ts=$2 where conv=$1', conv_id, ts)
 
         assert publish_id
         # await self.pusher.push(create_action_id, actor_only=True)
         return dict(key=conv_key, status_=201)
+
+
+prt_action_types = {ActionsTypes.prt_add, ActionsTypes.prt_remove, ActionsTypes.prt_modify}
+
+
+class ConvAct(ExecView):
+    class Model(BaseModel):
+        act: ActionsTypes
+        participant: EmailStr = None
+        body: str = None
+        msg_follows: int = None
+        msg_relationship: Relationships = None
+        msg_format: MsgFormat = None
+
+        @validator('act')
+        def check_act(cls, v):
+            if v in {ActionsTypes.conv_publish, ActionsTypes.conv_publish}:
+                raise ValueError('Action not permitted')
+
+        @validator('participant', always=True)
+        def check_participant(cls, v, values, **kwargs):
+            act: ActionsTypes = values['act']
+            if v and act not in prt_action_types:
+                raise ValueError('participant must be set for participant:* actions')
+            if not v and act in prt_action_types:
+                raise ValueError('participant can only be used with participant:* actions')
+
+    async def execute(self, action: Model):
+        # TODO perhaps this logic could be shared with protocol?
+        conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
+        if last_action:
+            raise JsonErrors.HTTPNotFound(message='Conversation not found')
+
+        action_id = None
+        if action.act in prt_action_types:
+            action_id = await self._act_on_participant(conv_id, action)
+        assert action_id
+
+    async def _act_on_participant(self, conv_id, action: Model):
+        if action.act == ActionsTypes.prt_add:
+            new_user_id = await get_create_user(self.conn, action.participant)
+            prt_id = await self.conn.fetchval(
+                """
+                insert into participants (conv, user_id) values ($1, $2)
+                on conflict (conv, user_id) do nothing returning id
+                """,
+                conv_id,
+                new_user_id,
+            )
+            if not prt_id:
+                raise JsonErrors.HTTPConflict(error='user already a participant in this conversation')
+        elif action.act == ActionsTypes.prt_remove:
+            prt_id = await self.conn.fetchval(
+                """
+                select p.id from participants as p join users as u on p.user_id = u.id
+                where conv=$1 and email=$2
+                """,
+                conv_id,
+                action.participant,
+            )
+            if not prt_id:
+                raise JsonErrors.HTTPNotFound('user not found on conversation')
+            await self.conn.execute('delete from participants where id=$1', prt_id)
+        else:
+            raise NotImplementedError('"participant:modify" not yet implemented')
+        return await self.conn.fetchval(
+            """
+            insert into actions (conv, act, actor, participant)
+            values ($1, $2, $3, $5) returning id
+            """,
+            conv_id,
+            action.act,
+            self.session.user_id,
+            prt_id,
+        )

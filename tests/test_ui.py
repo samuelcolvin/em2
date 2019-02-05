@@ -55,8 +55,7 @@ async def test_create_conv(cli, url, factory: Factory, db_conn):
         'details': RegexStr(r'\{.*\}'),
     }
     assert json.loads(conv['details']) == {
-        'comp': 'conv',
-        'verb': 'add',
+        'act': 'conv:create',
         'sub': 'Sub',
         'email': 'testing-1@example.com',
         'body': 'Msg',
@@ -87,8 +86,7 @@ async def test_create_conv_publish(cli, url, factory: Factory, db_conn):
         'details': RegexStr(r'\{.*\}'),
     }
     assert json.loads(conv['details']) == {
-        'comp': 'conv',
-        'verb': 'publish',
+        'act': 'conv:publish',
         'sub': 'Sub',
         'email': 'testing-1@example.com',
         'body': 'Msg',
@@ -112,8 +110,7 @@ async def test_conv_list(cli, url, factory: Factory, db_conn):
             'updated_ts': CloseToNow(),
             'published': False,
             'details': {
-                'comp': 'conv',
-                'verb': 'add',
+                'act': 'conv:create',
                 'sub': 'Test Subject',
                 'email': 'testing-1@example.com',
                 'body': 'Test Message',
@@ -135,27 +132,18 @@ async def test_conv_actions(cli, url, factory: Factory, db_conn):
     assert obj == [
         {
             'id': 1,
-            'verb': 'add',
-            'component': 'participant',
+            'act': 'participant:add',
             'ts': CloseToNow(),
             'actor': 'testing-1@example.com',
             'participant': 'testing-1@example.com',
         },
         {
             'id': 2,
-            'verb': 'add',
-            'component': 'message',
+            'act': 'message:add',
             'ts': CloseToNow(),
             'body': 'Test Message',
             'msg_format': 'markdown',
             'actor': 'testing-1@example.com',
         },
-        {
-            'id': 3,
-            'verb': 'add',
-            'component': 'conv',
-            'ts': CloseToNow(),
-            'body': 'Test Subject',
-            'actor': 'testing-1@example.com',
-        },
+        {'id': 3, 'act': 'conv:create', 'ts': CloseToNow(), 'body': 'Test Subject', 'actor': 'testing-1@example.com'},
     ]

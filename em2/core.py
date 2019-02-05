@@ -2,41 +2,34 @@ import hashlib
 import secrets
 from datetime import datetime
 from enum import Enum, unique
-from typing import Dict, Set
+from typing import Dict, Optional, Set, Tuple
 
+from atoolbox import JsonErrors
 from buildpg.asyncpg import BuildPgConnection
 
 from em2.utils.datetime import to_unix_ms
 
 
 @unique
-class Components(str, Enum):
+class ActionsTypes(str, Enum):
     """
-    Component types, used for both urls and in db ENUM see models.sql
-    """
-
-    conv = 'conv'
-    subject = 'subject'
-    expiry = 'expiry'
-    label = 'label'
-    message = 'message'
-    participant = 'participant'
-    attachment = 'attachment'
-
-
-@unique
-class Verbs(str, Enum):
-    """
-    Verb types, used for both urls and in db ENUM see models.sql
+    Action types (component and verb), used for both urls and in db ENUM see models.sql
     """
 
-    publish = 'publish'
-    add = 'add'
-    modify = 'modify'
-    remove = 'remove'
-    recover = 'recover'
-    lock = 'lock'
-    unlock = 'unlock'
+    conv_publish = 'conv:publish'
+    conv_create = 'conv:create'
+    subject_modify = 'subject:modify'
+    expiry_modify = 'expiry:modify'
+    message_add = 'message:add'
+    message_modify = 'message:modify'
+    message_remove = 'message:remove'
+    message_recover = 'message:recover'
+    message_lock = 'message:lock'
+    message_unlock = 'message:unlock'
+    prt_add = 'participant:add'
+    prt_remove = 'participant:remove'
+    prt_modify = 'participant:modify'  # change perms
+    # TODO labels, attachments, other models
 
 
 @unique
@@ -104,3 +97,48 @@ def draft_conv_key() -> str:
     Create reference for a draft conversation.
     """
     return secrets.token_hex(10)  # string length will be 20
+
+
+async def get_conv_for_user(conn: BuildPgConnection, user_id: int, conv_key_prefix: str) -> Tuple[int, Optional[int]]:
+    """
+    Get a conversation id for a user based on the beginning of the conversation key, if the user has been
+    removed from the conversation the id of the last action they can see will also be returned.
+    """
+    conv_key_match = conv_key_prefix + '%'
+    r = await conn.fetchrow(
+        """
+        select c.id, c.published, c.creator from conversations as c
+        join participants as p on c.id=p.conv
+        where p.user_id=$1 and c.key like $2
+        order by c.created_ts desc
+        limit 1
+        """,
+        user_id,
+        conv_key_match,
+    )
+    if r:
+        conv_id, published, creator = r
+        last_action = None
+    else:
+        # can happen legitimately when a user was removed from the conversation,
+        # but can still view it up to that point
+        r = await conn.fetchrow(
+            """
+            select c.id, c.published, c.creator, a.id from actions as a
+            join conversations as c on a.conv = c.id
+            join participants as p on a.participant = p.id
+            where p.user_id=$1 and c.key like $2 and a.component='participant' and a.verb='remove'
+            order by c.created_ts desc, a.id desc
+            limit 1
+            """,
+            user_id,
+            conv_key_match,
+        )
+        if r:
+            conv_id, published, creator, last_action = r
+        else:
+            raise JsonErrors.HTTPNotFound(message='Conversation not found')
+
+    if not published and user_id != creator:
+        raise JsonErrors.HTTPForbidden(error='conversation is unpublished and you are not the creator')
+    return conv_id, last_action
