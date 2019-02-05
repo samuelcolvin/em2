@@ -11,6 +11,7 @@ install:
 .PHONY: format
 format:
 	isort -rc -w 120 em2 tests
+	./tests/clean_python.py
 	black -S -l 120 --py36 em2 tests
 
 .PHONY: lint
