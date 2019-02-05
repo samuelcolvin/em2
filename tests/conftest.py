@@ -139,6 +139,22 @@ def _fix_url(cli):
     return f
 
 
+@dataclass
+class User:
+    email: str
+    first_name: str
+    last_name: str
+    password: str
+    auth_user_id: int
+    ui_user_id: str = None
+
+
+@dataclass
+class Conv:
+    key: str
+    id: int
+
+
 class Factory:
     def __init__(self, conn, cli, url):
         self.conn = conn
@@ -147,22 +163,17 @@ class Factory:
         self.settings: Settings = cli.server.app['settings']
         self.email_index = 1
 
-    @dataclass
-    class User:
-        email: str
-        first_name: str
-        last_name: str
-        password: str
-        auth_user_id: int
-        ui_user_id: str = None
+        self.auth_user_id = None
+        self.ui_user_id = None
+        self.conv_id = None
 
-    async def create_user(self, *, email=None, first_name='Tes', last_name='Ting', pw='testing', login=False) -> 'User':
+    async def create_user(self, *, login=True, email=None, first_name='Tes', last_name='Ting', pw='testing') -> User:
         if email is None:
             email = f'testing-{self.email_index}@example.com'
             self.email_index += 1
 
         password_hash = mk_password(pw, self.settings)
-        user_id = await self.conn.fetchval(
+        auth_user_id = await self.conn.fetchval(
             """
             INSERT INTO auth_users (email, first_name, last_name, password_hash, account_status)
             VALUES ($1, $2, $3, $4, 'active')
@@ -173,15 +184,17 @@ class Factory:
             last_name,
             password_hash,
         )
-        if not user_id:
+        if not auth_user_id:
             raise RuntimeError(f'user with email {email} already exists')
+        self.auth_user_id = self.auth_user_id or auth_user_id
 
         ui_user_id = None
         if login:
             await self.login(email, pw)
             ui_user_id = await self.conn.fetchval('select id from users where email=$1', email)
+            self.ui_user_id = self.ui_user_id or ui_user_id
 
-        return self.User(email, first_name, last_name, pw, user_id, ui_user_id)
+        return User(email, first_name, last_name, pw, auth_user_id, ui_user_id)
 
     async def login(self, email, password, *, captcha=False):
         data = dict(email=email, password=password)
@@ -200,6 +213,15 @@ class Factory:
         assert r.status == 200, await r.text()
         assert len(self.cli.session.cookie_jar) == 1
         return r
+
+    async def create_conv(self, subject='Test Subject', message='Test Message', publish=False) -> Conv:
+        data = {'subject': subject, 'message': message, 'publish': publish}
+        r = await self.cli.post_json(self.url('ui:create'), data)
+        assert r.status == 201, await r.text()
+        conv_key = (await r.json())['key']
+        conv_id = await self.conn.fetchval('select id from conversations where key=$1', conv_key)
+        self.conv_id = self.conv_id or conv_id
+        return Conv(conv_key, conv_id)
 
 
 @pytest.fixture

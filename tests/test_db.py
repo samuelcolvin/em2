@@ -10,14 +10,14 @@ async def test_update_conv(db_conn):
     ts = datetime.utcnow()
     conv_id = await db_conn.fetchval(
         """
-        insert into conversations (key, creator, subject, created_ts, updated_ts)
-        values ('key', $1, 'Subject', $2, $2) returning id
+        insert into conversations (key, creator, created_ts, updated_ts)
+        values ('key', $1, $2, $2) returning id
         """,
         user_id,
         ts,
     )
-    v = dict(await db_conn.fetchrow('select snippet, last_action_id from conversations where id=$1', conv_id))
-    assert v == {'snippet': None, 'last_action_id': 0}
+    v = dict(await db_conn.fetchrow('select details, last_action_id from conversations where id=$1', conv_id))
+    assert v == {'details': None, 'last_action_id': 0}
 
     global_id = await db_conn.fetchval(
         """
@@ -28,11 +28,12 @@ async def test_update_conv(db_conn):
         user_id,
     )
     assert global_id == 1
-    changes = await db_conn.fetchrow('select snippet, last_action_id from conversations where id=$1', conv_id)
+    changes = await db_conn.fetchrow('select details, last_action_id from conversations where id=$1', conv_id)
     assert changes['last_action_id'] == 1
-    assert json.loads(changes['snippet']) == {
+    assert json.loads(changes['details']) == {
         'comp': 'message',
         'verb': 'add',
+        'sub': None,
         'email': 'testing@example.com',
         'body': 'msg body',
         'prts': 0,
@@ -51,11 +52,12 @@ async def test_update_conv(db_conn):
         part_id,
     )
     assert global_id == 2
-    changes = await db_conn.fetchrow('select snippet, last_action_id from conversations where id=$1', conv_id)
+    changes = await db_conn.fetchrow('select details, last_action_id from conversations where id=$1', conv_id)
     assert changes['last_action_id'] == 2
-    assert json.loads(changes['snippet']) == {
+    assert json.loads(changes['details']) == {
         'comp': 'participant',
         'verb': 'add',
+        'sub': None,
         'email': 'testing@example.com',
         'body': 'msg body',
         'prts': 1,

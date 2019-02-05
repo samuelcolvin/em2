@@ -21,7 +21,7 @@ async def create_app_ui(settings=None):
         web.route('*', '/auth-token/', AuthExchangeToken.view(), name='auth-token'),
         web.get('/list/', ConvList.view(), name='list'),
         web.route('*', '/create/', ConvCreate.view(), name='create'),
-        web.get(f'/conv/{conv_match}/', ConvActions.view(), name='get-conv'),
+        web.get(f'/conv/{conv_match}/', ConvActions.view(), name='get'),
         web.get('/contacts/lookup-email/', ContactSearch.view(), name='contacts-lookup-email'),
     ]
     middleware = (

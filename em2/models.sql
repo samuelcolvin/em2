@@ -12,11 +12,9 @@ create table conversations (
   published bool default false,
   creator int not null references users on delete restrict,
   created_ts timestamptz not null,
-  updated_ts timestamptz not null,
-  subject varchar(255) not null,
+  updated_ts timestamptz not null,  -- if not used in queries, could be removed as duplicated in actions
   last_action_id int not null default 0 check (last_action_id >= 0),
-  snippet json
-  -- todo expiry?
+  details json
 );
 create index conversations_created_ts on conversations using btree (created_ts);
 
@@ -49,7 +47,7 @@ create table actions (
   participant int references participants,
 
   body text,
-  msg int references actions,  -- follows or modifies depending on whether the verb is add or modify
+  msg_follows int references actions,  -- follows or modifies depending on whether the verb is add or modify
   msg_relationship relationship,
   msg_format msg_format,
 
@@ -58,15 +56,29 @@ create table actions (
   unique (conv, id)
 );
 create index action_conv_comp_verb_id on actions using btree (conv, component, verb, id);
+create index action_conv on actions using btree (conv);
+create index action_id on actions using btree (id);
 
 -- this could be run on every "migration"
 create or replace function action_insert() returns trigger as $$
   -- could replace all this with plv8
   declare
     -- todo add actor name when we have it, could add attachment count etc. here too
-    snippet_ json = json_build_object(
+    -- if this ends up being a bottle neck, we could cache particular values on the the conversation
+    -- and update them individually
+    details_ json = json_build_object(
       'comp', new.component,
       'verb', new.verb,
+      'sub', (
+        case when new.component=any(array['conv', 'subject']::component[]) then
+          new.body
+        else
+          (select body
+           from actions
+           where conv=new.conv and component=any(array['conv', 'subject']::component[])
+           order by id desc limit 1)
+        end
+      ),
       'email', (select email from users where id=new.actor),
       'body', left(
         case when new.component='message' and new.body is not null then
@@ -85,7 +97,7 @@ create or replace function action_insert() returns trigger as $$
     );
   begin
     update conversations
-      set updated_ts=new.ts, snippet=snippet_, last_action_id=last_action_id + 1
+      set updated_ts=new.ts, details=details_, last_action_id=last_action_id + 1
       where id=new.conv
       returning last_action_id into new.id;
     return new;
