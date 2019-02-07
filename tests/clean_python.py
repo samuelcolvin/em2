@@ -14,7 +14,7 @@ def clean_file(p: Path):
     content, changes = trailing_white.subn(b'\n', content)
     if changes:
         p.write_bytes(content)
-        print(f'{p}: {changes} lines cleaned')
+        print(f'{p}: {changes} line{"s" if changes > 1 else ""} cleaned')
         return True
 
 

@@ -1,5 +1,6 @@
 import pytest
 from atoolbox import JsonErrors
+from pydantic import ValidationError
 from pytest_toolbox.comparison import AnyInt, CloseToNow
 
 from em2.core import ActionModel, ActionsTypes, act
@@ -136,7 +137,7 @@ async def test_participant_add(factory: Factory, db_conn, settings):
     user = await factory.create_user()
     conv = await factory.create_conv()
 
-    action = ActionModel(act=ActionsTypes.prt_add, participant='new-participant@example.com')
+    action = ActionModel(act=ActionsTypes.prt_add, participant='new@example.com')
     assert 4 == await act(db_conn, settings, user.id, conv.key, action)
     action_info = dict(await db_conn.fetchrow('select * from actions where id=4'))
     assert action_info == {
@@ -147,7 +148,32 @@ async def test_participant_add(factory: Factory, db_conn, settings):
         'actor': user.id,
         'ts': CloseToNow(),
         'follows': None,
-        'participant_user': await db_conn.fetchval("select id from users where email='new-participant@example.com'"),
+        'participant_user': await db_conn.fetchval("select id from users where email='new@example.com'"),
+        'body': None,
+        'msg_parent': None,
+        'msg_format': None,
+    }
+
+
+async def test_participant_remove(factory: Factory, db_conn, settings):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+
+    action = ActionModel(act=ActionsTypes.prt_add, participant='new@example.com')
+    assert 4 == await act(db_conn, settings, user.id, conv.key, action)
+
+    action = ActionModel(act=ActionsTypes.prt_remove, participant='new@example.com', follows=4)
+    assert 5 == await act(db_conn, settings, user.id, conv.key, action)
+    action_info = dict(await db_conn.fetchrow('select * from actions where id=5'))
+    assert action_info == {
+        'pk': AnyInt(),
+        'id': 5,
+        'conv': conv.id,
+        'act': 'participant:remove',
+        'actor': user.id,
+        'ts': CloseToNow(),
+        'follows': await db_conn.fetchval('select pk from actions where id=4'),
+        'participant_user': await db_conn.fetchval("select id from users where email='new@example.com'"),
         'body': None,
         'msg_parent': None,
         'msg_format': None,
@@ -173,7 +199,7 @@ async def test_msg_follows_wrong(factory: Factory, db_conn, settings):
 
     with pytest.raises(JsonErrors.HTTPBadRequest) as exc_info:
         await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_lock, follows=3))
-    assert exc_info.value.message == 'message action must follow another message action'
+    assert exc_info.value.message == '"follows" action has the wrong type'
 
 
 async def test_msg_recover_not_locked(factory: Factory, db_conn, settings):
@@ -209,12 +235,86 @@ async def test_msg_locked_delete(factory: Factory, db_conn, settings):
     user = await factory.create_user()
     conv = await factory.create_conv(publish=True)
 
-    action = ActionModel(act=ActionsTypes.prt_add, participant='new-participant@example.com')
+    action = ActionModel(act=ActionsTypes.prt_add, participant='new@example.com')
     assert 4 == await act(db_conn, settings, user.id, conv.key, action)
 
     assert 5 == await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_lock, follows=2))
 
-    user2_id = await db_conn.fetchval("select id from users where email='new-participant@example.com'")
+    user2_id = await db_conn.fetchval("select id from users where email='new@example.com'")
     with pytest.raises(JsonErrors.HTTPConflict) as exc_info:
         await act(db_conn, settings, user2_id, conv.key, ActionModel(act=ActionsTypes.msg_delete, follows=5))
     assert exc_info.value.message == 'message locked, action not possible'
+
+
+async def test_not_on_conv(factory: Factory, db_conn, settings):
+    await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+
+    user2 = await factory.create_user()
+
+    with pytest.raises(JsonErrors.HTTPNotFound) as exc_info:
+        await act(db_conn, settings, user2.id, conv.key, ActionModel(act=ActionsTypes.msg_lock, follows=2))
+    assert exc_info.value.message == 'Conversation not found'
+
+
+async def test_participant_add_exists(factory: Factory, db_conn, settings):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+
+    action = ActionModel(act=ActionsTypes.prt_add, participant='new@example.com')
+    assert 4 == await act(db_conn, settings, user.id, conv.key, action)
+
+    with pytest.raises(JsonErrors.HTTPConflict) as exc_info:
+        await act(db_conn, settings, user.id, conv.key, action)
+
+    assert exc_info.value.message == 'user already a participant in this conversation'
+
+
+async def test_participant_remove_yourself(factory: Factory, db_conn, settings):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+
+    action = ActionModel(act=ActionsTypes.prt_remove, participant=user.email, follows=1)
+    with pytest.raises(JsonErrors.HTTPForbidden) as exc_info:
+        await act(db_conn, settings, user.id, conv.key, action)
+    assert exc_info.value.message == 'You cannot modify your own participant'
+
+
+async def test_bad_action():
+    with pytest.raises(ValidationError) as exc_info:
+        ActionModel(act=ActionsTypes.conv_publish)
+    assert exc_info.value.errors() == [
+        {'loc': ('act',), 'msg': 'Action not permitted', 'type': 'value_error'}
+    ]
+
+
+async def test_bad_participant_missing():
+    with pytest.raises(ValidationError) as exc_info:
+        ActionModel(act=ActionsTypes.prt_add)
+
+    assert 'participant is required for participant actions' in exc_info.value.json()
+
+
+async def test_bad_participant_included():
+    with pytest.raises(ValidationError) as exc_info:
+        ActionModel(act=ActionsTypes.msg_add, participant='new@example.com')
+
+    assert 'participant must be omitted except for participant actions' in exc_info.value.json()
+
+
+async def test_bad_no_body():
+    with pytest.raises(ValidationError) as exc_info:
+        ActionModel(act=ActionsTypes.msg_add)
+    assert 'body is required for message:add and message:modify' in exc_info.value.json()
+
+
+async def test_bad_body_included():
+    with pytest.raises(ValidationError) as exc_info:
+        ActionModel(act=ActionsTypes.prt_remove, participant='new@example.com', follows=1, body='should be here')
+    assert 'body must be omitted except for message:add and message:modify' in exc_info.value.json()
+
+
+async def test_bad_no_follows():
+    with pytest.raises(ValidationError) as exc_info:
+        ActionModel(act=ActionsTypes.prt_remove, participant='new@example.com')
+    assert 'follows is required for this action' in exc_info.value.json()

@@ -143,6 +143,7 @@ async def get_conv_for_user(conn: BuildPgConnection, user_id: int, conv_key_pref
 
 _prt_action_types = {a for a in ActionsTypes if a.value.startswith('participant:')}
 _msg_action_types = {a for a in ActionsTypes if a.value.startswith('message:')}
+_follow_action_types = (_msg_action_types - {ActionsTypes.msg_add}) | {ActionsTypes.prt_modify, ActionsTypes.prt_remove}
 
 
 class ActionModel(BaseModel):
@@ -165,28 +166,27 @@ class ActionModel(BaseModel):
 
     @validator('participant', always=True)
     def check_participant(cls, v, values, **kwargs):
-        act: ActionsTypes = values['act']
-        if v and act not in _prt_action_types:
-            raise ValueError('participant must be set for participant:* actions')
-        if not v and act in _prt_action_types:
-            raise ValueError('participant can only be used with participant:* actions')
+        act: ActionsTypes = values.get('act')
+        if act and not v and act in _prt_action_types:
+            raise ValueError('participant is required for participant actions')
+        if act and v and act not in _prt_action_types:
+            raise ValueError('participant must be omitted except for participant actions')
         return v
 
     @validator('body', always=True)
     def check_body(cls, v, values, **kwargs):
-        act: ActionsTypes = values['act']
-        if v is None and act in {ActionsTypes.msg_add, ActionsTypes.msg_modify}:
+        act: ActionsTypes = values.get('act')
+        if act and v is None and act in {ActionsTypes.msg_add, ActionsTypes.msg_modify}:
             raise ValueError('body is required for message:add and message:modify')
-        if v is not None and act not in {ActionsTypes.msg_add, ActionsTypes.msg_modify}:
+        if act and v is not None and act not in {ActionsTypes.msg_add, ActionsTypes.msg_modify}:
             raise ValueError('body must be omitted except for message:add and message:modify')
         return v
 
     @validator('follows', always=True)
     def check_follows(cls, v, values, **kwargs):
-        act: ActionsTypes = values['act']
-        # follows is not required for message:add
-        if v is None and act in _msg_action_types and act is not ActionsTypes.msg_add:
-            raise ValueError('follows is required for this act')
+        act: ActionsTypes = values.get('act')
+        if act and v is None and act in _follow_action_types:
+            raise ValueError('follows is required for this action')
         return v
 
 
@@ -205,9 +205,9 @@ class _Act:
         self.conv_id = None
 
     async def run(self, conv_match: str) -> int:
-        self.conv_id, last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_match)
-        if last_action:
-            raise JsonErrors.HTTPNotFound(message='Conversation not found')
+        self.conv_id, last_action = await or404(
+            get_conv_for_user(self.conn, self.actor_user_id, conv_match), msg='Conversation not found'
+        )
 
         async with self.conn.transaction():
             if self.action.act in _prt_action_types:
@@ -220,6 +220,7 @@ class _Act:
         return action_id
 
     async def _act_on_participant(self) -> int:
+        follows_pk = None
         if self.action.act == ActionsTypes.prt_add:
             prt_user_id = await get_create_user(self.conn, self.action.participant)
             prt_id = await self.conn.fetchval(
@@ -231,32 +232,40 @@ class _Act:
                 prt_user_id,
             )
             if not prt_id:
-                raise JsonErrors.HTTPConflict(error='user already a participant in this conversation')
-        elif self.action.act == ActionsTypes.prt_remove:
-            # TODO check remove and modify directly follow "follows" like messages
-            r = await self.conn.fetchrow(
-                """
-                select p.id, u.id from participants as p join users as u on p.user_id = u.id
-                where conv=$1 and email=$2
-                """,
-                self.conv_id,
-                self.action.participant,
-            )
-            if not r:
-                raise JsonErrors.HTTPNotFound('user not found on conversation')
-            prt_id, prt_user_id = r
-            await self.conn.execute('delete from participants where id=$1', prt_id)
+                raise JsonErrors.HTTPConflict('user already a participant in this conversation')
         else:
-            raise NotImplementedError('"participant:modify" not yet implemented')
+            follows_pk, *_ = await self.get_follows({ActionsTypes.prt_add, ActionsTypes.prt_modify})
+            if self.action.act == ActionsTypes.prt_remove:
+                prt_id, prt_user_id = await or404(
+                    self.conn.fetchrow(
+                        """
+                        select p.id, u.id from participants as p join users as u on p.user_id = u.id
+                        where conv=$1 and email=$2
+                        """,
+                        self.conv_id,
+                        self.action.participant,
+                    ),
+                    msg='user not found on conversation',
+                )
+
+                await self.conn.execute('delete from participants where id=$1', prt_id)
+            else:
+                raise NotImplementedError('"participant:modify" not yet implemented')
+
+        # can't do anything to yourself
+        if prt_user_id == self.actor_user_id:
+            raise JsonErrors.HTTPForbidden('You cannot modify your own participant')
 
         return await self.conn.fetchval(
             """
-            insert into actions (conv, act, actor, participant_user)
-            values ($1, $2, $3, $4) returning id
+            insert into actions (conv, act, actor, follows, participant_user)
+            values              ($1  , $2 , $3   , $4     , $5)
+            returning id
             """,
             self.conv_id,
             self.action.act,
             self.actor_user_id,
+            follows_pk,
             prt_user_id,
         )
 
@@ -288,28 +297,7 @@ class _Act:
                 self.action.msg_format,
             )
 
-        follows_pk, follows_act, follows_actor, follows_age = await or404(
-            self.conn.fetchrow(
-                """
-                select pk, act, actor, extract(epoch from current_timestamp - ts)::int
-                from actions where conv=$1 and id=$2
-                """,
-                self.conv_id,
-                self.action.follows,
-            ),
-            msg='follows action not found',
-        )
-        if follows_act not in _msg_action_types:
-            raise JsonErrors.HTTPBadRequest('message action must follow another message action')
-
-        # all other actions must directly follow their "follows" action, eg. nothing can have happened that follows
-        # that action
-        existing = await self.conn.fetchrow(
-            'select 1 from actions where conv=$1 and follows=$2', self.conv_id, follows_pk
-        )
-        if existing:
-            # is 409 really the right status to use here?
-            raise JsonErrors.HTTPConflict(f'other actions already follow action {self.action.follows}')
+        follows_pk, follows_act, follows_actor, follows_age = await self.get_follows(_msg_action_types)
 
         if self.action.act == ActionsTypes.msg_recover:
             if follows_act != ActionsTypes.msg_delete:
@@ -341,6 +329,31 @@ class _Act:
             self.action.body,
             follows_pk,
         )
+
+    async def get_follows(self, permitted_acts: Set[ActionsTypes]) -> Tuple[int, str, int, int]:
+        follows_pk, follows_act, follows_actor, follows_age = await or404(
+            self.conn.fetchrow(
+                """
+                select pk, act, actor, extract(epoch from current_timestamp - ts)::int
+                from actions where conv=$1 and id=$2
+                """,
+                self.conv_id,
+                self.action.follows,
+            ),
+            msg='"follows" action not found',
+        )
+        if follows_act not in permitted_acts:
+            raise JsonErrors.HTTPBadRequest('"follows" action has the wrong type')
+
+        # all other actions must directly follow their "follows" action, eg. nothing can have happened that follows
+        # that action
+        existing = await self.conn.fetchrow(
+            'select 1 from actions where conv=$1 and follows=$2', self.conv_id, follows_pk
+        )
+        if existing:
+            # is 409 really the right status to use here?
+            raise JsonErrors.HTTPConflict(f'other actions already follow action {self.action.follows}')
+        return follows_pk, follows_act, follows_actor, follows_age
 
 
 async def act(
