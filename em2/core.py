@@ -19,23 +19,19 @@ class ActionsTypes(str, Enum):
     conv_publish = 'conv:publish'
     conv_create = 'conv:create'
     subject_modify = 'subject:modify'
+    subject_lock = 'subject:lock'
+    subject_release = 'subject:release'
     expiry_modify = 'expiry:modify'
-    message_add = 'message:add'
-    message_modify = 'message:modify'
-    message_remove = 'message:remove'
-    message_recover = 'message:recover'
-    message_lock = 'message:lock'
-    message_unlock = 'message:unlock'
+    msg_add = 'message:add'
+    msg_modify = 'message:modify'
+    msg_delete = 'message:delete'
+    msg_recover = 'message:recover'
+    msg_lock = 'message:lock'
+    msg_release = 'message:release'
     prt_add = 'participant:add'
     prt_remove = 'participant:remove'
     prt_modify = 'participant:modify'  # change perms
     # TODO labels, attachments, other models
-
-
-@unique
-class Relationships(str, Enum):
-    sibling = 'sibling'
-    child = 'child'
 
 
 @unique

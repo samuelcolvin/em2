@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 
 from atoolbox import BaseSettings
@@ -22,6 +23,9 @@ class Settings(BaseSettings):
     easy_login_attempts = 3
     # max. login attempts allowed per minute
     max_login_attempts = 20
+
+    # em2 feature settings:
+    message_lock_duration: timedelta = 3600
 
     class Config:
         env_prefix = 'em2_'

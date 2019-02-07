@@ -29,13 +29,11 @@ create table participants (
 -- see core.ActionsTypes enum which matches this
 create type ActionTypes as enum (
   'conv:publish', 'conv:create',
-  'subject:modify',
+  'subject:modify', 'subject:lock', 'subject:release',
   'expiry:modify',
-  'message:add', 'message:modify', 'message:remove', 'message:recover', 'message:lock', 'message:unlock',
+  'message:add', 'message:modify', 'message:delete', 'message:recover', 'message:lock', 'message:release',
   'participant:add', 'participant:remove', 'participant:modify'
 );
--- see core.Relationships enum which matches this
-create type Relationship as enum ('sibling', 'child');
 -- see core.MsgFormat enum which matches this
 create type MsgFormat as enum ('markdown', 'plain', 'html');
 
@@ -46,20 +44,22 @@ create table actions (
   act ActionTypes not null,
   actor int not null references users on delete restrict,
   ts timestamptz not null default current_timestamp,
+  follows int references actions,  -- when modifying/deleting etc. a component
 
   participant_user int references users on delete restrict,
   body text,
-  msg_follows int references actions,  -- follows or modifies depending on whether it's add or modify
-  msg_relationship Relationship,
+  msg_parent int references actions,
   msg_format MsgFormat,
 
   -- todo participant details, attachment details, perhaps json for other types
 
-  unique (conv, id)
+  unique (conv, id),
+  -- only one action can follow a given action: where follows is required, a linear direct time line is enforced
+  unique (conv, follows)
 );
-create index action_act_id on actions using btree (conv, act, id);
-create index action_conv on actions using btree (conv);
 create index action_id on actions using btree (id);
+create index action_act_id on actions using btree (conv, act, id);
+create index action_conv_msg_parent on actions using btree (conv, msg_parent);
 
 -- this could be run on every "migration"
 create or replace function action_insert() returns trigger as $$
@@ -93,10 +93,10 @@ create or replace function action_insert() returns trigger as $$
       ),
       'prts', (select count(*) from participants where conv=new.conv),
       'msgs', (
-        select count(*) filter (where act='message:add') - count(*) filter (where act='message:remove')
-        from actions where conv=new.conv and act=any(array['message:add', 'message:remove']::ActionTypes[])
+        select count(*) filter (where act='message:add') - count(*) filter (where act='message:delete')
+        from actions where conv=new.conv and act=any(array['message:add', 'message:delete']::ActionTypes[])
       ) + case when new.act='message:add' then 1
-               when new.act='message:remove' then -1
+               when new.act='message:delete' then -1
                else 0 end
     );
   begin
