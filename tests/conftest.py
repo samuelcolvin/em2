@@ -146,7 +146,7 @@ class User:
     last_name: str
     password: str
     auth_user_id: int
-    ui_user_id: str = None
+    id: int = None
 
 
 @dataclass
@@ -163,9 +163,8 @@ class Factory:
         self.settings: Settings = cli.server.app['settings']
         self.email_index = 1
 
-        self.auth_user_id = None
-        self.ui_user_id = None
-        self.conv_id = None
+        self.user: User = None
+        self.conv: Conv = None
 
     async def create_user(self, *, login=True, email=None, first_name='Tes', last_name='Ting', pw='testing') -> User:
         if email is None:
@@ -186,15 +185,15 @@ class Factory:
         )
         if not auth_user_id:
             raise RuntimeError(f'user with email {email} already exists')
-        self.auth_user_id = self.auth_user_id or auth_user_id
 
-        ui_user_id = None
+        user_id = None
         if login:
             await self.login(email, pw)
-            ui_user_id = await self.conn.fetchval('select id from users where email=$1', email)
-            self.ui_user_id = self.ui_user_id or ui_user_id
+            user_id = await self.conn.fetchval('select id from users where email=$1', email)
 
-        return User(email, first_name, last_name, pw, auth_user_id, ui_user_id)
+        user = User(email, first_name, last_name, pw, auth_user_id, user_id)
+        self.user = self.user or user
+        return user
 
     async def login(self, email, password, *, captcha=False):
         data = dict(email=email, password=password)
@@ -220,8 +219,9 @@ class Factory:
         assert r.status == 201, await r.text()
         conv_key = (await r.json())['key']
         conv_id = await self.conn.fetchval('select id from conversations where key=$1', conv_key)
-        self.conv_id = self.conv_id or conv_id
-        return Conv(conv_key, conv_id)
+        conv = Conv(conv_key, conv_id)
+        self.conv = self.conv or conv
+        return conv
 
 
 @pytest.fixture

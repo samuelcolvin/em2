@@ -30,7 +30,7 @@ create table participants (
 create type ActionTypes as enum (
   'conv:publish', 'conv:create',
   'subject:modify', 'subject:lock', 'subject:release',
-  'expiry:modify',
+  'expiry:modify',  -- rename to conv:expiry?
   'message:add', 'message:modify', 'message:delete', 'message:recover', 'message:lock', 'message:release',
   'participant:add', 'participant:remove', 'participant:modify'
 );
@@ -44,8 +44,8 @@ create table actions (
   act ActionTypes not null,
   actor int not null references users on delete restrict,
   ts timestamptz not null default current_timestamp,
-  follows int references actions,  -- when modifying/deleting etc. a component
 
+  follows int references actions,  -- when modifying/deleting etc. a component
   participant_user int references users on delete restrict,
   body text,
   msg_parent int references actions,

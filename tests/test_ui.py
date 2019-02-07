@@ -48,7 +48,7 @@ async def test_create_conv(cli, url, factory: Factory, db_conn):
         'id': AnyInt(),
         'key': conv_key,
         'published': False,
-        'creator': user.ui_user_id,
+        'creator': user.id,
         'created_ts': CloseToNow(),
         'updated_ts': CloseToNow(),
         'last_action_id': 3,  # add participant, add message, publish
@@ -79,7 +79,7 @@ async def test_create_conv_publish(cli, url, factory: Factory, db_conn):
         'id': AnyInt(),
         'key': conv_key,
         'published': True,
-        'creator': user.ui_user_id,
+        'creator': user.id,
         'created_ts': CloseToNow(),
         'updated_ts': CloseToNow(),
         'last_action_id': 3,  # add participant, add message, publish
