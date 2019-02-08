@@ -1,10 +1,12 @@
 import hashlib
+import json
 import secrets
 from datetime import datetime
 from enum import Enum, unique
-from typing import Dict, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from atoolbox import JsonErrors
+from buildpg import V
 from buildpg.asyncpg import BuildPgConnection
 from pydantic import BaseModel, EmailStr, constr, validator
 
@@ -365,3 +367,101 @@ async def act(
     Should be used for both remove platforms adding events and local users adding actions.
     """
     return await _Act(conn, settings, actor_user_id, action).run(conv_match)
+
+
+async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_match: str, since_id: int = None):
+    conv_id, last_action = await get_conv_for_user(conn, user_id, conv_match)
+    where_logic = V('a.conv') == conv_id
+    if last_action:
+        where_logic &= V('a.id') <= last_action
+
+    if since_id:
+        await or404(conn.fetchval('select 1 from actions where conv=$1 and id=$1', conv_id, since_id))
+        where_logic &= V('a.id') > since_id
+
+    return await or404(
+        conn.fetchval_b(
+            """
+            select array_to_json(array_agg(json_strip_nulls(row_to_json(t))), true)
+            from (
+              select a.id as id, a.act as act, a.ts as ts, actor_user.email as actor,
+              a.body as body, a.msg_format as msg_format,
+              prt_user.email as participant, follows_action.id as follows, parent_action.id as msg_parent
+              from actions as a
+
+              join users as actor_user on a.actor = actor_user.id
+
+              left join users as prt_user on a.participant_user = prt_user.id
+              left join actions as follows_action on a.follows = follows_action.pk
+              left join actions as parent_action on a.msg_parent = parent_action.pk
+              where :where
+              order by a.id
+            ) t;
+            """,
+            where=where_logic,
+        )
+    )
+
+
+async def construct_conv(conn: BuildPgConnection, user_id: int, conv_match: str, since_id: int = None):
+    actions_json = await conv_actions_json(conn, user_id, conv_match, since_id)
+    actions = json.loads(actions_json)
+    return _construct_conv_actions(actions)
+
+
+def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  # noqa: 901
+    subject = None
+    created = None
+    messages = {}
+    participants = {}
+
+    for action in actions:
+        act: ActionsTypes = action['act']
+        action_id: int = action['id']
+        if act in {ActionsTypes.conv_publish, ActionsTypes.conv_create}:
+            subject = action['body']
+            created = action['ts']
+        elif act == ActionsTypes.subject_lock:
+            subject = action['body']
+        elif act == ActionsTypes.msg_add:
+            message = {
+                'ref': action_id,
+                'body': action['body'],
+                'created': action['ts'],
+                'format': action['msg_format'],
+                'parent': action.get('msg_parent'),
+                'active': True,
+            }
+            messages[action_id] = message
+        elif act in _msg_action_types:
+            message = messages[action['follows']]
+            message['ref'] = action_id
+            if act == ActionsTypes.msg_modify:
+                message['body'] = action['body']
+            elif act == ActionsTypes.msg_delete:
+                message['active'] = False
+            elif act == ActionsTypes.msg_recover:
+                message['active'] = True
+            messages[action_id] = message
+        elif act == ActionsTypes.prt_add:
+            participants[action['participant']] = {'id': action_id}  # perms not implemented yet
+        elif act == ActionsTypes.prt_remove:
+            participants.pop(action['participant'])
+        else:
+            raise NotImplementedError(f'action "{act}" construction not implemented')
+
+    msg_list = []
+    for msg in messages.values():
+        parent = msg.pop('parent', -1)
+        # if 'parent' is missing (-1 here), msg has already been processed
+        if parent != -1:
+            if parent:
+                parent_msg = messages[parent]
+                if 'children' not in parent_msg:
+                    parent_msg['children'] = [msg]
+                else:
+                    parent_msg['children'].append(msg)
+            else:
+                msg_list.append(msg)
+
+    return {'subject': subject, 'created': created, 'messages': msg_list, 'participants': participants}

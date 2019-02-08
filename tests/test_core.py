@@ -3,7 +3,7 @@ from atoolbox import JsonErrors
 from pydantic import ValidationError
 from pytest_toolbox.comparison import AnyInt, CloseToNow
 
-from em2.core import ActionModel, ActionsTypes, act
+from em2.core import ActionModel, ActionsTypes, act, construct_conv
 
 from .conftest import Factory
 
@@ -316,3 +316,79 @@ async def test_bad_no_follows():
     with pytest.raises(ValidationError) as exc_info:
         ActionModel(act=ActionsTypes.prt_remove, participant='new@example.com')
     assert 'follows is required for this action' in exc_info.value.json()
+
+
+async def test_object_simple(factory: Factory, db_conn, settings):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_add, body='This is a reply'))
+
+    obj = await construct_conv(db_conn, user.id, conv.key)
+    assert obj == {
+        'subject': 'Test Subject',
+        'created': CloseToNow(),
+        'messages': [
+            {'ref': 2, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True},
+            {'ref': 4, 'body': 'This is a reply', 'created': CloseToNow(), 'format': 'markdown', 'active': True},
+        ],
+        'participants': {'testing-1@example.com': {'id': 1}},
+    }
+
+
+async def test_object_children(factory: Factory, db_conn, settings):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_add, body='This is a reply'))
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_add, body='child1', msg_parent=4))
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_add, body='child2', msg_parent=5))
+
+    assert 7 == await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_lock, follows=5))
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_modify, follows=7, body='mod1'))
+
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_delete, follows=2))
+
+    obj = await construct_conv(db_conn, user.id, conv.key)
+    assert obj == {
+        'subject': 'Test Subject',
+        'created': CloseToNow(),
+        'messages': [
+            {'ref': 9, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': False},
+            {
+                'ref': 4,
+                'body': 'This is a reply',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': True,
+                'children': [
+                    {
+                        'ref': 8,
+                        'body': 'mod1',
+                        'created': CloseToNow(),
+                        'format': 'markdown',
+                        'active': True,
+                        'children': [
+                            {'ref': 6, 'body': 'child2', 'created': CloseToNow(), 'format': 'markdown', 'active': True}
+                        ],
+                    }
+                ],
+            },
+        ],
+        'participants': {'testing-1@example.com': {'id': 1}},
+    }
+
+
+async def test_object_add_remove_participants(factory: Factory, db_conn, settings):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.prt_add, participant='new@ex.com'))
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.prt_add, participant='new2@ex.com'))
+    action = ActionModel(act=ActionsTypes.prt_remove, participant='new2@ex.com', follows=5)
+    await act(db_conn, settings, user.id, conv.key, action)
+    obj = await construct_conv(db_conn, user.id, conv.key)
+    assert obj == {
+        'subject': 'Test Subject',
+        'created': CloseToNow(),
+        'messages': [{'ref': 2, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True}],
+        'participants': {'testing-1@example.com': {'id': 1}, 'new@ex.com': {'id': 4}},
+    }

@@ -1,7 +1,7 @@
 from aiohttp import web
 from aiohttp.web_fileresponse import FileResponse
 from atoolbox.class_views import ExecView as _ExecView, View as _View
-from atoolbox.utils import JsonErrors, slugify
+from atoolbox.utils import slugify
 
 from em2.settings import SRC_DIR
 
@@ -46,35 +46,12 @@ def add_access_control(app: web.Application):
     app.on_response_prepare.append(_run)
 
 
-async def _fetch404(func, sql, *args, msg_=None, **kwargs):
-    """
-    fetch from the db, raise not found if the value is doesn't exist
-    """
-    val = await func(sql, *args, **kwargs)
-    if not val:
-        raise JsonErrors.HTTPNotFound(msg_ or 'unable to find value in db')
-    return val
+# currently View and ExecView are as per the default, but import here in case we want to add more methods later
 
 
-class Fetch404Mixin:
-    conn = NotImplemented
-
-    async def fetchval404(self, sql, *args, msg_=None):
-        return await _fetch404(self.conn.fetchval, sql, *args, msg_=msg_)
-
-    async def fetchrow404(self, sql, *args, msg_=None):
-        return await _fetch404(self.conn.fetchrow, sql, *args, msg_=msg_)
-
-    async def fetchval404_b(self, sql, *args, msg_=None, **kwargs):
-        return await _fetch404(self.conn.fetchval_b, sql, *args, **kwargs, msg_=msg_)
-
-    async def fetchrow404_b(self, sql, *args, msg_=None, **kwargs):
-        return await _fetch404(self.conn.fetchrow_b, sql, *args, **kwargs, msg_=msg_)
-
-
-class View(Fetch404Mixin, _View):
+class View(_View):
     pass
 
 
-class ExecView(Fetch404Mixin, _ExecView):
+class ExecView(_ExecView):
     pass

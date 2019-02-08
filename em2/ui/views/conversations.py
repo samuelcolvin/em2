@@ -2,13 +2,14 @@ from datetime import datetime
 from typing import Set
 
 from atoolbox import JsonErrors, parse_request_query, raw_json_response
-from buildpg import V
 from pydantic import BaseModel, EmailStr, constr
 
 from em2.core import (
     ActionModel,
+    ActionsTypes,
     MsgFormat,
     act,
+    conv_actions_json,
     draft_conv_key,
     generate_conv_key,
     get_conv_for_user,
@@ -38,37 +39,13 @@ class ConvList(View):
 
 
 class ConvActions(View):
-    actions_sql = """
-    select array_to_json(array_agg(json_strip_nulls(row_to_json(t))), true)
-    from (
-      select a.id as id, act, a.ts as ts, actor_user.email as actor,
-      body, follows, msg_parent, msg_format, prt_user.email as participant
-      from actions as a
-
-      join users as actor_user on a.actor = actor_user.id
-
-      left join users as prt_user on a.participant_user = prt_user.id
-      where :where
-      order by a.id
-    ) t;
-    """
-
     class QueryModel(BaseModel):
         since: int = None
 
     async def call(self):
-        conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
-        where_logic = V('a.conv') == conv_id
-        if last_action:
-            where_logic &= V('a.id') <= last_action
-
         m = parse_request_query(self.request, self.QueryModel)
-        if m.since:
-            await self.fetchval404('select 1 from actions where conv=$1 and id=$1', conv_id, m.since)
-            where_logic &= V('a.id') > m.since
-
-        json_str = await self.conn.fetchval_b(self.actions_sql, where=where_logic)
-        return raw_json_response(json_str or '[]')
+        json_str = await conv_actions_json(self.conn, self.session.user_id, self.request.match_info['conv'], m.since)
+        return raw_json_response(json_str)
 
 
 class ConvCreate(ExecView):
@@ -134,7 +111,7 @@ class ConvCreate(ExecView):
                 returning id
                 """,
                 conv_id,
-                'conv:publish' if conv.publish else 'conv:create',
+                ActionsTypes.conv_publish if conv.publish else ActionsTypes.conv_create,
                 creator_id,
                 ts,
                 conv.subject,
