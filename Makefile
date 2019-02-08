@@ -1,4 +1,6 @@
 .DEFAULT_GOAL:=all
+isort = isort -rc -w 120 em2 tests
+black = black -S -l 120 --py36 em2 tests
 
 .PHONY: install
 install:
@@ -10,15 +12,15 @@ install:
 
 .PHONY: format
 format:
-	isort -rc -w 120 em2 tests
+	$(isort)
+	$(black)
 	./tests/clean_python.py
-	black -S -l 120 --py36 em2 tests
 
 .PHONY: lint
 lint:
 	flake8 em2/ tests/
-	pytest -p no:sugar -q --cache-clear --isort -W ignore em2
-	black -S -l 120 --py36 --check em2 tests
+	$(isort) --check-only
+	$(black) --check
 	./tests/check_debug.sh
 	cd js && yarn lint && cd ..
 
