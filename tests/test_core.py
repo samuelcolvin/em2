@@ -283,9 +283,7 @@ async def test_participant_remove_yourself(factory: Factory, db_conn, settings):
 async def test_bad_action():
     with pytest.raises(ValidationError) as exc_info:
         ActionModel(act=ActionsTypes.conv_publish)
-    assert exc_info.value.errors() == [
-        {'loc': ('act',), 'msg': 'Action not permitted', 'type': 'value_error'}
-    ]
+    assert exc_info.value.errors() == [{'loc': ('act',), 'msg': 'Action not permitted', 'type': 'value_error'}]
 
 
 async def test_bad_participant_missing():
