@@ -392,3 +392,18 @@ async def test_object_add_remove_participants(factory: Factory, db_conn, setting
         'messages': [{'ref': 2, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True}],
         'participants': {'testing-1@example.com': {'id': 1}, 'new@ex.com': {'id': 4}},
     }
+
+
+async def test_participant_add_cant_get(factory: Factory, db_conn, settings):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+    user2 = await factory.create_user()
+
+    action = ActionModel(act=ActionsTypes.prt_add, participant=user2.email)
+    assert 4 == await act(db_conn, settings, user.id, conv.key, action)
+    obj = await construct_conv(db_conn, user.id, conv.key)
+    assert obj['participants'] == {'testing-1@example.com': {'id': 1}, 'testing-2@example.com': {'id': 4}}
+
+    with pytest.raises(JsonErrors.HTTPForbidden) as exc_info:
+        await construct_conv(db_conn, user2.id, conv.key)
+    assert exc_info.value.message == 'conversation is unpublished and you are not the creator'

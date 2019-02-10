@@ -23,7 +23,7 @@ create table participants (
   conv int not null references conversations on delete cascade,
   user_id int not null references users on delete restrict,
   -- todo permissions, hidden, status, has_seen/unread
-  unique (conv, user_id)
+  unique (conv, user_id)  -- TODO does this really work with just conv like a compound index woud?
 );
 
 -- see core.ActionsTypes enum which matches this

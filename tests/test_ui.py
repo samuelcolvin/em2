@@ -147,3 +147,27 @@ async def test_conv_actions(cli, url, factory: Factory, db_conn):
         },
         {'id': 3, 'act': 'conv:create', 'ts': CloseToNow(), 'body': 'Test Subject', 'actor': 'testing-1@example.com'},
     ]
+
+
+async def test_act(cli, url, factory: Factory):
+    await factory.create_user()
+    conv = await factory.create_conv()
+
+    data = {'act': 'message:add', 'body': 'this is another message'}
+    r = await cli.post_json(url('ui:act', conv=conv.key), data)
+    assert r.status == 201, await r.text()
+    obj = await r.json()
+    assert obj == {'action_id': 4}
+
+    r = await cli.get(url('ui:get', conv=conv.key))
+    assert r.status == 200, await r.text()
+    obj = await r.json()
+    assert len(obj) == 4
+    assert obj[-1] == {
+        'id': 4,
+        'act': 'message:add',
+        'ts': CloseToNow(),
+        'actor': 'testing-1@example.com',
+        'body': 'this is another message',
+        'msg_format': 'markdown',
+    }

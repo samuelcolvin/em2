@@ -3,12 +3,10 @@ import logging
 from time import time
 
 import bcrypt
-from atoolbox import encrypt_json, get_ip, json_response
+from atoolbox import ExecView, encrypt_json, get_ip, json_response
 from atoolbox.auth import check_grecaptcha
 from atoolbox.utils import JsonErrors
 from pydantic import BaseModel, EmailStr, constr
-
-from em2.utils.web import ExecView
 
 logger = logging.getLogger('em2.auth')
 

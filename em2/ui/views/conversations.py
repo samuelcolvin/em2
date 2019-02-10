@@ -2,13 +2,14 @@ from datetime import datetime
 from typing import Set
 
 from atoolbox import JsonErrors, parse_request_query, raw_json_response
-from pydantic import BaseModel, EmailStr, constr
+from pydantic import BaseModel, EmailStr, constr, validator
 
 from em2.core import (
     ActionModel,
     ActionsTypes,
     MsgFormat,
     act,
+    construct_conv,
     conv_actions_json,
     draft_conv_key,
     generate_conv_key,
@@ -126,10 +127,60 @@ class ConvAct(ExecView):
     Model = ActionModel
 
     async def execute(self, action: Model):
-        # TODO perhaps this logic could be shared with protocol?
-        conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
-        if last_action:
-            raise JsonErrors.HTTPNotFound(message='Conversation not found')
-
         action_id = await act(self.conn, self.settings, self.session.user_id, self.request.match_info['conv'], action)
         assert action_id
+        # await self.pusher.push(action_id, actor_only=True)
+        return {'status_': 201, 'action_id': action_id}
+
+
+class ConvPublish(ExecView):
+    class Model(BaseModel):
+        publish: bool
+
+        @validator('publish')
+        def check_publish(cls, v):
+            if not v:
+                raise ValueError('publish must be true')
+            return v
+
+    async def execute(self, action: Model):
+        conv_prefix = self.request.match_info['conv']
+        conv_id, last_action, published = await get_conv_for_user(self.conn, self.session.user_id, conv_prefix)
+        if last_action:
+            # if the usr has be removed from the conversation they can't act
+            raise JsonErrors.HTTPNotFound('Conversation not found')
+        if published:
+            raise JsonErrors.HTTPBadRequest('Conversation already published')
+
+        # could do more efficiently than this, but would require duplicated logic
+        conv_summary = await construct_conv(self.conn, self.session.user_id, conv_prefix)
+        assert conv_summary
+
+        r = await self.conn.fetch('select user_id from participants where conv=$1', conv_id)
+        participant_user_ids = [v[0] for v in r]
+        ts = datetime.utcnow()
+        async with self.conn.transaction():
+            await self.conn.execute('delete from actions where conv=$1', conv_id)
+            await self.conn.execute('update conversations set last_action_id=0 where id=$1', conv_id)
+
+            await self.conn.execute(
+                """
+                insert into actions (conv, act             , actor, ts, participant_user) (
+                  select             $1  , 'participant:add', $2  , $3, unnest($4::int[])
+                )
+                """,
+                conv_id,
+                self.session.user_id,
+                ts,
+                participant_user_ids,
+            )
+
+            await self.conn.fetchval(
+                """
+                insert into actions (act, conv, actor)
+                values ('conv:publish', $1, $2)
+                returning id
+                """,
+                self.conv_id,
+                self.session.user_id,
+            )

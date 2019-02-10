@@ -1,6 +1,5 @@
 from aiohttp import web
 from aiohttp.web_fileresponse import FileResponse
-from atoolbox.class_views import ExecView as _ExecView, View as _View
 from atoolbox.utils import slugify
 
 from em2.settings import SRC_DIR
@@ -44,14 +43,3 @@ def add_access_control(app: web.Application):
             )
 
     app.on_response_prepare.append(_run)
-
-
-# currently View and ExecView are as per the default, but import here in case we want to add more methods later
-
-
-class View(_View):
-    pass
-
-
-class ExecView(_ExecView):
-    pass

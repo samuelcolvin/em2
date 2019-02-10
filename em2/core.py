@@ -100,7 +100,9 @@ def draft_conv_key() -> str:
     return secrets.token_hex(10)  # string length will be 20
 
 
-async def get_conv_for_user(conn: BuildPgConnection, user_id: int, conv_key_prefix: str) -> Tuple[int, Optional[int]]:
+async def get_conv_for_user(
+    conn: BuildPgConnection, user_id: int, conv_key_prefix: str
+) -> Tuple[int, Optional[int], bool]:
     """
     Get a conversation id for a user based on the beginning of the conversation key, if the user has been
     removed from the conversation the id of the last action they can see will also be returned.
@@ -140,7 +142,7 @@ async def get_conv_for_user(conn: BuildPgConnection, user_id: int, conv_key_pref
 
     if not published and user_id != creator:
         raise JsonErrors.HTTPForbidden('conversation is unpublished and you are not the creator')
-    return conv_id, last_action
+    return conv_id, last_action, published
 
 
 _prt_action_types = {a for a in ActionsTypes if a.value.startswith('participant:')}
@@ -155,7 +157,7 @@ class ActionModel(BaseModel):
 
     act: ActionsTypes
     participant: Optional[EmailStr] = None
-    body: Optional[constr(min_length=1, max_length=2000)] = None
+    body: Optional[constr(min_length=1, max_length=2000, strip_whitespace=True)] = None
     follows: Optional[int] = None
     msg_parent: Optional[int] = None
     msg_format: MsgFormat = MsgFormat.markdown
@@ -206,10 +208,11 @@ class _Act:
         self.action = action
         self.conv_id = None
 
-    async def run(self, conv_match: str) -> int:
-        self.conv_id, last_action = await or404(
-            get_conv_for_user(self.conn, self.actor_user_id, conv_match), msg='Conversation not found'
-        )
+    async def run(self, conv_prefix: str) -> int:
+        self.conv_id, last_action, _ = await get_conv_for_user(self.conn, self.actor_user_id, conv_prefix)
+        if last_action:
+            # if the usr has be removed from the conversation they can't act
+            raise JsonErrors.HTTPNotFound(message='Conversation not found')
 
         async with self.conn.transaction():
             if self.action.act in _prt_action_types:
@@ -359,18 +362,18 @@ class _Act:
 
 
 async def act(
-    conn: BuildPgConnection, settings: Settings, actor_user_id: int, conv_match: str, action: ActionModel
+    conn: BuildPgConnection, settings: Settings, actor_user_id: int, conv_prefix: str, action: ActionModel
 ) -> int:
     """
     Apply an action and return its id.
 
     Should be used for both remove platforms adding events and local users adding actions.
     """
-    return await _Act(conn, settings, actor_user_id, action).run(conv_match)
+    return await _Act(conn, settings, actor_user_id, action).run(conv_prefix)
 
 
-async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_match: str, since_id: int = None):
-    conv_id, last_action = await get_conv_for_user(conn, user_id, conv_match)
+async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_prefix: str, since_id: int = None):
+    conv_id, last_action, _ = await get_conv_for_user(conn, user_id, conv_prefix)
     where_logic = V('a.conv') == conv_id
     if last_action:
         where_logic &= V('a.id') <= last_action
@@ -403,8 +406,8 @@ async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_match: s
     )
 
 
-async def construct_conv(conn: BuildPgConnection, user_id: int, conv_match: str, since_id: int = None):
-    actions_json = await conv_actions_json(conn, user_id, conv_match, since_id)
+async def construct_conv(conn: BuildPgConnection, user_id: int, conv_prefix: str, since_id: int = None):
+    actions_json = await conv_actions_json(conn, user_id, conv_prefix, since_id)
     actions = json.loads(actions_json)
     return _construct_conv_actions(actions)
 

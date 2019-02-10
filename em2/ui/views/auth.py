@@ -1,9 +1,8 @@
 from aiohttp_session import new_session
-from atoolbox import decrypt_json
+from atoolbox import ExecView, decrypt_json
 from pydantic import BaseModel
 
 from em2.core import get_create_user
-from em2.utils.web import ExecView
 
 
 class AuthExchangeToken(ExecView):

@@ -1,4 +1,4 @@
-from em2.utils.web import ExecView as _ExecView, View as _View
+from atoolbox.class_views import ExecView as _ExecView, View as _View
 
 from ..middleware import Session
 
