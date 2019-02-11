@@ -11,7 +11,7 @@ from em2.utils.web import add_access_control, build_index
 from .middleware import user_middleware
 from .views.auth import AuthExchangeToken
 from .views.contacts import ContactSearch
-from .views.conversations import ConvAct, ConvActions, ConvCreate, ConvList
+from .views.conversations import ConvAct, ConvActions, ConvCreate, ConvList, ConvPublish
 
 
 async def create_app_ui(settings=None):
@@ -23,6 +23,7 @@ async def create_app_ui(settings=None):
         web.route('*', '/conv/create/', ConvCreate.view(), name='create'),
         web.get(f'/conv/{conv_match}/', ConvActions.view(), name='get'),
         web.post(f'/conv/{conv_match}/act/', ConvAct.view(), name='act'),
+        web.post(f'/conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),
         # different app?:
         web.get('/contacts/lookup-email/', ContactSearch.view(), name='contacts-lookup-email'),
     ]

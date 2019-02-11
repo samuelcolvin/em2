@@ -101,8 +101,8 @@ def draft_conv_key() -> str:
 
 
 async def get_conv_for_user(
-    conn: BuildPgConnection, user_id: int, conv_key_prefix: str
-) -> Tuple[int, Optional[int], bool]:
+    conn: BuildPgConnection, user_id: int, conv_key_prefix: str, *, req_pub: bool = None
+) -> Tuple[int, Optional[int]]:
     """
     Get a conversation id for a user based on the beginning of the conversation key, if the user has been
     removed from the conversation the id of the last action they can see will also be returned.
@@ -142,7 +142,10 @@ async def get_conv_for_user(
 
     if not published and user_id != creator:
         raise JsonErrors.HTTPForbidden('conversation is unpublished and you are not the creator')
-    return conv_id, last_action, published
+    if req_pub is not None and published != req_pub:
+        msg = 'Conversation not yet published' if req_pub else 'Conversation already published'
+        raise JsonErrors.HTTPBadRequest(msg)
+    return conv_id, last_action
 
 
 _prt_action_types = {a for a in ActionsTypes if a.value.startswith('participant:')}
@@ -209,7 +212,7 @@ class _Act:
         self.conv_id = None
 
     async def run(self, conv_prefix: str) -> int:
-        self.conv_id, last_action, _ = await get_conv_for_user(self.conn, self.actor_user_id, conv_prefix)
+        self.conv_id, last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_prefix)
         if last_action:
             # if the usr has be removed from the conversation they can't act
             raise JsonErrors.HTTPNotFound(message='Conversation not found')
@@ -309,6 +312,7 @@ class _Act:
                 raise JsonErrors.HTTPBadRequest('message:recover can only occur on a deleted message')
         elif self.action.act in {ActionsTypes.msg_modify, ActionsTypes.msg_release}:
             if follows_act != ActionsTypes.msg_lock or follows_actor != self.actor_user_id:
+                # TODO lock maybe shouldn't be required when conversation is draft
                 raise JsonErrors.HTTPBadRequest(f'{self.action.act} must follow message:lock by the same user')
         else:
             # just lock and delete here
@@ -373,7 +377,7 @@ async def act(
 
 
 async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_prefix: str, since_id: int = None):
-    conv_id, last_action, _ = await get_conv_for_user(conn, user_id, conv_prefix)
+    conv_id, last_action = await get_conv_for_user(conn, user_id, conv_prefix)
     where_logic = V('a.conv') == conv_id
     if last_action:
         where_logic &= V('a.id') <= last_action

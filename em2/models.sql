@@ -48,8 +48,8 @@ create table actions (
   follows int references actions,  -- when modifying/deleting etc. a component
   participant_user int references users on delete restrict,
   body text,
-  msg_parent int references actions,
   msg_format MsgFormat,
+  msg_parent int references actions,  -- used for child messages "comments", could also be used on message updates?
 
   -- todo participant details, attachment details, perhaps json for other types
 

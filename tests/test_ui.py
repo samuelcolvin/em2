@@ -2,6 +2,8 @@ import json
 
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
+from em2.core import construct_conv
+
 from .conftest import Factory
 
 
@@ -40,7 +42,7 @@ async def test_create_conv(cli, url, factory: Factory, db_conn):
     assert r.status == 201, await r.text()
     obj = await r.json()
     conv_key = obj['key']
-    assert conv_key == RegexStr('.{20}')
+    assert len(conv_key) == 20
 
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
     conv = dict(await db_conn.fetchrow('select * from conversations'))
@@ -71,7 +73,7 @@ async def test_create_conv_publish(cli, url, factory: Factory, db_conn):
     assert r.status == 201, await r.text()
     obj = await r.json()
     conv_key = obj['key']
-    assert conv_key == RegexStr('.{64}')
+    assert len(conv_key) == 64
 
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
     conv = dict(await db_conn.fetchrow('select * from conversations'))
@@ -155,7 +157,7 @@ async def test_act(cli, url, factory: Factory):
 
     data = {'act': 'message:add', 'body': 'this is another message'}
     r = await cli.post_json(url('ui:act', conv=conv.key), data)
-    assert r.status == 201, await r.text()
+    assert r.status == 200, await r.text()
     obj = await r.json()
     assert obj == {'action_id': 4}
 
@@ -171,3 +173,39 @@ async def test_act(cli, url, factory: Factory):
         'body': 'this is another message',
         'msg_format': 'markdown',
     }
+
+
+async def test_create_then_publish(cli, url, factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+
+    data = {'act': 'message:lock', 'follows': 2}
+    r = await cli.post_json(url('ui:act', conv=conv.key), data)
+    assert r.status == 200, await r.text()
+    assert {'action_id': 4} == await r.json()
+    data = {'act': 'message:modify', 'body': 'msg changed', 'follows': 4}
+    r = await cli.post_json(url('ui:act', conv=conv.key), data)
+    assert r.status == 200, await r.text()
+    assert {'action_id': 5} == await r.json()
+
+    obj1 = await construct_conv(db_conn, user.id, conv.key)
+    assert obj1 == {
+        'subject': 'Test Subject',
+        'created': CloseToNow(),
+        'messages': [{'ref': 5, 'body': 'msg changed', 'created': CloseToNow(), 'format': 'markdown', 'active': True}],
+        'participants': {'testing-1@example.com': {'id': 1}},
+    }
+    assert 5 == await db_conn.fetchval('select count(*) from actions where conv=$1', conv.id)
+
+    r = await cli.post_json(url('ui:publish', conv=conv.key), {'publish': True})
+    assert r.status == 200, await r.text()
+    conv_key2 = (await r.json())['key']
+
+    obj2 = await construct_conv(db_conn, user.id, conv_key2)
+    assert obj2 == {
+        'subject': 'Test Subject',
+        'created': CloseToNow(),
+        'messages': [{'ref': 2, 'body': 'msg changed', 'created': CloseToNow(), 'format': 'markdown', 'active': True}],
+        'participants': {'testing-1@example.com': {'id': 1}},
+    }
+    assert 3 == await db_conn.fetchval('select count(*) from actions where conv=$1', conv.id)
