@@ -8,10 +8,16 @@ from em2.settings import Settings
 from em2.utils.middleware import csrf_middleware
 from em2.utils.web import add_access_control, build_index
 
+from .background import Background
 from .middleware import user_middleware
 from .views.auth import AuthExchangeToken
 from .views.contacts import ContactSearch
 from .views.conversations import ConvAct, ConvActions, ConvCreate, ConvList, ConvPublish
+from .views.ws import websocket
+
+
+async def startup(app):
+    app['background'] = Background(app)
 
 
 async def create_app_ui(settings=None):
@@ -24,6 +30,7 @@ async def create_app_ui(settings=None):
         web.get(f'/conv/{conv_match}/', ConvActions.view(), name='get'),
         web.post(f'/conv/{conv_match}/act/', ConvAct.view(), name='act'),
         web.post(f'/conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),
+        web.get('/conv/ws/', websocket, name='websocket'),
         # different app?:
         web.get('/contacts/lookup-email/', ContactSearch.view(), name='contacts-lookup-email'),
     ]
@@ -35,6 +42,9 @@ async def create_app_ui(settings=None):
     )
     app = web.Application(middlewares=middleware)
     app.update(name='ui', settings=settings, auth_fernet=fernet.Fernet(settings.auth_key))
+
+    app.on_startup.append(startup)
+
     add_access_control(app)
     app.add_routes(routes)
     app['index_path'] = build_index(app, 'user interface')

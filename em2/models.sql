@@ -20,8 +20,8 @@ create index conversations_created_ts on conversations using btree (created_ts);
 
 create table participants (
   id bigserial primary key,
-  conv int not null references conversations on delete cascade,
-  user_id int not null references users on delete restrict,
+  conv bigint not null references conversations on delete cascade,
+  user_id bigint not null references users on delete restrict,
   -- todo permissions, hidden, status, has_seen/unread
   unique (conv, user_id)  -- TODO does this really work with just conv like a compound index woud?
 );
@@ -40,16 +40,16 @@ create type MsgFormat as enum ('markdown', 'plain', 'html');
 create table actions (
   pk bigserial primary key,
   id int not null check (id >= 0),
-  conv int not null references conversations on delete cascade,
+  conv bigint not null references conversations on delete cascade,
   act ActionTypes not null,
-  actor int not null references users on delete restrict,
+  actor bigint not null references users on delete restrict,
   ts timestamptz not null default current_timestamp,
 
-  follows int references actions,  -- when modifying/deleting etc. a component
-  participant_user int references users on delete restrict,
+  follows bigint references actions,  -- when modifying/deleting etc. a component
+  participant_user bigint references users on delete restrict,
   body text,
   msg_format MsgFormat,
-  msg_parent int references actions,  -- used for child messages "comments", could also be used on message updates?
+  msg_parent bigint references actions,  -- used for child messages "comments", could also be used on message updates?
 
   -- todo participant details, attachment details, perhaps json for other types
 
@@ -137,7 +137,7 @@ create index auth_users_account_status on auth_users using btree (account_status
 
 create table auth_sessions (
   id bigserial primary key,
-  auth_user int not null references auth_users on delete cascade,
+  auth_user bigint not null references auth_users on delete cascade,
   started timestamptz not null default current_timestamp,
   last_active timestamptz not null default current_timestamp,
   active boolean default true,  -- todo need a cron job to close expired sessions just so they look sensible

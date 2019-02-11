@@ -211,7 +211,7 @@ class _Act:
         self.action = action
         self.conv_id = None
 
-    async def run(self, conv_prefix: str) -> int:
+    async def run(self, conv_prefix: str) -> Tuple[int, int]:
         self.conv_id, last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_prefix)
         if last_action:
             # if the usr has be removed from the conversation they can't act
@@ -225,7 +225,7 @@ class _Act:
             else:
                 raise NotImplementedError
 
-        return action_id
+        return self.conv_id, action_id
 
     async def _act_on_participant(self) -> int:
         follows_pk = None
@@ -367,7 +367,7 @@ class _Act:
 
 async def act(
     conn: BuildPgConnection, settings: Settings, actor_user_id: int, conv_prefix: str, action: ActionModel
-) -> int:
+) -> Tuple[int, int]:
     """
     Apply an action and return its id.
 
@@ -403,7 +403,7 @@ async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_prefix: 
               left join actions as parent_action on a.msg_parent = parent_action.pk
               where :where
               order by a.id
-            ) t;
+            ) t
             """,
             where=where_logic,
         )

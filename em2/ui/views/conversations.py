@@ -23,7 +23,7 @@ from .utils import ExecView, View
 class ConvList(View):
     # TODO add count (max 999)
     sql = """
-    select array_to_json(array_agg(row_to_json(t)), true)
+    select coalesce(array_to_json(array_agg(row_to_json(t)), true), '[]')
     from (
       select key, created_ts, updated_ts, published, details
       from conversations as c
@@ -36,7 +36,7 @@ class ConvList(View):
 
     async def call(self):
         raw_json = await self.conn.fetchval(self.sql, self.session.user_id)
-        return raw_json_response(raw_json or '[]')
+        return raw_json_response(raw_json)
 
 
 class ConvActions(View):
@@ -105,7 +105,7 @@ class ConvCreate(ExecView):
                 conv.message,
                 conv.msg_format,
             )
-            publish_id = await self.conn.fetchrow(
+            publish_id = await self.conn.fetchval(
                 """
                 insert into actions (conv, act, actor, ts, body)
                 values              ($1  , $2 , $3   , $4, $5)
@@ -118,8 +118,7 @@ class ConvCreate(ExecView):
                 conv.subject,
             )
 
-        assert publish_id
-        # await self.pusher.push(create_action_id, actor_only=True)
+        await self.push(conv_id, publish_id)
         return dict(key=conv_key, status_=201)
 
 
@@ -127,9 +126,9 @@ class ConvAct(ExecView):
     Model = ActionModel
 
     async def execute(self, action: Model):
-        action_id = await act(self.conn, self.settings, self.session.user_id, self.request.match_info['conv'], action)
-        assert action_id
-        # await self.pusher.push(action_id, actor_only=True)
+        conv_prefix = self.request.match_info['conv']
+        conv_id, action_id = await act(self.conn, self.settings, self.session.user_id, conv_prefix, action)
+        await self.push(conv_id, action_id)
         return {'action_id': action_id}
 
 
@@ -159,7 +158,7 @@ class ConvPublish(ExecView):
                 publish = await self.conn.fetchval(
                     'select published from conversations where id=$1 for no key update', conv_id
                 )
-                # this prevents a race condition if publish is called concurrently
+                # this prevents a race condition if ConvPublish is called concurrently
                 if publish:
                     raise JsonErrors.HTTPBadRequest('Conversation already published')
                 await self.conn.execute(
@@ -192,7 +191,7 @@ class ConvPublish(ExecView):
                 ts,
                 conv_summary['subject'],
             )
-        assert publish_action_id
+        await self.push(conv_id, publish_action_id)
         return dict(key=conv_key)
 
     async def add_msg(self, msg_info: Dict[str, Any], conv_id: int, ts: datetime, msg_parent: int = None):

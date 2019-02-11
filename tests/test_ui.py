@@ -1,5 +1,7 @@
 import json
 
+from aiohttp import WSMsgType
+from async_timeout import timeout
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
 from em2.core import construct_conv
@@ -209,3 +211,27 @@ async def test_create_then_publish(cli, url, factory: Factory, db_conn):
         'participants': {'testing-1@example.com': {'id': 1}},
     }
     assert 3 == await db_conn.fetchval('select count(*) from actions where conv=$1', conv.id)
+
+
+async def test_ws(cli, url, factory: Factory):
+    user = await factory.create_user()
+    async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
+        conv = await factory.create_conv()
+
+        msg = None
+        with timeout(0.5):
+            async for msg in ws:
+                assert msg.type == WSMsgType.text
+                msg = json.loads(msg.data)
+                break
+        assert not ws.closed
+        assert ws.close_code is None
+        assert msg == {
+            'conv_key': conv.key,
+            'user_ids': [user.id],
+            'id': 3,
+            'act': 'conv:create',
+            'ts': CloseToNow(),
+            'actor': 'testing-1@example.com',
+            'body': 'Test Subject',
+        }

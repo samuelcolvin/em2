@@ -17,14 +17,17 @@ class Session:
     ts: int
 
 
+async def load_session(request) -> Session:
+    s = await get_session(request)
+    if not s.get('user_id'):
+        raise JsonErrors.HTTPUnauthorized('Authorisation required')
+    return Session(**dict(s))
+    # TODO check session.ts is not too old
+
+
 @middleware
 async def user_middleware(request, handler):
     if isinstance(request.match_info, MatchInfoError) or request.match_info.route.name in AUTH_WHITELIST:
         return await handler(request)
-    session_obj = await get_session(request)
-    if not session_obj.get('user_id'):
-        raise JsonErrors.HTTPUnauthorized('request not authorised')
-    session = Session(**dict(session_obj))
-    # TODO check session.ts is not too old
-    request['session'] = session
+    request['session'] = await load_session(request)
     return await handler(request)

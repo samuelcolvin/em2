@@ -3,9 +3,13 @@ from atoolbox import JsonErrors
 from pydantic import ValidationError
 from pytest_toolbox.comparison import AnyInt, CloseToNow
 
-from em2.core import ActionModel, ActionsTypes, act, construct_conv
+from em2.core import ActionModel, ActionsTypes, act as act_, construct_conv
 
 from .conftest import Factory
+
+
+async def act(conn, settings, actor_user_id, conv_prefix, action) -> int:
+    return (await act_(conn, settings, actor_user_id, conv_prefix, action))[1]
 
 
 async def test_msg_add(factory: Factory, db_conn, settings):
