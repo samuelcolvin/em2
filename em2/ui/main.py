@@ -20,6 +20,16 @@ async def startup(app):
     app['background'] = Background(app)
 
 
+no_pg_conn = {
+    'ui.index',
+    'ui.websocket',
+}
+
+
+def pg_middleware_check(request):
+    return request['view_name'] not in no_pg_conn
+
+
 async def create_app_ui(settings=None):
     settings = settings or Settings()
     conv_match = r'{conv:[a-f0-9]{10,64}}'
@@ -41,7 +51,12 @@ async def create_app_ui(settings=None):
         pg_middleware,
     )
     app = web.Application(middlewares=middleware)
-    app.update(name='ui', settings=settings, auth_fernet=fernet.Fernet(settings.auth_key))
+    app.update(
+        name='ui',
+        settings=settings,
+        auth_fernet=fernet.Fernet(settings.auth_key),
+        pg_middleware_check=pg_middleware_check,
+    )
 
     app.on_startup.append(startup)
 

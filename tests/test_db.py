@@ -57,4 +57,28 @@ async def test_update_conv(db_conn):
     }
 
 
+async def test_user_v(db_conn):
+    user_id = await db_conn.fetchval("insert into users (email) values ('testing@example.com') returning id")
+    assert 0 == await db_conn.fetchval('select v from users where id=$1', user_id)
+    conv_id = await db_conn.fetchval(
+        """
+        insert into conversations (key, creator, created_ts, updated_ts)
+        values ('key', $1, current_timestamp, current_timestamp) returning id
+        """,
+        user_id,
+    )
+    await db_conn.fetchval('insert into participants (conv, user_id) values ($1, $2)', conv_id, user_id)
+    assert 0 == await db_conn.fetchval('select v from users where id=$1', user_id)
+
+    await db_conn.execute(
+        "insert into actions (conv, act, actor, participant_user) values ($1, 'participant:add', $2, $2)",
+        conv_id,
+        user_id,
+    )
+    assert 1 == await db_conn.fetchval('select v from users where id=$1', user_id)
+
+    await db_conn.execute("insert into actions (conv, act, actor) values ($1, 'message:lock', $2)", conv_id, user_id)
+    assert 2 == await db_conn.fetchval('select v from users where id=$1', user_id)
+
+
 # TODO tests for message count and tests for body choices

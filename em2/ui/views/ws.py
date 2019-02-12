@@ -27,6 +27,11 @@ async def websocket(request):
 
     logger.info('ws connection user=%s', session.user_id)
     await ws.prepare(request)
+
+    pg = request.app['pg']
+    json_obj = await pg.fetchval("select json_build_object('user_v', v) from users where id=$1", session.user_id)
+    await ws.send_str(json_obj)
+
     background: Background = request.app['background']
     background.add_ws(session.user_id, ws)
 

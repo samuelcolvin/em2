@@ -213,9 +213,22 @@ async def test_create_then_publish(cli, url, factory: Factory, db_conn):
     assert 3 == await db_conn.fetchval('select count(*) from actions where conv=$1', conv.id)
 
 
-async def test_ws(cli, url, factory: Factory):
+async def test_ws(cli, url, factory: Factory, db_conn):
     user = await factory.create_user()
+    await factory.create_conv()
+    assert 3 == await db_conn.fetchval('select v from users where id=$1', user.id)
+
     async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
+        msg = None
+        with timeout(0.5):
+            async for msg in ws:
+                assert msg.type == WSMsgType.text
+                msg = json.loads(msg.data)
+                break
+        assert not ws.closed
+        assert ws.close_code is None
+        assert msg == {'user_v': 3}
+
         conv = await factory.create_conv()
 
         msg = None

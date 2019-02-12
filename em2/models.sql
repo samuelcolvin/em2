@@ -2,7 +2,8 @@
 -- TODO once we have address book and public profiles, we'll need a way of getting name for an email
 create table users (
   id bigserial primary key,
-  email varchar(255) not null
+  email varchar(255) not null,
+  v bigint not null default 0  -- could be null for users not on this platform
 );
 create unique index user_email on users using btree (email);
 
@@ -23,7 +24,7 @@ create table participants (
   conv bigint not null references conversations on delete cascade,
   user_id bigint not null references users on delete restrict,
   -- todo permissions, hidden, status, has_seen/unread
-  unique (conv, user_id)  -- TODO does this really work with just conv like a compound index woud?
+  unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id
 );
 
 -- see core.ActionsTypes enum which matches this
@@ -104,6 +105,12 @@ create or replace function action_insert() returns trigger as $$
       set updated_ts=new.ts, details=details_, last_action_id=last_action_id + 1
       where id=new.conv
       returning last_action_id into new.id;
+
+    -- TODO is this going to slow things down on the long run?
+    update users set v=v + 1
+      from participants
+      where participants.user_id = users.id and participants.conv=new.conv;
+
     return new;
   end;
 $$ language plpgsql;

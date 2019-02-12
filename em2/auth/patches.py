@@ -12,11 +12,11 @@ async def create_user(*, conn, settings, args, logger, **kwargs):
     Create a new user
     """
     parser = ArgumentParser(description='create a new user')
-    for f in ('email_address', 'first_name', 'last_name', 'password'):
+    for f in ('email', 'first_name', 'last_name', 'password'):
         parser.add_argument(f'--{f}')
 
     ns = parser.parse_args(args)
-    ns.email_address = ns.email_address or input('enter email address: ')
+    ns.email = ns.email or input('enter email address: ')
     ns.first_name = ns.first_name or input('enter first name: ')
     ns.last_name = ns.last_name or input('enter last name: ')
     ns.password = ns.password or getpass('enter password: ')
@@ -25,11 +25,12 @@ async def create_user(*, conn, settings, args, logger, **kwargs):
 
     user_id = await conn.fetchval(
         """
-        INSERT INTO auth_users (address, first_name, last_name, password_hash, account_status)
-        VALUES ($1, $2, $3, $4, 'active')
-        ON CONFLICT (address) DO NOTHING RETURNING id
+        insert into auth_users (email, first_name, last_name, password_hash, account_status)
+        values ($1, $2, $3, $4, 'active')
+        on conflict (email) do nothing
+        returning id
         """,
-        ns.email_address,
+        ns.email,
         ns.first_name,
         ns.last_name,
         password_hash,

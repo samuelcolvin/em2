@@ -26,6 +26,7 @@ def build_index(app: web.Application, name: str, routes: str = None):
 
 
 async def index_view(request):
+    # TODO this might be much slower than just returning the raw string
     return FileResponse(request.app['index_path'])
 
 

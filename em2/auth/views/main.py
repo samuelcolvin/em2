@@ -40,6 +40,7 @@ async def login_successful(request, user):
 
 
 class Login(ExecView):
+    headers = {'Access-Control-Allow-Origin': 'null'}
     get_user_sql = """
     SELECT id, first_name, last_name, email, password_hash
     FROM auth_users
