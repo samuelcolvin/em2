@@ -1,4 +1,7 @@
-export function window_trigger (method, call_args) {
+import Dexie from 'dexie'
+import {request as basic_request} from '../lib/requests'
+
+export function window_call (method, call_args) {
   postMessage({method, call_args})
 }
 
@@ -38,4 +41,54 @@ export function route_message (message) {
       }
     }
   }
+}
+
+export const db = new Dexie('em2')
+db.version(1).stores({
+  sessions: '&session_id, email',
+  conversations: '&key, created_ts, updated_ts, published',
+})
+
+async function request (method, app_name, path, config) {
+  // wraps basic_request and re-authenticates when a session has expired, also takes care of allow_fail
+  try {
+    return await basic_request(method, app_name, path, config)
+  } catch (e) {
+    if (e.status === 401) {
+      // TODO check and reauthenticate
+      await db.sessions.toCollection().delete()
+    }
+    // window_call here to update status
+    // if (config.allow_fail) {
+    //   if (e.status === 0) {
+    //     return conn_status.not_connected
+    //   } else if (e.status === 401) {
+    //     return conn_status.unauthorised
+    //   }
+    // }
+    // throw e
+  }
+}
+
+export const requests = {
+  get: (app_name, path, config) => request('GET', app_name, path, config),
+  post: (app_name, path, data, config) => {
+    config = config || {}
+    config.send_data = data
+    return request('POST', app_name, path, config)
+  },
+}
+
+const unix_ms = s => (new Date(s)).getTime()
+
+export async function get_convs (session, page = 1) {
+  const r = await requests.get('ui', '/conv/list/', {allow_fail: true, args: {page}})
+  const conversations = r.data.conversations.map(c => (
+      Object.assign({}, c, {
+        created_ts: unix_ms(c.created_ts),
+        updated_ts: unix_ms(c.updated_ts),
+      })
+  ))
+  await db.conversations.bulkPut(conversations)
+  return {conversations, count: r.data.count}
 }

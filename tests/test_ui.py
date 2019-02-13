@@ -34,7 +34,7 @@ async def test_login(cli, url, factory: Factory):
     r = await cli.get(url('ui:list'))
     assert r.status == 200, await r.text()
     obj = await r.json()
-    assert obj == []
+    assert obj == {'count': 0, 'conversations': []}
 
 
 async def test_create_conv(cli, url, factory: Factory, db_conn):
@@ -107,22 +107,26 @@ async def test_conv_list(cli, url, factory: Factory, db_conn):
     r = await cli.get(url('ui:list'))
     assert r.status == 200, await r.text()
     obj = await r.json()
-    assert obj == [
-        {
-            'key': conv.key,
-            'created_ts': CloseToNow(),
-            'updated_ts': CloseToNow(),
-            'published': False,
-            'details': {
-                'act': 'conv:create',
-                'sub': 'Test Subject',
-                'email': 'testing-1@example.com',
-                'body': 'Test Message',
-                'prts': 1,
-                'msgs': 1,
-            },
-        }
-    ]
+    assert obj == {
+        'count': 1,
+        'conversations': [
+            {
+                'key': conv.key,
+                'created_ts': CloseToNow(),
+                'updated_ts': CloseToNow(),
+                'published': False,
+                'last_action_id': 3,
+                'details': {
+                    'act': 'conv:create',
+                    'sub': 'Test Subject',
+                    'email': 'testing-1@example.com',
+                    'body': 'Test Message',
+                    'prts': 1,
+                    'msgs': 1,
+                },
+            }
+        ],
+    }
 
 
 async def test_conv_actions(cli, url, factory: Factory, db_conn):
@@ -216,7 +220,7 @@ async def test_create_then_publish(cli, url, factory: Factory, db_conn):
 async def test_ws(cli, url, factory: Factory, db_conn):
     user = await factory.create_user()
     await factory.create_conv()
-    assert 3 == await db_conn.fetchval('select v from users where id=$1', user.id)
+    assert 4 == await db_conn.fetchval('select v from users where id=$1', user.id)
 
     async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
         msg = None
@@ -227,7 +231,7 @@ async def test_ws(cli, url, factory: Factory, db_conn):
                 break
         assert not ws.closed
         assert ws.close_code is None
-        assert msg == {'user_v': 3}
+        assert msg == {'user_v': 4}
 
         conv = await factory.create_conv()
 

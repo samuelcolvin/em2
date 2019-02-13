@@ -15,25 +15,21 @@ class Worker {
     this.listeners = {}
     this.rosolvers = {}
 
-    this.add_listener = this.add_listener.bind(this)
-    this.remove_listener = this.remove_listener.bind(this)
-    this._onmessage = this._onmessage.bind(this)
-    this.call = this.call.bind(this)
-
     this.worker.onmessage = this._onmessage
   }
 
-  add_listener (name, listener) {
+  add_listener = (name, listener) => {
     const id = random()
-    this.listeners[id] = {func: listener, name: name || listener.name}
+    this.listeners[id] = {func: listener, name}
     return id
   }
 
-  remove_listener (id) {
+  remove_listener = id => {
+    // TODO maybe not required
     delete this.listeners[id]
   }
 
-  _onmessage (message) {
+  _onmessage = message => {
     if (message.data.async_id) {
       const resolver = this.rosolvers[message.data.async_id]
       if (message.data.error) {
@@ -47,14 +43,16 @@ class Worker {
         if (l.name === message.data.method) {
           // console.log('window running:', message.data.method, message.data.call_args || '')
           l.func(message.data.call_args || {})
+          return
         }
       }
+      throw Error(`worker message with method "${message.data.method}" has no listener`)
     } else {
-      console.error('worker message with no method or async_id:', message)
+      throw Error(`worker message with no method or async_id: ${message}`)
     }
   }
 
-  call (method, call_args, timeout) {
+  call = (method, call_args, timeout) => {
     return new Promise((resolve, reject) => {
       const clear = setTimeout(() => {
         const message = `worker fetch timed out, method "${method}"`

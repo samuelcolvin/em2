@@ -28,6 +28,12 @@ class _DetailedError extends Error {
 
 export const DetailedError = (message, details) => new _DetailedError(message, details)
 
+export const statuses = {
+  offline: 'offline',
+  connecting: 'connecting',
+  online: 'online',
+}
+
 export function load_script (url) {
   return new Promise((resolve, reject) => {
     if (document.querySelector(`script[src="${url}"]`)) {

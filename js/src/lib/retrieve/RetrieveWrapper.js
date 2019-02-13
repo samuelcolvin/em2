@@ -2,7 +2,7 @@ import React from 'react'
 import {render_key, render_value} from './Detail'
 import {withRouter} from 'react-router-dom'
 import WithContext from '../context'
-import {conn_status} from '../requests'
+// import {conn_status} from '../requests'
 
 class RetrieveWrapper extends React.Component {
   constructor (props) {
@@ -27,15 +27,8 @@ class RetrieveWrapper extends React.Component {
 
   async update () {
     const r = await this.props.ctx.worker.call(this.props.function, this.props.get_args())
-    if (r === conn_status.not_connected) {
-      this.props.ctx.setConnectionStatus(r)
-    } else if (r === conn_status.unauthorised) {
-      this.props.history.push('/login/')
-    } else {
-      this.props.ctx.setConnectionStatus(conn_status.connected)  // TODO remove once we have websockets to do the same
-      this.props.ctx.setTitle(this.props.title)
-      this.setState(this.props.transform ? this.props.transform(r) : r)
-    }
+    this.props.ctx.setTitle(this.props.title)
+    this.setState(this.props.transform ? this.props.transform(r) : r)
   }
 
   render_key (key) {

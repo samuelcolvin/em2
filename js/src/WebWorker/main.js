@@ -1,53 +1,25 @@
 import debounce from 'debounce-async'
-import {request as basic_request, conn_status} from '../lib/requests'
-import {add_listener} from './utils'
-import db from './db'
+import {statuses} from '../lib'
+import {make_url} from '../lib/requests'
+import {add_listener, db, requests, window_call} from './utils'
+import Websocket from './ws'
 
-async function request (method, app_name, path, config) {
-  // wraps basic_request and re-authenticates when a session has expired, also takes care of allow_fail
-  try {
-    return await basic_request(method, app_name, path, config)
-  } catch (e) {
-    if (e.status === 401) {
-      // TODO check and reauthenticate
-      await db.sessions.toCollection().delete()
-    }
-    if (config.allow_fail) {
-      if (e.status === 0) {
-        return conn_status.not_connected
-      } else if (e.status === 401) {
-        return conn_status.unauthorised
-      }
-    }
-    throw e
-  }
+const conn_status = {
+  unauthorised: 'unauthorised',
+  not_connected: 'not_connected',
 }
 
-const requests = {
-  get: (app_name, path, config) => request('GET', app_name, path, config),
-  post: (app_name, path, data, config) => {
-    config = config || {}
-    config.send_data = data
-    return request('POST', app_name, path, config)
-  },
-}
+const ws = new Websocket()
 
 const get_session = () => db.sessions.toCollection().first()
 
-add_listener('authenticate', async () => {
-  return await get_session()
-})
-
 add_listener('list-conversations', async data => {
-  const session = await get_session()
-  if (!session) {
-    return conn_status.unauthorised
-  }
-  const r = await requests.get('ui', '/list/', {allow_fail: true, args: {page: data.page}})
-  if (conn_status[r]) {
-    return r
-  }
-  return {items: r.data}
+  // const r = await requests.get('ui', '/conv/list/', {allow_fail: true, args: {page: data.page}})
+  // if (conn_status[r]) {
+  //   return r
+  // }
+  // return {items: r.data}
+  return {conversations: await db.conversations.orderBy('updated_ts').reverse().limit(50).toArray()}
 })
 
 add_listener('get-conversation', async data => {
@@ -66,15 +38,14 @@ add_listener('auth-token', async data => {
   await requests.post('ui', '/auth-token/', {auth_token: data.auth_token})
   delete data.session.ts
   await db.sessions.put(data.session)
+  await ws.connect(data.session)
   return {email: data.session.email, name: data.session.name}
 })
 
 add_listener('create-conversation', async data => {
   console.log('worker, conv data:', data)
-  const r = await requests.post('ui', '/create/', data, {expected_status: [201, 400]})
-  return r
+  return await requests.post('ui', '/conv/create/', data, {expected_status: [201, 400]})
 })
-
 
 const request_contacts = debounce(
   data => requests.get('ui', '/contacts/lookup-email/', {args: data}),
@@ -84,4 +55,22 @@ const request_contacts = debounce(
 add_listener('contacts-lookup-email', async data => {
   const r = await request_contacts(data)
   return r.data
+})
+
+add_listener('start', async () => {
+  const session = await get_session()
+  if (session) {
+    window_call('setState', {user: session})
+    await ws.connect(session)
+  } else {
+    // no session, check the internet connection
+    try {
+      await fetch(make_url('ui', '/online/'), {method: 'HEAD'})
+    } catch (error) {
+      // generally TypeError: failed to fetch
+      window_call('setState', {conn_status: statuses.offline})
+      return
+    }
+    window_call('setState', {conn_status: statuses.online})
+  }
 })

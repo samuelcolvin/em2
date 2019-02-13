@@ -6,11 +6,11 @@ import {format_ts} from '../lib'
 import {Loading} from '../lib/Errors'
 
 const ListConvs = ({state, get_page}) => {
-  if (!state.items) {
+  if (!state.conversations) {
     return <Loading/>
-  } else if (state.items.length === 0) {
+  } else if (state.conversations.length === 0) {
     return (
-      <div key="f" className="text-muted text-center h5 mt-4">
+      <div key="f" className="text-muted text-center h5 pt-3 pb-4">
         No Conversations found
       </div>
     )
@@ -18,20 +18,20 @@ const ListConvs = ({state, get_page}) => {
   // TODO include read notifications, popovers, use first name not addr
   return [
     <div key="l">
-      {state.items.map((conv, i) => (
+      {state.conversations.map((conv, i) => (
         <div key={i}>
           <Link to={`/${conv.key.substr(0, 10)}/`}>
-            <span className="subject">{conv.subject}</span>
+            <span className="subject">{conv.details.sub}</span>
             <span className="body">
-              {conv.snippet.email === 'props.user.email' ? '' : conv.snippet.addr + ':'} {conv.snippet.body}
+              {conv.details.email}: {conv.details.body}
             </span>
 
             <span className="float-right">
               <span className="icon">
-                <FontAwesomeIcon icon="comment"/> {conv.snippet.msgs}
+                <FontAwesomeIcon icon="comment"/> {conv.details.msgs}
               </span>
               <span className="icon">
-                <FontAwesomeIcon icon="users"/> {conv.snippet.prts}
+                <FontAwesomeIcon icon="users"/> {conv.details.prts}
               </span>
               <span>
                 {format_ts(conv.updated_ts)}

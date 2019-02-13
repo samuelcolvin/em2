@@ -21,17 +21,27 @@ from .utils import ExecView, View
 
 
 class ConvList(View):
-    # TODO add count (max 999)
     sql = """
-    select coalesce(array_to_json(array_agg(row_to_json(t)), true), '[]')
-    from (
-      select key, created_ts, updated_ts, published, details
-      from conversations as c
-      left join participants on c.id = participants.conv
-      where participants.user_id=$1
-      order by c.created_ts, c.id desc
-      limit 50
-    ) t;
+    select json_build_object(
+      'conversations', conversations,
+      'count', count
+    ) from (
+      select coalesce(array_to_json(array_agg(row_to_json(t)), true), '[]') as conversations
+      from (
+        select key, created_ts, updated_ts, published, last_action_id, details
+        from conversations as c
+        join participants on c.id = participants.conv
+        where participants.user_id=$1
+        order by c.created_ts, c.id desc
+        limit 50
+      ) t
+    ) as conversations,
+    (
+      select count(*) from conversations as c
+        join participants as p on c.id = p.conv
+        where p.user_id=$1
+        limit 999
+    ) as count
     """
 
     async def call(self):

@@ -1,10 +1,9 @@
 import React from 'react'
-import {Loading} from '../lib/Errors'
 
 export default ({src, title, id}) => (
   <div className="iframe-container">
     <div className="zero-height d-flex justify-content-center">
-      <Loading/>
+      Loading...
     </div>
     <iframe
         id={id}

@@ -60,6 +60,10 @@ class Create extends React.Component {
     this.props.history.push(`/conv/${r.data.key}/`)
   }
 
+  componentDidMount () {
+    this.props.ctx.setTitle('Compose Conversation')
+  }
+
   render () {
     return (
       <div className="box create-conv">

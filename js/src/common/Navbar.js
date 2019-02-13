@@ -10,20 +10,20 @@ import {
   NavItem,
   NavLink,
 } from 'reactstrap'
-import {conn_status} from '../lib/requests'
+import {statuses} from '../lib'
 
-const Status = ({title, message, connection_status, user}) => {
+const StatusBar = ({title, message, conn_status, user}) => {
   const class_name = ['extra-menu', 'fixed-top']
   // TODO replace connection_status_text with a symbol, eg. circle of different colour
-  let connection_status_text = 'loading...'
-  if (connection_status === null) {
+  let connection_status_text
+  if (conn_status === statuses.connecting) {
     // no connection status yet
+    connection_status_text = 'connecting...'
     class_name.push('offline')
-  } else if (connection_status === conn_status.not_connected) {
+  } else if (conn_status === statuses.offline) {
     class_name.push('offline')
     connection_status_text = 'offline'
   } else {
-    // connection_status === conn_status.connected
     connection_status_text = 'online'
   }
   return (
@@ -72,7 +72,7 @@ export default class Navbar extends React.Component {
               {this.props.app_state.user && [
                 <NavItem key="1" active={/^\/create\//.test(this.props.location.pathname)}>
                   <NavLink tag={Link} onClick={this.close} to="/create/">
-                    Create Conversation
+                    Compose
                   </NavLink>
                 </NavItem>,
               ]}
@@ -83,7 +83,7 @@ export default class Navbar extends React.Component {
           </Collapse>
         </div>
       </NavbarBootstrap>,
-      <Status key="2" {...this.props.app_state}/>,
+      <StatusBar key="2" {...this.props.app_state}/>,
     ]
   }
 }

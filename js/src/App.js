@@ -5,8 +5,8 @@ import {far} from '@fortawesome/free-regular-svg-icons'
 import {fas} from '@fortawesome/free-solid-svg-icons'
 import {fab} from '@fortawesome/free-brands-svg-icons'
 
+import {statuses} from './lib'
 import {GlobalContext} from './lib/context'
-import {conn_status} from './lib/requests'
 import {Error, NotFound} from './lib/Errors'
 import Worker from './run_worker'
 import Navbar from './common/Navbar'
@@ -18,28 +18,29 @@ import CreateConversation from './conversations/Create'
 // TODO replace with specific icons
 FaLibrary.add(far, fas, fab)
 
-const Routes = () => (
-  <Switch>
-    <Route exact path="/" component={ListConversations}/>
-    <Route exact path="/create/" component={CreateConversation}/>
-    <Route exact path="/login/" component={Login}/>
-    <Route exact path="/:key([a-f0-9]{10,64})/" component={ConversationDetails}/>
-
-    <Route component={NotFound}/>
-  </Switch>
-)
-
 const Main = ({app_state}) => {
   if (app_state.error) {
     return <Error error={app_state.error}/>
-  } else if (app_state.connection_status === conn_status.not_connected && !app_state.user) {
+  } else if (!app_state.conn_status) {
+    // this should happen very briefly, don't show loading to avoid FOUC
+    return null
+  } else if (app_state.conn_status === statuses.offline && !app_state.user) {
     return (
       <div className="text-center">
         No internet connection and no local data, so sadly nothing much to show you. :-(
       </div>
     )
   } else {
-    return <Routes/>
+    return (
+      <Switch>
+        <Route exact path="/" component={ListConversations}/>
+        <Route exact path="/create/" component={CreateConversation}/>
+        <Route exact path="/login/" component={Login}/>
+        <Route exact path="/:key([a-f0-9]{10,64})/" component={ConversationDetails}/>
+
+        <Route component={NotFound}/>
+      </Switch>
+    )
   }
 }
 
@@ -48,24 +49,19 @@ class App extends Component {
     super(props)
     this.state = {
       title: null,
-      user: null,
       error: null,
       message: null,
-      connection_status: null,
+      user: null,
+      conn_status: statuses.connecting,
     }
-    this.setMessage = this.setMessage.bind(this)
-    this.setError = this.setError.bind(this)
     this.worker = new Worker(this)
     this.message_timeout1 = null
     this.message_timeout2 = null
   }
 
-  async componentDidMount () {
-    const user = await this.worker.call('authenticate')
-    this.setState({user})
-    if (!user && this.props.location.pathname !== '/login/') {
-      this.props.history.push('/login/')
-    }
+  componentDidMount () {
+    this.worker.add_listener('setState', s => this.setState(s))
+    this.worker.call('start')
   }
 
   componentDidUpdate (prevProps) {
@@ -73,9 +69,14 @@ class App extends Component {
     if (this.props.location !== prevProps.location) {
       this.state.error && this.setState({error: null})
     }
+    if (!this.state.user &&
+        this.state.conn_status !== statuses.connecting &&
+        this.props.location.pathname !== '/login/') {
+      this.props.history.push('/login/')
+    }
   }
 
-  async setMessage (message) {
+  setMessage = async message => {
     clearInterval(this.message_timeout1)
     clearInterval(this.message_timeout2)
     this.message_timeout1 = setTimeout(() => {
@@ -89,11 +90,11 @@ class App extends Component {
     this.setState({error: error.toString()})
   }
 
-  setError (error) {
+  setError = error => {
     if (error.status === 401 && this.props.location.pathname !== '/login/') {
       this.props.history.push('/login/')
-    } else if (error.status === 0) {
-      this.setState({connection_status: conn_status.not_connected})
+    // } else if (error.status === 0) {
+      // this.setState({connection_status: conn_status.not_connected})
     } else {
       console.warn('setting error:', error)
       // Raven.captureMessage(`caught error: ${error.message || error.toString()}`, {
@@ -109,7 +110,7 @@ class App extends Component {
       setError: error => this.setError(error),
       setUser: user => this.setState({user}),
       setTitle: title => this.setState({title}),
-      setConnectionStatus: connection_status => this.setState({connection_status}),
+      setConnectionStatus: conn_status => this.setState({conn_status}),
       user: this.state.user,
       worker: this.worker,
     }

@@ -10,6 +10,7 @@ from em2.utils.web import add_access_control, build_index
 
 from .background import Background
 from .middleware import user_middleware
+from .views import online
 from .views.auth import AuthExchangeToken
 from .views.contacts import ContactSearch
 from .views.conversations import ConvAct, ConvActions, ConvCreate, ConvList, ConvPublish
@@ -20,10 +21,7 @@ async def startup(app):
     app['background'] = Background(app)
 
 
-no_pg_conn = {
-    'ui.index',
-    'ui.websocket',
-}
+no_pg_conn = {'ui.index', 'ui.online', 'ui.websocket'}
 
 
 def pg_middleware_check(request):
@@ -40,7 +38,8 @@ async def create_app_ui(settings=None):
         web.get(f'/conv/{conv_match}/', ConvActions.view(), name='get'),
         web.post(f'/conv/{conv_match}/act/', ConvAct.view(), name='act'),
         web.post(f'/conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),
-        web.get('/conv/ws/', websocket, name='websocket'),
+        web.get('/ws/', websocket, name='websocket'),
+        web.get('/online/', online, name='online'),
         # different app?:
         web.get('/contacts/lookup-email/', ContactSearch.view(), name='contacts-lookup-email'),
     ]

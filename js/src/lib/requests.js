@@ -1,3 +1,4 @@
+// TODO move to WebWorker/utils/requests.js
 import {DetailedError} from './index'
 
 const request_domain = process.env.REACT_APP_DOMAIN
@@ -45,12 +46,6 @@ function headers2obj (r) {
   if (entries.length !== 0) {
     return Object.assign(...Array.from(h.entries()).map(([k, v]) => ({[k]: v})))
   }
-}
-
-export const conn_status = {
-  unauthorised: 'unauthorised',
-  not_connected: 'not_connected',
-  connected: 'connected',
 }
 
 export async function request (method, app_name, path, config) {

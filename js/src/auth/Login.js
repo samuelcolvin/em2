@@ -5,7 +5,6 @@ import WithContext from '../lib/context'
 import IFrame from './IFrame'
 import Recaptcha from './Recaptcha'
 import {DetailedError} from '../lib'
-import {conn_status} from '../lib/requests'
 
 function next_url (location) {
   const match = location.search.match('next=([^&]+)')
@@ -46,7 +45,7 @@ class Login extends React.Component {
         Recaptcha.reset()
       }
       this.setState({recaptcha_shown: data.grecaptcha_required})
-      this.props.ctx.setConnectionStatus(conn_status.connected)
+      // this.props.ctx.setConnectionStatus(statuses.online_unauth_nodata)
     } else if (data.auth_token) {
       await this.authenticate(data)
     } else if (data.error) {

@@ -3,13 +3,14 @@
 create table users (
   id bigserial primary key,
   email varchar(255) not null,
-  v bigint not null default 0  -- could be null for users not on this platform
+  v bigint not null default 1  -- could be null for users not on this platform
 );
 create unique index user_email on users using btree (email);
 
 create table conversations (
   id bigserial primary key,
   key varchar(64) unique,
+  -- TODO client key: ref for the browser to match a webhook with a conversation it just created
   published bool default false,
   creator int not null references users on delete restrict,
   created_ts timestamptz not null,
