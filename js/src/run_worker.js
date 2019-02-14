@@ -21,32 +21,33 @@ class Worker {
   add_listener = (name, listener) => {
     const id = random()
     this.listeners[id] = {func: listener, name}
-    return id
-  }
-
-  remove_listener = id => {
-    // TODO maybe not required
-    delete this.listeners[id]
+    return () => {
+      delete this.listeners[id]
+    }
   }
 
   _onmessage = message => {
     if (message.data.async_id) {
       const resolver = this.rosolvers[message.data.async_id]
       if (message.data.error) {
-        const err = DetailedError(message.data.error.message, message.data.error.details)
+        const err = DetailedError('Worker error: ' + message.data.error.message, message.data.error.details)
         resolver.reject(err)
       } else {
         resolver.resolve(message.data.result)
       }
     } else if (message.data.method) {
+      let matched = 0
       for (const l of Object.values(this.listeners)) {
         if (l.name === message.data.method) {
           // console.log('window running:', message.data.method, message.data.call_args || '')
           l.func(message.data.call_args || {})
-          return
+          matched += 1
         }
       }
-      throw Error(`worker message with method "${message.data.method}" has no listener`)
+      // console.log(`worker message with method "${message.data.method}" has ${matched} listeners`)
+      if (matched === 0) {
+        console.warn(`worker message with method "${message.data.method}" has no listeners`)
+      }
     } else {
       throw Error(`worker message with no method or async_id: ${message}`)
     }

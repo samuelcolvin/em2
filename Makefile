@@ -9,7 +9,6 @@ install:
 	pip install -r em2/requirements1.txt
 	pip install -r em2/requirements2.txt
 
-
 .PHONY: format
 format:
 	$(isort)
@@ -34,6 +33,11 @@ testcov: test
 
 .PHONY: all
 all: testcov lint
+
+
+.PHONY: robot
+robot:
+	PYTHONPATH="`pwd`" ./tests/robot.py
 
 .PHONY: clean
 clean:

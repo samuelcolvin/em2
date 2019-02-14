@@ -9,6 +9,7 @@ from atoolbox.test_utils import DummyServer, create_dummy_server
 from em2.auth.utils import mk_password
 from em2.main import create_app
 from em2.settings import Settings
+from em2.utils.web import MakeUrl
 
 
 def pytest_addoption(parser):
@@ -113,30 +114,7 @@ async def _fix_cli(settings, db_conn, aiohttp_client, redis, loop):
 
 @pytest.fixture(name='url')
 def _fix_url(cli):
-    def f(name, *, query=None, **kwargs):
-        # TODO if this is used in main code base it should be moved there and reused.
-        try:
-            app_name, route_name = name.split(':')
-        except ValueError:
-            raise RuntimeError('not app name, use format "<app name>:<route name>"')
-
-        try:
-            app = cli.server.app[app_name + '_app']
-        except KeyError:
-            raise RuntimeError('app not found, options are : "ui", "protocol" and "auth"')
-
-        try:
-            r = app.router[route_name]
-        except KeyError as e:
-            route_names = ', '.join(sorted(app.router._named_resources))
-            raise RuntimeError(f'route "{route_name}" not found, options are: {route_names}') from e
-        assert None not in kwargs.values(), f'invalid kwargs, includes none: {kwargs}'
-        url = r.url_for(**{k: str(v) for k, v in kwargs.items()})
-        if query:
-            url = url.with_query(**query)
-        return url
-
-    return f
+    return MakeUrl(cli.server.app)
 
 
 @dataclass

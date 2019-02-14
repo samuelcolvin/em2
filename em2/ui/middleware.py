@@ -5,7 +5,7 @@ from pydantic.dataclasses import dataclass
 
 # views which don't require authentication
 
-AUTH_WHITELIST = {'ui.index', 'ui.online', 'ui.auth-token'}
+AUTH_WHITELIST = {'ui.index', 'ui.online', 'ui.websocket', 'ui.auth-token'}
 
 
 @dataclass

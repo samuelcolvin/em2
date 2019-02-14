@@ -31,7 +31,7 @@ class ConvList(View):
         select key, created_ts, updated_ts, published, last_action_id, details
         from conversations as c
         join participants on c.id = participants.conv
-        where participants.user_id=$1
+        where participants.user_id=$1 and (c.published or c.creator=$1)
         order by c.created_ts, c.id desc
         limit 50
       ) t

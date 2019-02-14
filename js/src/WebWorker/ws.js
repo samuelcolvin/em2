@@ -52,8 +52,8 @@ export default class Websocket {
       const reconnect_in = Math.min(10000, (2 ** this._disconnects - 1) * 500)
       this._disconnects += 1
       if (e.code === 4403) {
-        // auth refused TODO reconnect
-        console.log('websocket closed with 4403, not authorised so not reconnecting')
+        console.log('websocket closed with 4403, not authorised')
+        window_call('setState', {user: null, conn_status: statuses.online})
       } else {
         console.log(`websocket closed, reconnecting in ${reconnect_in}ms`, e)
         setTimeout(this.connect, reconnect_in)
@@ -79,8 +79,9 @@ export default class Websocket {
         await db.sessions.update(this._session.session_id, session_update)
         Object.assign(this._session, session_update)
       }
-      return
+    } else {
+      console.log('ws message:', data)
+      window_call('change')
     }
-    console.log(data)
   }
 }

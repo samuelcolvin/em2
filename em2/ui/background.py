@@ -60,6 +60,7 @@ class Background:
 
 
 # TODO this might not include enough info, eg. won't be enough when publishing or creating a conv
+# TODO also get each participant user's user_v
 push_sql = """
 select json_strip_nulls(json_build_object(
   'conv_key', conv_key,

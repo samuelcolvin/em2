@@ -1,4 +1,5 @@
 from aiohttp import web
+from aiohttp.abc import Application
 from aiohttp.web_fileresponse import FileResponse
 from atoolbox.utils import slugify
 
@@ -44,3 +45,34 @@ def add_access_control(app: web.Application):
             )
 
     app.on_response_prepare.append(_run)
+
+
+class MakeUrl:
+    __slots__ = ('main_app',)
+
+    def __init__(self, main_app: Application):
+        self.main_app = main_app
+
+    def __call__(self, name, *, query=None, **kwargs):
+        # TODO if this is used in main code base it should be moved there and reused.
+        try:
+            app_name, route_name = name.split(':')
+        except ValueError:
+            raise RuntimeError('not app name, use format "<app name>:<route name>"')
+
+        try:
+            app = self.main_app[app_name + '_app']
+        except KeyError:
+            raise RuntimeError('app not found, options are : "ui", "protocol" and "auth"')
+
+        try:
+            r = app.router[route_name]
+        except KeyError as e:
+            route_names = ', '.join(sorted(app.router._named_resources))
+            raise RuntimeError(f'route "{route_name}" not found, options are: {route_names}') from e
+
+        assert None not in kwargs.values(), f'invalid kwargs, includes None: {kwargs}'
+        url = r.url_for(**{k: str(v) for k, v in kwargs.items()})
+        if query:
+            url = url.with_query(**query)
+        return url

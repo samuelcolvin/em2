@@ -4,33 +4,18 @@ import {make_url} from '../lib/requests'
 import {add_listener, db, requests, window_call} from './utils'
 import Websocket from './ws'
 
-const conn_status = {
-  unauthorised: 'unauthorised',
-  not_connected: 'not_connected',
-}
-
 const ws = new Websocket()
 
 const get_session = () => db.sessions.toCollection().first()
 
 add_listener('list-conversations', async data => {
-  // const r = await requests.get('ui', '/conv/list/', {allow_fail: true, args: {page: data.page}})
-  // if (conn_status[r]) {
-  //   return r
-  // }
-  // return {items: r.data}
+  // TODO if we're online and user_v has changed since the last get for this page (without being in sync), get
+  // TODO use offset from data below
   return {conversations: await db.conversations.orderBy('updated_ts').reverse().limit(50).toArray()}
 })
 
 add_listener('get-conversation', async data => {
-  const session = await get_session()
-  if (!session) {
-    return conn_status.unauthorised
-  }
-  const r = await requests.get('ui', `/conv/${data.key}/`, {allow_fail: true})
-  if (conn_status[r]) {
-    return r
-  }
+  const r = await requests.get('ui', `/conv/${data.key}/`)
   return {actions: r.data}
 })
 

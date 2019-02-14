@@ -19,6 +19,8 @@ create table conversations (
   details json
 );
 create index conversations_created_ts on conversations using btree (created_ts);
+create index conversations_published on conversations using btree (published);
+create index conversations_creator on conversations using btree (creator);
 
 create table participants (
   id bigserial primary key,
@@ -27,6 +29,7 @@ create table participants (
   -- todo permissions, hidden, status, has_seen/unread
   unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id
 );
+create index participants_user_id on participants using btree (user_id);
 
 -- see core.ActionsTypes enum which matches this
 create type ActionTypes as enum (

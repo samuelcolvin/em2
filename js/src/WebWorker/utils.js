@@ -56,9 +56,9 @@ async function request (method, app_name, path, config) {
   } catch (e) {
     if (e.status === 401) {
       // TODO check and reauthenticate
+      // window_call here to update status
       await db.sessions.toCollection().delete()
     }
-    // window_call here to update status
     // if (config.allow_fail) {
     //   if (e.status === 0) {
     //     return conn_status.not_connected
@@ -66,7 +66,7 @@ async function request (method, app_name, path, config) {
     //     return conn_status.unauthorised
     //   }
     // }
-    // throw e
+    throw e
   }
 }
 
@@ -82,7 +82,7 @@ export const requests = {
 const unix_ms = s => (new Date(s)).getTime()
 
 export async function get_convs (session, page = 1) {
-  const r = await requests.get('ui', '/conv/list/', {allow_fail: true, args: {page}})
+  const r = await requests.get('ui', '/conv/list/', {args: {page}})
   const conversations = r.data.conversations.map(c => (
       Object.assign({}, c, {
         created_ts: unix_ms(c.created_ts),

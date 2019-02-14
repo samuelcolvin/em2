@@ -6,7 +6,7 @@ import DetailView from '../lib/retrieve/DetailView'
 import {Loading} from '../lib/Errors'
 
 const ConvDetail = ({state}) => {
-  console.log(state)
+  // console.log(state)
   if (!state.actions) {
     return <Loading/>
   }
