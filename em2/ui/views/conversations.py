@@ -128,7 +128,7 @@ class ConvCreate(ExecView):
                 conv.subject,
             )
 
-        await self.push(conv_id, publish_id)
+        await self.push(conv_id, publish_id, True)
         return dict(key=conv_key, status_=201)
 
 
@@ -138,7 +138,7 @@ class ConvAct(ExecView):
     async def execute(self, action: Model):
         conv_prefix = self.request.match_info['conv']
         conv_id, action_id = await act(self.conn, self.settings, self.session.user_id, conv_prefix, action)
-        await self.push(conv_id, action_id)
+        await self.push(conv_id, action_id, False)
         return {'action_id': action_id}
 
 
@@ -201,7 +201,7 @@ class ConvPublish(ExecView):
                 ts,
                 conv_summary['subject'],
             )
-        await self.push(conv_id, publish_action_id)
+        await self.push(conv_id, publish_action_id, True)
         return dict(key=conv_key)
 
     async def add_msg(self, msg_info: Dict[str, Any], conv_id: int, ts: datetime, msg_parent: int = None):

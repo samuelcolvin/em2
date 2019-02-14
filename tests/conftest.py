@@ -191,8 +191,8 @@ class Factory:
         assert len(self.cli.session.cookie_jar) == 1
         return r
 
-    async def create_conv(self, subject='Test Subject', message='Test Message', publish=False) -> Conv:
-        data = {'subject': subject, 'message': message, 'publish': publish}
+    async def create_conv(self, subject='Test Subject', message='Test Message', participants=[], publish=False) -> Conv:
+        data = {'subject': subject, 'message': message, 'publish': publish, 'participants': participants}
         r = await self.cli.post_json(self.url('ui:create'), data)
         assert r.status == 201, await r.text()
         conv_key = (await r.json())['key']

@@ -1,7 +1,6 @@
 import json
 
 from aiohttp import WSMsgType
-from async_timeout import timeout
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
 from em2.core import construct_conv
@@ -217,38 +216,86 @@ async def test_create_then_publish(cli, url, factory: Factory, db_conn):
     assert 3 == await db_conn.fetchval('select count(*) from actions where conv=$1', conv.id)
 
 
-async def test_ws(cli, url, factory: Factory, db_conn):
+async def test_ws_create(cli, url, factory: Factory, db_conn):
     user = await factory.create_user()
     await factory.create_conv()
     assert 4 == await db_conn.fetchval('select v from users where id=$1', user.id)
 
     async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
-        msg = None
-        with timeout(0.5):
-            async for msg in ws:
-                assert msg.type == WSMsgType.text
-                msg = json.loads(msg.data)
-                break
+        msg = await ws.receive()
+        assert msg.type == WSMsgType.text
         assert not ws.closed
         assert ws.close_code is None
-        assert msg == {'user_v': 4}
+        assert json.loads(msg.data) == {'user_v': 4}
 
         conv = await factory.create_conv()
 
-        msg = None
-        with timeout(0.5):
-            async for msg in ws:
-                assert msg.type == WSMsgType.text
-                msg = json.loads(msg.data)
-                break
+        msg = await ws.receive()
+        assert msg.type == WSMsgType.text
         assert not ws.closed
         assert ws.close_code is None
-        assert msg == {
-            'conv_key': conv.key,
-            'user_ids': [user.id],
-            'id': 3,
-            'act': 'conv:create',
-            'ts': CloseToNow(),
-            'actor': 'testing-1@example.com',
-            'body': 'Test Subject',
-        }
+
+    msg_data = json.loads(msg.data)
+    assert msg_data == {
+        'user_v': 7,
+        'actions': [
+            {
+                'id': 1,
+                'act': 'participant:add',
+                'ts': CloseToNow(),
+                'actor': 'testing-1@example.com',
+                'participant': 'testing-1@example.com',
+                'conv_key': conv.key,
+            },
+            {
+                'id': 2,
+                'act': 'message:add',
+                'ts': CloseToNow(),
+                'actor': 'testing-1@example.com',
+                'body': 'Test Message',
+                'msg_format': 'markdown',
+                'conv_key': conv.key,
+            },
+            {
+                'id': 3,
+                'act': 'conv:create',
+                'ts': CloseToNow(),
+                'actor': 'testing-1@example.com',
+                'body': 'Test Subject',
+                'conv_key': conv.key,
+            },
+        ],
+    }
+
+
+async def test_ws_add(cli, url, factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+    assert 4 == await db_conn.fetchval('select v from users where id=$1', user.id)
+
+    async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
+        msg = await ws.receive()
+        assert msg.type == WSMsgType.text
+        assert json.loads(msg.data) == {'user_v': 4}
+
+        r = await cli.post_json(url('ui:act', conv=conv.key), {'act': 'message:add', 'body': 'this is another message'})
+        assert r.status == 200, await r.text()
+
+        msg = await ws.receive()
+        assert msg.type == WSMsgType.text
+
+    msg_data = json.loads(msg.data)
+    assert msg_data == {
+        'user_v': 5,
+        'actions': [
+            {
+                'id': 4,
+                'act': 'message:add',
+                'ts': CloseToNow(),
+                'actor': 'testing-1@example.com',
+                'body': 'this is another message',
+                'msg_format': 'markdown',
+                'conv_key': conv.key,
+            }
+        ],
+    }

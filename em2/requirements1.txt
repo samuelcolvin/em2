@@ -5,4 +5,5 @@ cryptography==2.5
 misaka==2.1.1
 pycares==2.3.0
 pycryptodome==3.7.3
+ujson==1.35
 uvloop==0.12
