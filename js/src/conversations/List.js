@@ -44,13 +44,19 @@ const ConvList = ({conversations, user_email}) => {
 
 class ConvListView extends React.Component {
   async componentDidMount () {
+    this.mounted = true
     this.props.ctx.setTitle('Conversations')
     this.update()
     this.remove_listener = this.props.ctx.worker.add_listener('change', this.update)
   }
 
   componentWillUnmount () {
+    this.mounted = false
     this.remove_listener()
+  }
+
+  setState (state, callback) {
+    this.mounted && super.setState(state, callback)
   }
 
   update = async () => {

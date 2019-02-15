@@ -5,3 +5,4 @@ ipython
 devtools
 pgcli
 aiohttp-devtools
+lorem

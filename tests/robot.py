@@ -4,6 +4,7 @@ Robot user of em2 that connects and does common stuff.
 """
 import asyncio
 import json
+import sys
 from datetime import datetime
 from random import choice, random
 
@@ -28,7 +29,6 @@ class Client:
         self.convs = []
 
     async def run(self):
-        await self.login()
         await self.get_convs()
         while True:
             if random() > 0.8:
@@ -130,7 +130,13 @@ async def main():
     main_app = await create_app()
     async with ClientSession(timeout=ClientTimeout(total=5)) as session:
         client = Client(session, main_app)
-        await client.run()
+        await client.login()
+        if 'act' in sys.argv:
+            await client.act()
+        elif 'create' in sys.argv:
+            await client.create()
+        else:
+            await client.run()
 
 
 if __name__ == '__main__':
