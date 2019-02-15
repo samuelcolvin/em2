@@ -391,12 +391,13 @@ async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_prefix: 
             """
             select array_to_json(array_agg(json_strip_nulls(row_to_json(t))), true)
             from (
-              select a.id as id, a.act as act, a.ts as ts, actor_user.email as actor,
+              select a.id as id, c.key as conv, a.act as act, a.ts as ts, actor_user.email as actor,
               a.body as body, a.msg_format as msg_format,
               prt_user.email as participant, follows_action.id as follows, parent_action.id as msg_parent
               from actions as a
 
               join users as actor_user on a.actor = actor_user.id
+              join conversations as c on a.conv = c.id
 
               left join users as prt_user on a.participant_user = prt_user.id
               left join actions as follows_action on a.follows = follows_action.pk

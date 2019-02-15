@@ -60,7 +60,6 @@ class ConvListView extends React.Component {
   }
 
   update = async () => {
-    console.log('ConvListView update')
     this.setState(await this.props.ctx.worker.call('list-conversations', {page: this.get_page()}))
   }
 

@@ -139,6 +139,7 @@ async def test_conv_actions(cli, url, factory: Factory, db_conn):
     assert obj == [
         {
             'id': 1,
+            'conv': conv.key,
             'act': 'participant:add',
             'ts': CloseToNow(),
             'actor': 'testing-1@example.com',
@@ -146,13 +147,21 @@ async def test_conv_actions(cli, url, factory: Factory, db_conn):
         },
         {
             'id': 2,
+            'conv': conv.key,
             'act': 'message:add',
             'ts': CloseToNow(),
             'body': 'Test Message',
             'msg_format': 'markdown',
             'actor': 'testing-1@example.com',
         },
-        {'id': 3, 'act': 'conv:create', 'ts': CloseToNow(), 'body': 'Test Subject', 'actor': 'testing-1@example.com'},
+        {
+            'id': 3,
+            'conv': conv.key,
+            'act': 'conv:create',
+            'ts': CloseToNow(),
+            'body': 'Test Subject',
+            'actor': 'testing-1@example.com',
+        },
     ]
 
 
@@ -172,6 +181,7 @@ async def test_act(cli, url, factory: Factory):
     assert len(obj) == 4
     assert obj[-1] == {
         'id': 4,
+        'conv': conv.key,
         'act': 'message:add',
         'ts': CloseToNow(),
         'actor': 'testing-1@example.com',

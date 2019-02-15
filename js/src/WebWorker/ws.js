@@ -19,7 +19,7 @@ export default class Websocket {
 
   async connect (session) {
     if (this._state !== offline) {
-      // console.log('ws already connected')
+      console.log('ws already connected')
       return
     }
     this._session = session || this._session
@@ -74,10 +74,10 @@ export default class Websocket {
     if (data.actions) {
       await apply_actions(data)
     } else if (data.user_v !== this._session.user_v) {
-      // local data is out of date, needs updating
+      // connecting and local data is out of date, needs updating
       await get_convs()
     } else {
-      // just connecting, nothing has changed
+      // just connecting and nothing has changed
       return
     }
 
@@ -93,27 +93,13 @@ async function apply_actions (data) {
   await db.actions.bulkPut(actions)
   const action = actions[actions.length - 1]
   const conv = await db.conversations.get(action.conv)
+  const published = Boolean(actions.find(a => a.act === 'conv:publish'))
   if (conv) {
-    if (actions.length !== 1) {
-      throw Error(`apply_actions assumes only one action if conversation already exists ${actions.length}`)
-    }
-    let prts = conv.details.prts
-    prts += action.act === 'participants:add' ? 1: 0
-    prts -= action.act === 'participants:remove' ? 1: 0
-    let msgs = conv.details.msgs
-    msgs += action.act === 'message:add' ? 1: 0
-    msgs -= action.act === 'message:delete' ? 1: 0
     await db.conversations.update(action.conv, {
       updated_ts: action.ts,
       last_action_id: action.id,
-      details: {
-        act: action.act,
-        sub: ['conv:publish', 'conv:create', 'subject:modify'].includes(action.act) ? action.body : conv.details.sub,
-        email: action.actor,
-        body: ['message:add', 'message:modify'].includes(action.act) ? action.body : conv.details.body,
-        prts: prts,
-        msgs: msgs,
-      },
+      published: published || conv.published,
+      details: data.conv_details,
     })
   } else {
     await db.conversations.add({
@@ -121,23 +107,10 @@ async function apply_actions (data) {
       created_ts: actions[0].ts,
       updated_ts: action.ts,
       last_action_id: action.id,
-      published: Boolean(actions.find(a => a.act === 'conv:publish')),
-      details: {
-        act: action.act,
-        sub: actions.find(a => ['conv:publish', 'conv:create', 'subject:modify'].includes(a.act)).body,
-        email: action.actor,
-        body: actions.find(a => ['message:add', 'message:modify'].includes(a.act)).body,
-        prts: (
-            actions.filter(a => a.act === 'participants:add').length -
-            actions.filter(a => a.act === 'participants:remove').length
-        ),
-        msgs: (
-            actions.filter(a => a.act === 'message:add').length -
-            actions.filter(a => a.act === 'message:delete').length
-        ),
-      },
+      published: published,
+      details: data.conv_details,
     })
   }
-  window_call('change')
+  window_call('change', {conv: action.conv})
 }
 
