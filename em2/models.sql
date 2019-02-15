@@ -1,11 +1,17 @@
--- includes both local and remote users,
--- TODO once we have address book and public profiles, we'll need a way of getting name for an email
+create table remote_platforms (
+  id serial primary key,
+  domain varchar(255) not null unique,
+  em2 boolean not null  -- otherwise assumed to be SMTP
+);
+
+-- includes both local and remote users
 create table users (
   id bigserial primary key,
-  email varchar(255) not null,
-  v bigint not null default 1  -- could be null for users not on this platform
+  email varchar(255) not null unique,
+  platform int references remote_platforms,  -- null if the user is local
+  v bigint default 1
 );
-create unique index user_email on users using btree (email);
+create index user_platform on users using btree (platform);  -- TODO computed index on "platform is null"
 
 create table conversations (
   id bigserial primary key,
@@ -14,11 +20,12 @@ create table conversations (
   published bool default false,
   creator int not null references users on delete restrict,
   created_ts timestamptz not null,
-  updated_ts timestamptz not null,  -- if not used in queries, could be removed as duplicated in actions
+  updated_ts timestamptz not null,
   last_action_id int not null default 0 check (last_action_id >= 0),
   details json
 );
 create index conversations_created_ts on conversations using btree (created_ts);
+create index conversations_updated_ts on conversations using btree (updated_ts);
 create index conversations_published on conversations using btree (published);
 create index conversations_creator on conversations using btree (creator);
 
@@ -111,7 +118,7 @@ create or replace function action_insert() returns trigger as $$
     -- TODO is this going to slow things down on the long run?
     update users set v=v + 1
       from participants
-      where participants.user_id = users.id and participants.conv=new.conv;
+      where participants.user_id = users.id and participants.conv=new.conv and users.platform is not null;
 
     return new;
   end;

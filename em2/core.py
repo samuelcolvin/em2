@@ -221,6 +221,11 @@ class _Act:
             raise JsonErrors.HTTPNotFound(message='Conversation not found')
 
         async with self.conn.transaction():
+            # this is a hard check that conversations can only have on act applied at a time
+            await self.conn.fetchval(
+                'select 1 from conversations where id=$1 for no key update', self.conv_id
+            )
+            # IMPORTANT we do nothing that could be slow (eg. networking) inside this transaction
             if self.action.act in _prt_action_types:
                 action_id = await self._act_on_participant()
             elif self.action.act in _msg_action_types:

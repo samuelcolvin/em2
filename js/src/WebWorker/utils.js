@@ -46,7 +46,7 @@ export function route_message (message) {
 export const db = new Dexie('em2')
 db.version(1).stores({
   sessions: '&session_id, email',
-  conversations: '&key, created_ts, updated_ts, published',
+  conversations: '&key, created_ts, updated_ts, published', // TODO new_key so drafts can be deleted on publish
   actions: '[conv+id], [conv+act], conv, ts',
 })
 
