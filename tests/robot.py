@@ -6,14 +6,17 @@ import asyncio
 import json
 import sys
 from datetime import datetime
+from pathlib import Path
 from random import choice, random
 
 import devtools
 import lorem
 from aiohttp import ClientSession, ClientTimeout
 
-from em2.main import create_app
-from em2.utils.web import MakeUrl
+sys.path.append(str(Path(__file__).parent.parent.resolve()))
+
+from em2.main import create_app  # noqa: E402
+from em2.utils.web import MakeUrl  # noqa: E402
 
 host = 'localhost:8000'
 email = 'robot@example.com'
@@ -29,7 +32,6 @@ class Client:
         self.convs = []
 
     async def run(self):
-        await self.get_convs()
         while True:
             if random() > 0.8:
                 await self.create()
@@ -43,18 +45,18 @@ class Client:
         data = await self._post_json('auth:login', email=email, password=password, headers_=h)
         await self._post_json('ui:auth-token', auth_token=data['auth_token'])
 
-    async def get_convs(self):
-        print('getting convs...')
-        data = await self._get('ui:list')
-        # TODO paginate and get all convs once implemented
-        self.convs = [c['key'] for c in data['conversations']]
-        print(f'got {len(self.convs)} conversations')
-
-    async def act(self):
+    async def act(self, *, newest=False):
         if not self.convs:
-            await self.create()
-            return
-        conv_key = choice(self.convs)
+            await self.get_convs()
+            if not self.convs:
+                print('no conversations')
+                await self.create()
+                return
+
+        if newest:
+            conv_key = self.convs[-1]
+        else:
+            conv_key = choice(self.convs)
         print(f'acting on {conv_key:.8}...')
         # TODO, choose between different actions
         await self._post_json(
@@ -63,9 +65,9 @@ class Client:
             body=f'New message at {datetime.now():%H:%M:%S}.\n\n{lorem.paragraph()}',
         )
 
-    async def create(self):
+    async def create(self, *, publish=None):
         print('creating a conv...')
-        publish = choice([True, False])
+        publish = choice([True, False]) if publish is None else publish
         data = await self._post_json(
             self._make_url('ui:create'),
             subject=lorem.sentence(),
@@ -76,6 +78,12 @@ class Client:
         key = data['key']
         self.convs.append(key)
         print(f'new conv: {key:.8}..., published: {publish}, total: {len(self.convs)}')
+
+    async def get_convs(self):
+        print('getting convs...')
+        data = await self._get('ui:list')
+        # TODO paginate and get all convs once implemented
+        self.convs = [c['key'] for c in data['conversations']]
 
     async def _get(self, view_name):
         url = self._make_url(view_name)
@@ -132,9 +140,9 @@ async def main():
         client = Client(session, main_app)
         await client.login()
         if 'act' in sys.argv:
-            await client.act()
+            await client.act(newest=True)
         elif 'create' in sys.argv:
-            await client.create()
+            await client.create(publish=True)
         else:
             await client.run()
 

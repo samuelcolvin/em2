@@ -110,7 +110,6 @@ class App extends Component {
       setError: error => this.setError(error),
       setUser: user => this.setState({user}),
       setTitle: title => this.setState({title}),
-      setConnectionStatus: conn_status => this.setState({conn_status}),
       user: this.state.user,
       worker: this.worker,
     }

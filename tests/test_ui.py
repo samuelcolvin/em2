@@ -245,7 +245,7 @@ async def test_ws_create(cli, url, factory: Factory, db_conn):
                 'ts': CloseToNow(),
                 'actor': 'testing-1@example.com',
                 'participant': 'testing-1@example.com',
-                'conv_key': conv.key,
+                'conv': conv.key,
             },
             {
                 'id': 2,
@@ -254,7 +254,7 @@ async def test_ws_create(cli, url, factory: Factory, db_conn):
                 'actor': 'testing-1@example.com',
                 'body': 'Test Message',
                 'msg_format': 'markdown',
-                'conv_key': conv.key,
+                'conv': conv.key,
             },
             {
                 'id': 3,
@@ -262,9 +262,17 @@ async def test_ws_create(cli, url, factory: Factory, db_conn):
                 'ts': CloseToNow(),
                 'actor': 'testing-1@example.com',
                 'body': 'Test Subject',
-                'conv_key': conv.key,
+                'conv': conv.key,
             },
         ],
+        'conv_details': {
+            'act': 'conv:create',
+            'sub': 'Test Subject',
+            'email': 'testing-1@example.com',
+            'body': 'Test Message',
+            'prts': 1,
+            'msgs': 1,
+        },
     }
 
 
@@ -295,7 +303,15 @@ async def test_ws_add(cli, url, factory: Factory, db_conn):
                 'actor': 'testing-1@example.com',
                 'body': 'this is another message',
                 'msg_format': 'markdown',
-                'conv_key': conv.key,
+                'conv': conv.key,
             }
         ],
+        'conv_details': {
+            'act': 'message:add',
+            'sub': 'Test Subject',
+            'email': 'testing-1@example.com',
+            'body': 'this is another message',
+            'prts': 1,
+            'msgs': 2,
+        },
     }

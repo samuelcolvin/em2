@@ -46,17 +46,19 @@ class Background:
     async def process_action(self, msg: bytes):
         if self.connections:
             data = ujson.loads(msg)
-            actions = data['actions']
             coros = []
-            for user_id, user_v in data['users']:
+            users = data.pop('users')
+            # hack to avoid building json for every use, remove the starting "{" so user_v can be prepended
+            msg_json_chunk = ujson.dumps(data)[1:]
+            for user_id, user_v in users:
                 ws = self.connections.get(user_id)
                 if ws is not None:
-                    coros.append(self.send(user_id, user_v, ws, actions))
+                    coros.append(self.send(user_id, user_v, ws, msg_json_chunk))
 
             await asyncio.gather(*coros)
 
-    async def send(self, user_id: int, user_v: int, ws: WebSocketResponse, actions: Dict):
-        msg = ujson.dumps({'user_v': user_v, 'actions': actions})
+    async def send(self, user_id: int, user_v: int, ws: WebSocketResponse, msg_json_chunk: str):
+        msg = '{"user_v": %d,%s' % (user_v, msg_json_chunk)
         try:
             await ws.send_str(msg)
         except (RuntimeError, AttributeError):
@@ -67,7 +69,8 @@ class Background:
 push_sql_template = """
 select json_build_object(
   'actions', actions,
-  'users', participants
+  'users', participants,
+  'conv_details', conv_details
 )
 from (
   select array_to_json(array_agg(json_strip_nulls(row_to_json(t)))) as actions
@@ -75,7 +78,7 @@ from (
     select a.id as id, a.act as act, a.ts as ts, actor_user.email as actor,
     a.body as body, a.msg_format as msg_format,
     prt_user.email as participant, follows_action.id as follows, parent_action.id as msg_parent,
-    c.key as conv_key
+    c.key as conv
     from actions as a
 
     join users as actor_user on a.actor = actor_user.id
@@ -96,7 +99,10 @@ from (
     join users u on p.user_id = u.id
     where conv=$1 and (c.published=true or p.user_id=c.creator)
   ) as t
-) as participants
+) as participants,
+(
+  select details as conv_details from conversations where id=$1
+) as conv_details
 """
 
 push_sql_all = push_sql_template.format('where a.conv=$1 order by a.id')

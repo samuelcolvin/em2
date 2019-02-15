@@ -71,18 +71,17 @@ create or replace function action_insert() returns trigger as $$
   -- could replace all this with plv8
   declare
     -- todo add actor name when we have it, could add attachment count etc. here too
-    -- if this ends up being a bottle neck, we could cache particular values on the the conversation
-    -- and update them individually
-    details_ json = json_build_object(
+    old_details_ json;
+    details_ json;
+  begin
+    select details into old_details_ from conversations where id=new.conv;
+    details_ := json_build_object(
       'act', new.act,
       'sub', (
         case when new.act=any(array['conv:publish', 'conv:create', 'subject:modify']::ActionTypes[]) then
           new.body
         else
-          (select body
-           from actions
-           where conv=new.conv and act=any(array['conv:publish', 'conv:create', 'subject:modify']::ActionTypes[])
-           order by id desc limit 1)
+          old_details_->>'sub'
         end
       ),
       'email', (select email from users where id=new.actor),
@@ -90,10 +89,7 @@ create or replace function action_insert() returns trigger as $$
         case when new.act=any(array['message:add', 'message:modify']::ActionTypes[]) then
           new.body
         else
-          (select body
-           from actions
-           where conv=new.conv and act=any(array['message:add', 'message:modify']::ActionTypes[])
-           order by id desc limit 1)
+          old_details_->>'body'
         end, 100
       ),
       'prts', (select count(*) from participants where conv=new.conv),
@@ -104,7 +100,6 @@ create or replace function action_insert() returns trigger as $$
                when new.act='message:delete' then -1
                else 0 end
     );
-  begin
     update conversations
       set updated_ts=new.ts, details=details_, last_action_id=last_action_id + 1
       where id=new.conv

@@ -1,1 +1,1 @@
-from .main import create_app_protocol  # noqa
+from .main import create_app_protocol  # noqa: F401

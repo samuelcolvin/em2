@@ -47,6 +47,7 @@ export const db = new Dexie('em2')
 db.version(1).stores({
   sessions: '&session_id, email',
   conversations: '&key, created_ts, updated_ts, published',
+  actions: '[conv+id], [conv+act], conv, ts',
 })
 
 async function request (method, app_name, path, config) {
@@ -79,7 +80,7 @@ export const requests = {
   },
 }
 
-const unix_ms = s => (new Date(s)).getTime()
+export const unix_ms = s => (new Date(s)).getTime()
 
 export async function get_convs (session, page = 1) {
   const r = await requests.get('ui', '/conv/list/', {args: {page}})

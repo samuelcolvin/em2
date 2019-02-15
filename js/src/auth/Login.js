@@ -45,7 +45,6 @@ class Login extends React.Component {
         Recaptcha.reset()
       }
       this.setState({recaptcha_shown: data.grecaptcha_required})
-      // this.props.ctx.setConnectionStatus(statuses.online_unauth_nodata)
     } else if (data.auth_token) {
       await this.authenticate(data)
     } else if (data.error) {

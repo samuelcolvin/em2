@@ -1,6 +1,6 @@
 import {statuses} from '../lib'
 import {make_url} from '../lib/requests'
-import {db, get_convs, window_call} from './utils'
+import {db, get_convs, unix_ms, window_call} from './utils'
 
 const offline = 0
 const connecting = 1
@@ -22,7 +22,7 @@ export default class Websocket {
       // console.log('ws already connected')
       return
     }
-    this._session = session
+    this._session = session || this._session
     window_conn_status(statuses.connecting)
     this._state = connecting
     let ws_url = make_url('ui', '/ws/').replace('http', 'ws')
@@ -71,17 +71,73 @@ export default class Websocket {
     window_conn_status(statuses.online)
     const data = JSON.parse(event.data)
 
-    if (data.user_v) {
-      if (data.user_v !== this._session.user_v) {
-        // local data is out of date, needs updating
-        const r = await get_convs()
-        const session_update = {user_v: data.user_v, conv_count: r.count}
-        await db.sessions.update(this._session.session_id, session_update)
-        Object.assign(this._session, session_update)
-      }
+    if (data.actions) {
+      await apply_actions(data)
+    } else if (data.user_v !== this._session.user_v) {
+      // local data is out of date, needs updating
+      await get_convs()
     } else {
-      console.log('ws message:', data)
-      window_call('change')
+      // just connecting, nothing has changed
+      return
     }
+
+    const session_update = {user_v: data.user_v}
+    await db.sessions.update(this._session.session_id, session_update)
+    Object.assign(this._session, session_update)
   }
 }
+
+async function apply_actions (data) {
+  const actions = data.actions.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
+
+  await db.actions.bulkPut(actions)
+  const action = actions[actions.length - 1]
+  const conv = await db.conversations.get(action.conv)
+  if (conv) {
+    if (actions.length !== 1) {
+      throw Error(`apply_actions assumes only one action if conversation already exists ${actions.length}`)
+    }
+    let prts = conv.details.prts
+    prts += action.act === 'participants:add' ? 1: 0
+    prts -= action.act === 'participants:remove' ? 1: 0
+    let msgs = conv.details.msgs
+    msgs += action.act === 'message:add' ? 1: 0
+    msgs -= action.act === 'message:delete' ? 1: 0
+    await db.conversations.update(action.conv, {
+      updated_ts: action.ts,
+      last_action_id: action.id,
+      details: {
+        act: action.act,
+        sub: ['conv:publish', 'conv:create', 'subject:modify'].includes(action.act) ? action.body : conv.details.sub,
+        email: action.actor,
+        body: ['message:add', 'message:modify'].includes(action.act) ? action.body : conv.details.body,
+        prts: prts,
+        msgs: msgs,
+      },
+    })
+  } else {
+    await db.conversations.add({
+      key: action.conv,
+      created_ts: actions[0].ts,
+      updated_ts: action.ts,
+      last_action_id: action.id,
+      published: Boolean(actions.find(a => a.act === 'conv:publish')),
+      details: {
+        act: action.act,
+        sub: actions.find(a => ['conv:publish', 'conv:create', 'subject:modify'].includes(a.act)).body,
+        email: action.actor,
+        body: actions.find(a => ['message:add', 'message:modify'].includes(a.act)).body,
+        prts: (
+            actions.filter(a => a.act === 'participants:add').length -
+            actions.filter(a => a.act === 'participants:remove').length
+        ),
+        msgs: (
+            actions.filter(a => a.act === 'message:add').length -
+            actions.filter(a => a.act === 'message:delete').length
+        ),
+      },
+    })
+  }
+  window_call('change')
+}
+
