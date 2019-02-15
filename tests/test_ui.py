@@ -115,6 +115,7 @@ async def test_conv_list(cli, url, factory: Factory, db_conn):
                 'updated_ts': CloseToNow(),
                 'published': False,
                 'last_action_id': 3,
+                'seen': True,
                 'details': {
                     'act': 'conv:create',
                     'sub': 'Test Subject',

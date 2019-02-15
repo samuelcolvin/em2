@@ -30,7 +30,7 @@ async def test_msg_add(factory: Factory, db_conn, settings):
         'follows': None,
         'participant_user': None,
         'body': 'This is a test',
-        'msg_parent': None,
+        'parent': None,
         'msg_format': 'markdown',
     }
 
@@ -52,7 +52,7 @@ async def test_msg_lock_msg(factory: Factory, db_conn, settings):
         'follows': await db_conn.fetchval('select pk from actions where id=2'),
         'participant_user': None,
         'body': None,
-        'msg_parent': None,
+        'parent': None,
         'msg_format': None,
     }
 
@@ -61,7 +61,7 @@ async def test_msg_add_child(factory: Factory, db_conn, settings):
     user = await factory.create_user()
     conv = await factory.create_conv()
 
-    action = ActionModel(act=ActionsTypes.msg_add, body='This is a child message', msg_parent=2)
+    action = ActionModel(act=ActionsTypes.msg_add, body='This is a child message', parent=2)
     assert 4 == await act(db_conn, settings, user.id, conv.key, action)
     action_info = dict(await db_conn.fetchrow('select * from actions where id=4'))
     assert action_info == {
@@ -74,7 +74,7 @@ async def test_msg_add_child(factory: Factory, db_conn, settings):
         'follows': None,
         'participant_user': None,
         'body': 'This is a child message',
-        'msg_parent': await db_conn.fetchval('select pk from actions where id=2'),
+        'parent': await db_conn.fetchval('select pk from actions where id=2'),
         'msg_format': 'markdown',
     }
 
@@ -154,7 +154,7 @@ async def test_participant_add(factory: Factory, db_conn, settings):
         'follows': None,
         'participant_user': await db_conn.fetchval("select id from users where email='new@example.com'"),
         'body': None,
-        'msg_parent': None,
+        'parent': None,
         'msg_format': None,
     }
 
@@ -179,7 +179,7 @@ async def test_participant_remove(factory: Factory, db_conn, settings):
         'follows': await db_conn.fetchval('select pk from actions where id=4'),
         'participant_user': await db_conn.fetchval("select id from users where email='new@example.com'"),
         'body': None,
-        'msg_parent': None,
+        'parent': None,
         'msg_format': None,
     }
 
@@ -343,8 +343,8 @@ async def test_object_children(factory: Factory, db_conn, settings):
     user = await factory.create_user()
     conv = await factory.create_conv()
     await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_add, body='This is a reply'))
-    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_add, body='child1', msg_parent=4))
-    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_add, body='child2', msg_parent=5))
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_add, body='child1', parent=4))
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_add, body='child2', parent=5))
 
     assert 7 == await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_lock, follows=5))
     await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.msg_modify, follows=7, body='mod1'))
@@ -411,3 +411,26 @@ async def test_participant_add_cant_get(factory: Factory, db_conn, settings):
     with pytest.raises(JsonErrors.HTTPForbidden) as exc_info:
         await construct_conv(db_conn, user2.id, conv.key)
     assert exc_info.value.message == 'conversation is unpublished and you are not the creator'
+
+
+async def test_seen(factory: Factory, db_conn, settings):
+    user = await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+
+    assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user.id)
+
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.prt_add, participant='2@ex.com'))
+
+    assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user.id)
+    user2_id = await db_conn.fetchval('select id from users where email=$1', '2@ex.com')
+    assert False is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
+
+    await act(db_conn, settings, user2_id, conv.key, ActionModel(act=ActionsTypes.seen))
+
+    assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user.id)
+    assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
+
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.prt_add, participant='3@ex.com'))
+
+    assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user.id)
+    assert False is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)

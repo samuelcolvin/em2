@@ -28,10 +28,10 @@ class ConvList(View):
     ) from (
       select coalesce(array_to_json(array_agg(row_to_json(t)), true), '[]') as conversations
       from (
-        select key, created_ts, updated_ts, published, last_action_id, details
+        select key, created_ts, updated_ts, published, last_action_id, p.seen as seen, details
         from conversations as c
-        join participants on c.id = participants.conv
-        where participants.user_id=$1 and (c.published or c.creator=$1)
+        join participants as p on c.id = p.conv
+        where p.user_id=$1 and (c.published or c.creator=$1)
         order by c.created_ts, c.id desc
         limit 50
       ) t
@@ -88,11 +88,15 @@ class ConvCreate(ExecView):
                 raise JsonErrors.HTTPConflict(error='key conflicts with existing conversation')
 
             part_users = await get_create_multiple_users(self.conn, conv.participants)
-            user_ids = [creator_id] + list(part_users.values())
 
             await self.conn.execute(
-                'insert into participants (conv, user_id) (select $1, unnest($2::int[]))', conv_id, user_ids
+                'insert into participants (conv, user_id, seen) (select $1, $2, true)', conv_id, creator_id
             )
+            other_user_ids = list(part_users.values())
+            await self.conn.execute(
+                'insert into participants (conv, user_id) (select $1, unnest($2::int[]))', conv_id, other_user_ids
+            )
+            user_ids = [creator_id] + other_user_ids
             await self.conn.execute(
                 """
                 insert into actions (conv, act             , actor, ts, participant_user) (
@@ -204,13 +208,13 @@ class ConvPublish(ExecView):
         await self.push(conv_id, publish_action_id, True)
         return dict(key=conv_key)
 
-    async def add_msg(self, msg_info: Dict[str, Any], conv_id: int, ts: datetime, msg_parent: int = None):
+    async def add_msg(self, msg_info: Dict[str, Any], conv_id: int, ts: datetime, parent: int = None):
         """
         Recursively create messages.
         """
         pk = await self.conn.fetchval(
             """
-            insert into actions (conv, act          , actor, ts, body, msg_format, msg_parent)
+            insert into actions (conv, act          , actor, ts, body, msg_format, parent)
             values              ($1  , 'message:add', $2   , $3, $4  , $5        , $6)
             returning pk
             """,
@@ -219,7 +223,7 @@ class ConvPublish(ExecView):
             ts,
             msg_info['body'],
             msg_info['format'],
-            msg_parent,
+            parent,
         )
         for msg in msg_info.get('children', []):
             await self.add_msg(msg, conv_id, ts, pk)

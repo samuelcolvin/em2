@@ -21,7 +21,7 @@ lint:
 	$(isort) --check-only -df
 	$(black) --check
 	./tests/check_debug.sh
-	cd js && yarn lint && cd ..
+	cd js && yarn --offline lint && cd ..
 
 .PHONY: test
 test:

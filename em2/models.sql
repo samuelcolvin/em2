@@ -26,6 +26,7 @@ create table participants (
   id bigserial primary key,
   conv bigint not null references conversations on delete cascade,
   user_id bigint not null references users on delete restrict,
+  seen boolean not null default false,  -- aka unread
   -- todo permissions, hidden, status, has_seen/unread
   unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id
 );
@@ -35,7 +36,8 @@ create index participants_user_id on participants using btree (user_id);
 create type ActionTypes as enum (
   'conv:publish', 'conv:create',
   'subject:modify', 'subject:lock', 'subject:release',
-  'expiry:modify',  -- rename to conv:expiry?
+  'seen',
+  'expiry:modify',
   'message:add', 'message:modify', 'message:delete', 'message:recover', 'message:lock', 'message:release',
   'participant:add', 'participant:remove', 'participant:modify'
 );
@@ -53,8 +55,9 @@ create table actions (
   follows bigint references actions,  -- when modifying/deleting etc. a component
   participant_user bigint references users on delete restrict,
   body text,
+   -- used for child message "comments", the thing seen , could also be used on message updates?
+  parent bigint references actions,
   msg_format MsgFormat,
-  msg_parent bigint references actions,  -- used for child messages "comments", could also be used on message updates?
 
   -- todo participant details, attachment details, perhaps json for other types
 
@@ -64,7 +67,7 @@ create table actions (
 );
 create index action_id on actions using btree (id);
 create index action_act_id on actions using btree (conv, act, id);
-create index action_conv_msg_parent on actions using btree (conv, msg_parent);
+create index action_conv_parent on actions using btree (conv, parent);
 
 -- this could be run on every "migration"
 create or replace function action_insert() returns trigger as $$

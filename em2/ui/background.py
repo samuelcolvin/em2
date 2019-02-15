@@ -48,8 +48,8 @@ class Background:
             data = ujson.loads(msg)
             coros = []
             users = data.pop('users')
-            # hack to avoid building json for every use, remove the starting "{" so user_v can be prepended
-            msg_json_chunk = ujson.dumps(data)[1:]
+            # hack to avoid building json for every user, remove the ending "}" so user_v can be appended
+            msg_json_chunk = ujson.dumps(data)[:-1]
             for user_id, user_v in users:
                 ws = self.connections.get(user_id)
                 if ws is not None:
@@ -58,7 +58,7 @@ class Background:
             await asyncio.gather(*coros)
 
     async def send(self, user_id: int, user_v: int, ws: WebSocketResponse, msg_json_chunk: str):
-        msg = '{"user_v": %d,%s' % (user_v, msg_json_chunk)
+        msg = msg_json_chunk + (',"user_v":%d}' % user_v)
         try:
             await ws.send_str(msg)
         except (RuntimeError, AttributeError):
@@ -77,7 +77,7 @@ from (
   from (
     select a.id as id, a.act as act, a.ts as ts, actor_user.email as actor,
     a.body as body, a.msg_format as msg_format,
-    prt_user.email as participant, follows_action.id as follows, parent_action.id as msg_parent,
+    prt_user.email as participant, follows_action.id as follows, parent_action.id as parent,
     c.key as conv
     from actions as a
 
@@ -86,7 +86,7 @@ from (
 
     left join users as prt_user on a.participant_user = prt_user.id
     left join actions as follows_action on a.follows = follows_action.pk
-    left join actions as parent_action on a.msg_parent = parent_action.pk
+    left join actions as parent_action on a.parent = parent_action.pk
     {}
   ) as t
 ) as actions,
