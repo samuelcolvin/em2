@@ -490,7 +490,7 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
         elif act == ActionsTypes.subject_lock:
             subject = action['body']
         elif act == ActionsTypes.msg_add:
-            message = {
+            messages[action_id] = {
                 'ref': action_id,
                 'body': action['body'],
                 'created': action['ts'],
@@ -498,7 +498,6 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
                 'parent': action.get('parent'),
                 'active': True,
             }
-            messages[action_id] = message
         elif act in _msg_action_types:
             message = messages[action['follows']]
             message['ref'] = action_id

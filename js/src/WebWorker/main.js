@@ -3,6 +3,7 @@ import {statuses} from '../lib'
 import {make_url} from '../lib/requests'
 import {add_listener, db, requests, unix_ms, window_call} from './utils'
 import Websocket from './ws'
+import get_conversation from './get_conversation'
 
 const ws = new Websocket()
 
@@ -14,33 +15,7 @@ add_listener('list-conversations', async data => {
   return {conversations: await db.conversations.orderBy('updated_ts').reverse().limit(50).toArray()}
 })
 
-
-const actions_incomplete = actions => {
-  // check we have all actions for a conversation, eg. ids are exactly incrementing
-  let last_id = 0
-  for (let a of actions) {
-    if (a.id !== last_id + 1) {
-      return last_id
-    }
-    last_id = a.id
-  }
-  return null
-}
-
-const get_actions = conv_key => db.actions.where('conv').startsWith(conv_key).sortBy('id')
-
-add_listener('get-conversation', async data => {
-  let actions = await get_actions(data.key)
-
-  const last_action = actions_incomplete(actions)
-  if (last_action !== null) {
-    const r = await requests.get('ui', `/conv/${data.key}/?since=${last_action}`)
-    const new_actions = r.data.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
-    await db.actions.bulkPut(new_actions)
-    actions = await get_actions(data.key)
-  }
-  return {actions}
-})
+add_listener('get-conversation', get_conversation)
 
 add_listener('auth-token', async data => {
   await requests.post('ui', '/auth-token/', {auth_token: data.auth_token})

@@ -16,14 +16,15 @@ export function route_message (message) {
   if (method === undefined) {
     console.error(`worker: method "${message.data.method}" not found`)
     if (message.data.async_id) {
-      postMessage({error: `method "${message.data.method}" not found`, async_id: message.data.async_id})
+      const error = {message: `method "${message.data.method}" not found`}
+      postMessage({error, async_id: message.data.async_id})
     }
   } else {
     // console.log('worker running:', message.data.method, message.data.call_args || '')
     let result = method(message.data.call_args)
 
     const on_error = err => {
-      console.warn('worker error:', err)
+      console.warn('worker:', err)
       const error = {message: err.message || err.toString(), details: err.details}
       postMessage({error, async_id: message.data.async_id})
     }
