@@ -142,7 +142,8 @@ class ConvAct(ExecView):
     async def execute(self, action: Model):
         conv_prefix = self.request.match_info['conv']
         conv_id, action_id = await act(self.conn, self.settings, self.session.user_id, conv_prefix, action)
-        await self.push(conv_id, action_id, False)
+        if action_id:
+            await self.push(conv_id, action_id, False)
         return {'action_id': action_id}
 
 

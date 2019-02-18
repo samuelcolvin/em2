@@ -434,3 +434,21 @@ async def test_seen(factory: Factory, db_conn, settings):
 
     assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user.id)
     assert False is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
+
+
+async def test_already_seen(factory: Factory, db_conn, settings):
+    user = await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.prt_add, participant='2@ex.com'))
+
+    user2_id = await db_conn.fetchval('select id from users where email=$1', '2@ex.com')
+    assert False is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
+
+    assert None is not await act(db_conn, settings, user2_id, conv.key, ActionModel(act=ActionsTypes.seen))
+    assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
+
+    assert None is await act(db_conn, settings, user2_id, conv.key, ActionModel(act=ActionsTypes.seen))
+    await act(db_conn, settings, user.id, conv.key, ActionModel(act=ActionsTypes.prt_add, participant='3@ex.com'))
+    assert False is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
+    assert None is not await act(db_conn, settings, user2_id, conv.key, ActionModel(act=ActionsTypes.seen))
+    assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)

@@ -205,7 +205,7 @@ class _Act:
     See act() below for details.
     """
 
-    __slots__ = ('conn', 'settings', 'actor_user_id', 'action', 'conv_id')
+    __slots__ = 'conn', 'settings', 'actor_user_id', 'action', 'conv_id'
 
     def __init__(self, conn: BuildPgConnection, settings: Settings, actor_user_id: int, action: ActionModel):
         self.conn = conn
@@ -214,7 +214,7 @@ class _Act:
         self.action = action
         self.conv_id = None
 
-    async def run(self, conv_prefix: str) -> Tuple[int, int]:
+    async def run(self, conv_prefix: str) -> Tuple[int, Optional[int]]:
         self.conv_id, last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_prefix)
         if last_action:
             # if the usr has be removed from the conversation they can't act
@@ -233,15 +233,18 @@ class _Act:
             else:
                 raise NotImplementedError
 
-            # the actor is assumed to have seen the conversation AS they've acted upon it
-            await self.conn.execute(
-                'update participants set seen=true where conv=$1 and user_id=$2', self.conv_id, self.actor_user_id
-            )
-            # everyone else hasn't seen this action if it's "worth seeing"
-            if self.action.act not in _meta_action_types:
+            if action_id:
+                # the actor is assumed to have seen the conversation AS they've acted upon it
                 await self.conn.execute(
-                    'update participants set seen=false where conv=$1 and user_id!=$2', self.conv_id, self.actor_user_id
+                    'update participants set seen=true where conv=$1 and user_id=$2', self.conv_id, self.actor_user_id
                 )
+                # everyone else hasn't seen this action if it's "worth seeing"
+                if self.action.act not in _meta_action_types:
+                    await self.conn.execute(
+                        'update participants set seen=false where conv=$1 and user_id!=$2',
+                        self.conv_id,
+                        self.actor_user_id,
+                    )
 
         return self.conv_id, action_id
 
@@ -357,24 +360,41 @@ class _Act:
             follows_pk,
         )
 
-    async def _seen(self) -> int:
-        parent_pk = None
-        if self.action.parent:
-            parent_pk = await or404(
-                self.conn.fetchval(
-                    "select pk from actions where conv=$1 and id=$2 and act!='seen'", self.conv_id, self.action.parent
-                ),
-                msg='parent action not found',
+    async def _seen(self) -> Optional[int]:
+        # could use "parent" to identify what was seen
+        last_seen = await self.conn.fetchval(
+            """
+            select a.id from actions as a
+            where a.conv=$1 and act='seen' and actor=$2
+            order by id desc
+            limit 1
+            """,
+            self.conv_id,
+            self.actor_user_id,
+        )
+        if last_seen:
+            last_real_action = await self.conn.fetchval(
+                """
+                select id from actions
+                where conv = $1 and not (act = any($2::ActionTypes[]))
+                order by id desc
+                limit 1
+                """,
+                self.conv_id,
+                _meta_action_types,
             )
+            if last_real_action and last_seen > last_real_action:
+                # conversation already seen by this user since it last changed
+                return
+
         return await self.conn.fetchval(
             """
-            insert into actions (conv, actor, act   , parent)
-            values              ($1  , $2   , 'seen', $3)
+            insert into actions (conv, actor, act   )
+            values              ($1  , $2   , 'seen')
             returning id
             """,
             self.conv_id,
             self.actor_user_id,
-            parent_pk,
         )
 
     async def _get_follows(self, permitted_acts: Set[ActionsTypes]) -> Tuple[int, str, int, int]:
@@ -405,7 +425,7 @@ class _Act:
 
 async def act(
     conn: BuildPgConnection, settings: Settings, actor_user_id: int, conv_prefix: str, action: ActionModel
-) -> Tuple[int, int]:
+) -> Tuple[int, Optional[int]]:
     """
     Apply an action and return its id.
 

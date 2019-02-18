@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     sql_path = SRC_DIR / 'models.sql'
     create_app = 'em2.main.create_app'
 
-    domain: str = 'localhost'
+    domain: str = 'localhost'  # currently used as a proxy for development mode, should probably be changed
     commit: str = 'unknown'
     build_time: str = 'unknown'
 

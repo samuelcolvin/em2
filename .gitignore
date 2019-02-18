@@ -34,3 +34,5 @@ yarn-error.log*
 /activate.local.sh
 /TODO.md
 /tests/test_scratch.py
+/tests/robot_cookies.pkl
+/js/src/.update.js

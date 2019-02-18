@@ -1,14 +1,20 @@
+import logging
+import sys
+from datetime import datetime
+
 from aiohttp.web import Application
 from atoolbox.create_app import cleanup, startup
 from atoolbox.middleware import error_middleware
 
 from em2.auth import create_app_auth
 from em2.protocol import create_app_protocol
-from em2.settings import Settings
+from em2.settings import SRC_DIR, Settings
 from em2.ui import create_app_ui
 from em2.utils.web import build_index
 
 copied_context = 'pg', 'redis', 'http_client', 'expected_origin'
+
+logger = logging.getLogger('em2.main')
 
 
 async def startup_populate_subapps(app: Application):
@@ -16,6 +22,17 @@ async def startup_populate_subapps(app: Application):
     app['ui_app'].update(subapp_context)
     app['protocol_app'].update(subapp_context)
     app['auth_app'].update(subapp_context)
+
+
+async def restart_react_dev_server(app: Application):
+    # prompts create react app's "yarn start" dev server to reload
+    settings: Settings = app['settings']
+    if settings.domain == 'localhost' and 'runserver' in sys.argv:  # basic proxy for "development mode"
+        path = SRC_DIR / '../js/src/.update.js'
+        if path.parent.exists():
+            path.write_text(f'// {datetime.now():%H:%M:%S}')
+        else:
+            logger.warning('update.js directory "%s" does not exist', path.resolve())
 
 
 async def create_app(settings: Settings = None):
@@ -31,6 +48,7 @@ async def create_app(settings: Settings = None):
     )
     app.on_startup.append(startup)
     app.on_startup.append(startup_populate_subapps)
+    app.on_startup.append(restart_react_dev_server)
     app.on_cleanup.append(cleanup)
 
     if settings.domain == 'localhost':

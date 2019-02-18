@@ -11,7 +11,7 @@ from random import choice, random
 
 import devtools
 import lorem
-from aiohttp import ClientSession, ClientTimeout
+from aiohttp import ClientSession, ClientTimeout, CookieJar
 
 sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
@@ -45,7 +45,7 @@ class Client:
         data = await self._post_json('auth:login', email=email, password=password, headers_=h)
         await self._post_json('ui:auth-token', auth_token=data['auth_token'])
 
-    async def act(self, *, newest=False):
+    async def act(self, *, newest=False, seen=None):
         if not self.convs:
             await self.get_convs()
             if not self.convs:
@@ -57,13 +57,23 @@ class Client:
             conv_key = self.convs[-1]
         else:
             conv_key = choice(self.convs)
-        print(f'acting on {conv_key:.8}...')
-        # TODO, choose between different actions
-        await self._post_json(
-            self._make_url('ui:act', conv=conv_key),
-            act='message:add',
-            body=f'New message at {datetime.now():%H:%M:%S}.\n\n{lorem.paragraph()}',
-        )
+        print(f'acting on {conv_key:.10}...')
+
+        if seen is None:
+            seen = random() > 0.8
+
+        # with newest, always add a message
+        if seen:
+            print(f'marking {conv_key:.10} as seen...')
+            response = await self._post_json(self._make_url('ui:act', conv=conv_key), act='seen')
+        else:
+            print(f'adding message to {conv_key:.10}...')
+            response = await self._post_json(
+                self._make_url('ui:act', conv=conv_key),
+                act='message:add',
+                body=f'New message at {datetime.now():%H:%M:%S}.\n\n{lorem.paragraph()}',
+            )
+        devtools.debug(response)
 
     async def create(self, *, publish=None):
         print('creating a conv...')
@@ -77,7 +87,7 @@ class Client:
         )
         key = data['key']
         self.convs.append(key)
-        print(f'new conv: {key:.8}..., published: {publish}, total: {len(self.convs)}')
+        print(f'new conv: {key:.10}..., published: {publish}, total: {len(self.convs)}')
 
     async def get_convs(self):
         print('getting convs...')
@@ -136,15 +146,27 @@ class Client:
 
 async def main():
     main_app = await create_app()
-    async with ClientSession(timeout=ClientTimeout(total=5)) as session:
-        client = Client(session, main_app)
-        await client.login()
-        if 'act' in sys.argv:
-            await client.act(newest=True)
-        elif 'create' in sys.argv:
-            await client.create(publish=True)
-        else:
-            await client.run()
+    cookie_path = Path(__file__).parent.resolve() / './robot_cookies.pkl'
+    cookies = CookieJar()
+    if cookie_path.exists():
+        cookies.load(cookie_path)
+    async with ClientSession(timeout=ClientTimeout(total=5), cookie_jar=cookies) as session:
+        try:
+            client = Client(session, main_app)
+            if not cookie_path.exists():
+                await client.login()
+            if 'act' in sys.argv:
+                await client.act(newest=True)
+            elif 'seen' in sys.argv:
+                await client.act(newest=True, seen=True)
+            elif 'message' in sys.argv:
+                await client.act(newest=True, seen=False)
+            elif 'create' in sys.argv:
+                await client.create(publish=True)
+            else:
+                await client.run()
+        finally:
+            session.cookie_jar.save(cookie_path)
 
 
 if __name__ == '__main__':
