@@ -1,17 +1,10 @@
-create table remote_platforms (
-  id serial primary key,
-  domain varchar(255) not null unique,
-  em2 boolean not null  -- otherwise assumed to be SMTP
-);
-
 -- includes both local and remote users
 create table users (
   id bigserial primary key,
   email varchar(255) not null unique,
-  platform int references remote_platforms,  -- null if the user is local
-  v bigint default 1
+  v bigint default 1  -- null for remote users, set thus when the local check returns false
 );
-create index user_platform on users using btree (platform);  -- TODO computed index on "platform is null"
+create index user_v on users using btree (v);
 
 create table conversations (
   id bigserial primary key,
@@ -118,7 +111,7 @@ create or replace function action_insert() returns trigger as $$
     -- TODO is this going to slow things down on the long run?
     update users set v=v + 1
       from participants
-      where participants.user_id = users.id and participants.conv=new.conv and users.platform is not null;
+      where participants.user_id = users.id and participants.conv = new.conv and users.v is not null;
 
     return new;
   end;
