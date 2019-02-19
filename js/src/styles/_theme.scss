@@ -81,6 +81,12 @@ $stripe-width: 10px;
   box-shadow: 0 2px 15px rgba(84,96,103,.25);
   padding: 1rem;
   margin-bottom: 1rem;
+  &.no-pad {
+    padding: 0.7rem 0 0;
+    > div {
+      padding: 0.3rem 1rem;
+    }
+  }
 }
 
 .loading {
@@ -140,6 +146,27 @@ $stripe-width: 10px;
       .fa {
         margin-right: 0.2rem;
       }
+    }
+  }
+}
+
+.msg-details {
+  p {
+    margin-bottom: 0.5rem;
+  }
+}
+
+.add-msg {
+  textarea {
+    padding: 0.5rem 0.3rem;
+    width: 100%;
+    min-height: 120px;
+
+    border: 1px solid #d1d5da;
+    border-radius: 3px;
+    box-shadow: inset 0 1px 2px rgba(27,31,35,.075);
+    &:disabled {
+      background: #f8f8f8;
     }
   }
 }

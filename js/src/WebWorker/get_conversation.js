@@ -16,18 +16,18 @@ function actions_incomplete (actions) {
 const get_db_actions = conv_key => db.actions.where('conv').startsWith(conv_key).sortBy('id')
 
 const _msg_action_types = [
-    'message:recover', 'message:lock', 'message:release', 'message:add', 'message:modify', 'message:delete'
+    'message:recover', 'message:lock', 'message:release', 'message:add', 'message:modify', 'message:delete',
 ]
 
 // taken roughly from core.py:_construct_conv_actions
-function construct_conv_actions (actions) {
+function construct_conv (actions) {
   let subject = null
   let created = null
   const messages = {}
   const participants = {}
 
   for (let action of actions) {
-    const act = action['act']
+    const act = action.act
     if (['conv:publish', 'conv:create'].includes(act)) {
       subject = action.body
       created = action.ts
@@ -36,9 +36,10 @@ function construct_conv_actions (actions) {
     } else if (act === 'message:add') {
       messages[action.id] = {
         'ref': action.id,
-        'body': action['body'],
-        'created': action['ts'],
-        'format': action['msg_format'],
+        'body': action.body,
+        'creator': action.actor,
+        'created': action.ts,
+        'format': action.msg_format,
         'parent': action.parent || null,
         'active': true,
       }
@@ -47,6 +48,7 @@ function construct_conv_actions (actions) {
       message.ref = action.id
       if (act === 'message:modify') {
         message.body = action.body
+        message.editor = action.actor
       } else if (act === 'message:delete') {
         message.active = false
       } else if (act === 'message:recover') {
@@ -84,10 +86,12 @@ function construct_conv_actions (actions) {
   }
 
   return {
-    'subject': subject,
-    'created': created,
-    'messages': msg_list,
-    'participants': participants,
+    // actions: actions,
+    subject: subject,
+    created: created,
+    messages: msg_list,
+    participants: participants,
+    action_ids: new Set(actions.map(a => a.id)),
   }
 }
 
@@ -95,7 +99,6 @@ export default async function (data) {
   let actions = await get_db_actions(data.key)
 
   const last_action = actions_incomplete(actions)
-  console.log(actions, last_action)
   if (!actions.length || last_action !== null) {
     let url = `/conv/${data.key}/`
     if (last_action) {
@@ -106,5 +109,5 @@ export default async function (data) {
     await db.actions.bulkPut(new_actions)
     actions = await get_db_actions(data.key)
   }
-  return construct_conv_actions(actions)
+  return construct_conv(actions)
 }

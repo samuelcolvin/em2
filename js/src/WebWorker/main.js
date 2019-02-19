@@ -1,7 +1,7 @@
 import debounce from 'debounce-async'
 import {statuses} from '../lib'
 import {make_url} from '../lib/requests'
-import {add_listener, db, requests, unix_ms, window_call} from './utils'
+import {add_listener, db, requests, window_call} from './utils'
 import Websocket from './ws'
 import get_conversation from './get_conversation'
 
@@ -16,6 +16,11 @@ add_listener('list-conversations', async data => {
 })
 
 add_listener('get-conversation', get_conversation)
+
+add_listener('act', async data => {
+  console.log('act, conv data:', data)
+  return await requests.post('ui', `/conv/${data.conv}/act/`, data.act)
+})
 
 add_listener('auth-token', async data => {
   await requests.post('ui', '/auth-token/', {auth_token: data.auth_token})
