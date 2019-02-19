@@ -35,17 +35,19 @@ function construct_conv (actions) {
       subject = action.body
     } else if (act === 'message:add') {
       messages[action.id] = {
-        'ref': action.id,
+        'first_action': action.id,
+        'last_action': action.id,
         'body': action.body,
         'creator': action.actor,
         'created': action.ts,
         'format': action.msg_format,
         'parent': action.parent || null,
         'active': true,
+        'comments': []
       }
     } else if (_msg_action_types.includes(act)) {
       const message = messages[action.follows]
-      message.ref = action.id
+      message.last_action = action.id
       if (act === 'message:modify') {
         message.body = action.body
         message.editor = action.actor
@@ -75,11 +77,7 @@ function construct_conv (actions) {
     delete msg.parent
     if (parent) {
       const parent_msg = messages[parent]
-      if (parent_msg.children) {
-        parent_msg.children.push(msg)
-      } else {
-        parent_msg.children = [msg]
-      }
+      parent_msg.comments.push(msg)
     } else {
       msg_list.push(msg)
     }

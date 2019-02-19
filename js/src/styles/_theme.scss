@@ -82,9 +82,10 @@ $stripe-width: 10px;
   padding: 1rem;
   margin-bottom: 1rem;
   &.no-pad {
-    padding: 0.7rem 0 0;
+    padding: 0;
     > div {
-      padding: 0.3rem 1rem;
+      padding-left: 1rem;
+      padding-right: 1rem;
     }
   }
 }
@@ -108,7 +109,6 @@ $stripe-width: 10px;
     height: auto;
   }
 }
-
 
 .conv-list {
   padding: 0;
@@ -153,20 +153,35 @@ $stripe-width: 10px;
 .msg-details {
   p {
     margin-bottom: 0.5rem;
-  }
-}
-
-.add-msg {
-  textarea {
-    padding: 0.5rem 0.3rem;
-    width: 100%;
-    min-height: 120px;
-
-    border: 1px solid #d1d5da;
-    border-radius: 3px;
-    box-shadow: inset 0 1px 2px rgba(27,31,35,.075);
-    &:disabled {
-      background: #f8f8f8;
+    &:last-child {
+      margin-bottom: 0;
     }
   }
 }
+
+textarea.msg {
+  padding: 0.5rem 0.3rem;
+  width: 100%;
+  min-height: 120px;
+
+  border: 1px solid #d1d5da;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 2px rgba(27,31,35,.075);
+  &:disabled {
+    background: #f8f8f8;
+  }
+  &.comment {
+    min-height: auto;
+  }
+}
+
+.btn-comment {
+  color: darken($secondary, 5%);
+  //padding: 0.125rem 0.5rem;
+  padding: 0;
+}
+
+.comment-reply {
+  width: 30px;
+}
+
