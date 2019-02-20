@@ -55,7 +55,7 @@ class Login extends React.Component {
     }
   }
 
-  async componentDidMount () {
+  componentDidMount () {
     window.addEventListener('message', this.on_message)
     this.props.ctx.setUser(null)
     this.props.ctx.setTitle('Login')

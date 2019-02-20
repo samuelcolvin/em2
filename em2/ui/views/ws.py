@@ -48,5 +48,5 @@ async def websocket(request):
         pass
     finally:
         logger.info('ws disconnection user=%s', session.user_id)
-        background.remove_ws(session.user_id)
+        background.remove_ws(session.user_id, ws)
     return ws

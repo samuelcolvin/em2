@@ -36,3 +36,4 @@ yarn-error.log*
 /tests/test_scratch.py
 /tests/robot_cookies.pkl
 /js/src/.update.js
+/tests/email.html

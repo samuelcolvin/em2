@@ -43,7 +43,7 @@ function construct_conv (actions) {
         'format': action.msg_format,
         'parent': action.parent || null,
         'active': true,
-        'comments': []
+        'comments': [],
       }
     } else if (_msg_action_types.includes(act)) {
       const message = messages[action.follows]

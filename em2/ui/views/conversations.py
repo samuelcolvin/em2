@@ -62,7 +62,7 @@ class ConvActions(View):
 class ConvCreate(ExecView):
     class Model(BaseModel):
         subject: constr(max_length=255, strip_whitespace=True)
-        message: constr(max_length=2047, strip_whitespace=True)
+        message: constr(max_length=10000, strip_whitespace=True)
         participants: Set[EmailStr] = set()
         msg_format: MsgFormat = MsgFormat.markdown
         publish = False

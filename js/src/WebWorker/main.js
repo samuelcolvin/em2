@@ -18,7 +18,6 @@ add_listener('list-conversations', async data => {
 add_listener('get-conversation', get_conversation)
 
 add_listener('act', async data => {
-  console.log('act, conv data:', data)
   return await requests.post('ui', `/conv/${data.conv}/act/`, data.act)
 })
 

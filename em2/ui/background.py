@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from asyncio import CancelledError
-from typing import Dict
+from typing import Dict, List
 
 from aiohttp.web_ws import WebSocketResponse
 from aioredis import Redis
@@ -18,15 +18,21 @@ class Background:
     def __init__(self, app):
         self.app = app
         self.settings: Settings = app['settings']
-        self.connections: Dict[int, WebSocketResponse] = {}
+        self.connections: Dict[int, List[WebSocketResponse]] = {}
         self.loop = asyncio.get_event_loop()
         self.loop.create_task(self._run())
 
     def add_ws(self, user_id: int, ws: WebSocketResponse):
-        self.connections[user_id] = ws
+        if user_id in self.connections:
+            self.connections[user_id].append(ws)
+        else:
+            self.connections[user_id] = [ws]
 
-    def remove_ws(self, user_id: int):
-        self.connections.pop(user_id)
+    def remove_ws(self, user_id: int, ws: WebSocketResponse):
+        wss = self.connections[user_id]
+        wss.remove(ws)
+        if not wss:
+            self.connections.pop(user_id)
 
     async def _run(self):
         logger.info('starting background task')
@@ -51,19 +57,20 @@ class Background:
             # hack to avoid building json for every user, remove the ending "}" so user_v can be appended
             msg_json_chunk = ujson.dumps(data)[:-1]
             for user_id, user_v in users:
-                ws = self.connections.get(user_id)
-                if ws is not None:
-                    coros.append(self.send(user_id, user_v, ws, msg_json_chunk))
+                wss = self.connections.get(user_id)
+                if wss is not None:
+                    coros.append(self.send(user_id, user_v, wss, msg_json_chunk))
 
             await asyncio.gather(*coros)
 
-    async def send(self, user_id: int, user_v: int, ws: WebSocketResponse, msg_json_chunk: str):
+    async def send(self, user_id: int, user_v: int, wss: List[WebSocketResponse], msg_json_chunk: str):
         msg = msg_json_chunk + (',"user_v":%d}' % user_v)
-        try:
-            await ws.send_str(msg)
-        except (RuntimeError, AttributeError):
-            logger.info('websocket "%s" closed (user id %d), removing', ws, user_id)
-            self.connections.pop(user_id)
+        for ws in wss:
+            try:
+                await ws.send_str(msg)
+            except (RuntimeError, AttributeError):
+                logger.info('websocket "%s" closed (user id %d), removing', ws, user_id)
+                self.remove_ws(user_id, ws)
 
 
 push_sql_template = """

@@ -163,7 +163,7 @@ class ActionModel(BaseModel):
 
     act: ActionsTypes
     participant: Optional[EmailStr] = None
-    body: Optional[constr(min_length=1, max_length=2000, strip_whitespace=True)] = None
+    body: Optional[constr(min_length=1, max_length=10000, strip_whitespace=True)] = None
     follows: Optional[int] = None
     parent: Optional[int] = None
     msg_format: MsgFormat = MsgFormat.markdown
@@ -441,7 +441,7 @@ async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_prefix: 
         where_logic &= V('a.id') <= last_action
 
     if since_id:
-        await or404(conn.fetchval('select 1 from actions where conv=$1 and id=$1', conv_id, since_id))
+        await or404(conn.fetchval('select 1 from actions where conv=$1 and id=$2', conv_id, since_id))
         where_logic &= V('a.id') > since_id
 
     return await or404(

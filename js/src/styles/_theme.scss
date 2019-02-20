@@ -51,7 +51,7 @@ $stripe-width: 10px;
 }
 
 .extra-menu {
-  top: 57.5px;
+  top: 56px;
   height: 35px;
   transition: all 500ms ease;
   overflow: hidden;
@@ -185,3 +185,6 @@ textarea.msg {
   width: 30px;
 }
 
+.msg-iframe {
+  width: 100%;
+}

@@ -13,7 +13,8 @@ import devtools
 import lorem
 from aiohttp import ClientSession, ClientTimeout, CookieJar
 
-sys.path.append(str(Path(__file__).parent.parent.resolve()))
+THIS_DIR = Path(__file__).parent.resolve()
+sys.path.append(str(THIS_DIR.parent))
 
 from em2.main import create_app  # noqa: E402
 from em2.utils.web import MakeUrl  # noqa: E402
@@ -62,32 +63,44 @@ class Client:
         if seen is None:
             seen = random() > 0.8
 
-        # with newest, always add a message
         if seen:
             print(f'marking {conv_key:.10} as seen...')
             response = await self._post_json(self._make_url('ui:act', conv=conv_key), act='seen')
         else:
-            print(f'adding message to {conv_key:.10}...')
+            msg_format, msg_body = self._msg_body()
+            print(f'adding message to {conv_key:.10}, format: {msg_format}...')
             response = await self._post_json(
-                self._make_url('ui:act', conv=conv_key),
-                act='message:add',
-                body=f'New message at {datetime.now():%H:%M:%S}.\n\n{lorem.paragraph()}',
+                self._make_url('ui:act', conv=conv_key), act='message:add', msg_format=msg_format, body=msg_body
             )
         devtools.debug(response)
 
     async def create(self, *, publish=None):
         print('creating a conv...')
         publish = choice([True, False]) if publish is None else publish
+        msg_format, msg_body = self._msg_body()
         data = await self._post_json(
             self._make_url('ui:create'),
             subject=lorem.sentence(),
-            message=f'New conversation at {datetime.now():%H:%M:%S}.\n\n{lorem.paragraph()}',
+            message=msg_body,
+            msg_format=msg_format,
             participants=other_users,
             publish=publish,
         )
         key = data['key']
         self.convs.append(key)
-        print(f'new conv: {key:.10}..., published: {publish}, total: {len(self.convs)}')
+        print(f'new conv: {key:.10}..., format: {msg_format}, published: {publish}, total: {len(self.convs)}')
+
+    def _msg_body(self):
+        html_path = THIS_DIR / 'email.html'
+        msg_format = 'markdown'
+        msg_body = f'New message at {datetime.now():%H:%M:%S}.\n\n{lorem.paragraph()}'
+        if html_path.exists():
+            if 'html' in sys.argv or random() > 0.5:
+                msg_format = 'html'
+                msg_body = html_path.read_text()
+        else:
+            print(f'email html not found at "{html_path}", forced to use markdown message')
+        return msg_format, msg_body
 
     async def get_convs(self):
         print('getting convs...')

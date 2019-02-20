@@ -1,104 +1,13 @@
 import React from 'react'
 import {Button, Col, Row} from 'reactstrap'
 import {withRouter} from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
-import {Loading} from '../lib/Errors'
-import WithContext from '../lib/context'
-import {format_ts} from '../lib'
-
-const CommentButton = ({msg, state, setState, comment_ref, children}) => (
-  <Button size="sm" color="comment"
-          disabled={state.locked || !!state.comment_parent}
-          onClick={() => {
-            setState({comment_parent: msg.first_action})
-            setTimeout(() => comment_ref.current.focus(), 0)
-          }}>
-    <FontAwesomeIcon icon="reply" className="mr-1"/>
-    {children}
-  </Button>
-)
-
-const AddComment = ({state, setState, comment_ref, add_comment}) => (
-  <div className="d-flex py-1 ml-3">
-    <div className="flex-grow-1">
-      <textarea placeholder="reply to all..."
-                className="msg comment"
-                disabled={state.locked}
-                value={state.comment}
-                ref={comment_ref}
-                onChange={e => setState({comment: e.target.value})}/>
-    </div>
-    <div className="text-right pl-2">
-      <div>
-        <Button size="sm" color="primary" disabled={state.locked || !state.comment} onClick={add_comment}>
-          <FontAwesomeIcon icon="reply" className="mr-1"/>
-          Comment
-        </Button>
-      </div>
-      <Button size="sm" color="link" className="text-muted"
-            disabled={state.locked}
-            onClick={() => setState({comment_parent: null, comment: null})}>
-        Cancel
-      </Button>
-    </div>
-  </div>
-)
-
-const Comment = ({msg, depth = 1, ...props}) => {
-  const commenting = props.state.comment_parent === msg.last_action
-  return (
-    <div className="ml-3 mt-2">
-      <div className="border-top">
-        <b className="mr-1">{msg.creator}</b>
-        <span className="text-muted small">{format_ts(msg.created)}</span>
-      </div>
-      <div>
-        <ReactMarkdown source={msg.body}/>
-      </div>
-      <div className="d-flex">
-        <div className="flex-grow-1">
-          {msg.comments.map(c => <Comment {...props} msg={c} key={c.first_action} depth={depth + 1}/>)}
-        </div>
-        {depth < 2 && (
-          // use visibility to prevent the message body box changing width
-          <div className="pl-2 align-self-end" style={{visibility: commenting ? 'hidden' : 'visible'}}>
-            <CommentButton {...props} msg={msg}/>
-          </div>
-        )}
-      </div>
-      {commenting && <AddComment {...props}/>}
-    </div>
-  )
-}
-
-const Message = ({msg, ...props}) => (
-  <div className="box no-pad msg-details">
-    <div className="border-bottom py-1">
-      <b className="mr-1">{msg.creator}</b>
-      <span className="text-muted small">{format_ts(msg.created)}</span>
-    </div>
-    <div className="mt-1">
-      <ReactMarkdown source={msg.body}/>
-    </div>
-    {Boolean(msg.comments.length) && (
-      <div className="pb-1">
-        {msg.comments.map(c => <Comment {...props} msg={c} key={c.first_action}/>)}
-      </div>
-    )}
-
-    {props.state.comment_parent !== msg.last_action ?
-      <div className="text-right pb-2">
-        <CommentButton {...props} msg={msg}>Comment</CommentButton>
-      </div>
-      :
-      <AddComment {...props}/>
-    }
-  </div>
-)
+import {Loading} from '../../lib/Errors'
+import WithContext from '../../lib/context'
+import Message from './Message'
 
 class ConvDetailsView extends React.Component {
-  constructor(props) {
+  constructor (props) {
     super(props)
     this.state = {}
     this.comment_ref = React.createRef()
@@ -112,7 +21,7 @@ class ConvDetailsView extends React.Component {
 
   componentDidUpdate (prevProps, prevState, snapshot) {
     this.check_locked()
-    const prev_msg_count = prevState.messages ? prevState.conv.messages.length : null
+    const prev_msg_count = prevState.conv ? prevState.conv.messages.length : null
     if (prev_msg_count && prev_msg_count < this.state.conv.messages.length) {
       window.scrollTo(0,document.body.scrollHeight)
     }
@@ -186,7 +95,7 @@ class ConvDetailsView extends React.Component {
             <div className="py-2">
               <textarea placeholder="reply to all..." className="msg"
                         disabled={this.state.locked}
-                        value={this.state.new_message}
+                        value={this.state.new_message || ''}
                         onChange={e => this.setState({new_message: e.target.value})}/>
 
               <div className="text-right">

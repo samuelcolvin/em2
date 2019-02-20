@@ -34,8 +34,6 @@ class _Form extends React.Component {
       form_error: null,
     }
     this.errors = {}
-    this.onFieldChange = this.onFieldChange.bind(this)
-    this.render_field = this.render_field.bind(this)
     if (this.props.fields) {
       for (const [k, v] of Object.entries(this.props.fields)) {
         v['name'] = k
@@ -56,8 +54,8 @@ class _Form extends React.Component {
     }
   }
 
-  async submit (e) {
-    e.preventDefault()
+  submit = async (e) => {
+    e && e.preventDefault()
     if (Object.keys(this.props.form_data).length === 0) {
       this.setState({form_error: 'No data entered'})
       return
@@ -98,12 +96,12 @@ class _Form extends React.Component {
     }
   }
 
-  onFieldChange (name, value) {
+  setField = (name, value) => {
     const form_data = Object.assign({}, this.props.form_data, {[name]: value})
     this.props.onChange && this.props.onChange(form_data)
   }
 
-  render_field ({field}) {
+  render_field = ({field}) => {
     const field_value = this.props.form_data[field.name]
     const value = field_value === undefined ? (this.props.initial || {})[field.name] : field_value
     return (
@@ -111,7 +109,7 @@ class _Form extends React.Component {
              value={value}
              error={this.errors[field.name]}
              disabled={this.state.disabled}
-             onChange={v => this.onFieldChange(field.name, v)}
+             onChange={v => this.setField(field.name, v)}
              onBlur={() => this.props.onBlur && this.props.onBlur(field.name)}/>
     )
   }
@@ -125,12 +123,12 @@ class _Form extends React.Component {
     const RenderFields = this.props.RenderFields || DefaultRenderFields
     const Buttons = this.props.Buttons || DefaultFormButtons
     return (
-      <BootstrapForm onSubmit={this.submit.bind(this)} className="highlight-required">
+      <BootstrapForm onSubmit={this.submit} className="highlight-required">
         <div className={this.props.form_body_class}>
           <div className="form-error text-right">{this.props.form_error || this.state.form_error}</div>
           <RenderFields fields={this.props.fields || {}} RenderField={this.render_field}/>
         </div>
-        <Buttons state={this.state} form_props={this.props}/>
+        <Buttons state={this.state} form_props={this.props} setField={this.setField} submit={this.submit}/>
       </BootstrapForm>
     )
   }

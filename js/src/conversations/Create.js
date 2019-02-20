@@ -28,36 +28,39 @@ const RenderFields = ({fields, RenderField}) => (
   </Row>
 )
 
-const FormButtons = ({state, form_props}) => (
-  <Row>
-    <Col md="8" className="text-right">
-      <ButtonGroup className="flex-row-reverse">
+const FormButtons = ({state, form_props, setField, submit}) => {
+  const submit_ = publish => {
+    setField('publish', publish)
+    submit()
+  }
+  return (
+    <Row>
+      <Col md="8" className="text-right">
+        <ButtonGroup className="flex-row-reverse">
 
-        <Button type="submit" color="primary" disabled={state.disabled}
-                onClick={() => form_props.onFieldChange('publish', true)}>
-          Send
-        </Button>
+          <Button color="primary" disabled={state.disabled} onClick={() => submit_(true)}>
+            Send
+          </Button>
 
-        <Button type="submit" color="primary" disabled={state.disabled}
-                onClick={() => form_props.onFieldChange('publish', false)}>
-          Save Draft
-        </Button>
+          <Button color="primary" disabled={state.disabled} onClick={() => submit_(false)}>
+            Save Draft
+          </Button>
 
-        <Button type="button" color="secondary" disabled={state.disabled} onClick={form_props.cancel}>
-          Cancel
-        </Button>
-      </ButtonGroup>
-    </Col>
-  </Row>
-)
+          <Button type="button" color="secondary" disabled={state.disabled} onClick={form_props.cancel}>
+            Cancel
+          </Button>
+        </ButtonGroup>
+      </Col>
+    </Row>
+  )
+}
 
 
 class Create extends React.Component {
   state = {form_data: {}}
 
   submitted (r) {
-    console.log(r)
-    this.props.history.push(`/conv/${r.data.key}/`)
+    this.props.history.push(`/${r.data.key}/`)
   }
 
   componentDidMount () {
