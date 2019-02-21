@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 from getpass import getpass
 
 from atoolbox import patch
+from atoolbox.db.helpers import run_sql_section
 
 from .utils import mk_password
 
@@ -39,3 +40,8 @@ async def create_user(*, conn, settings, args, logger, **kwargs):
         logger.error('user with email address %s already exists', ns.email_address)
     else:
         logger.info('user %d created', user_id)
+
+
+@patch
+async def update_action_insert(*, conn, settings, **kwargs):
+    await run_sql_section('action-insert', settings.sql_path.read_text(), conn)

@@ -149,6 +149,20 @@ async def get_conv_for_user(
     return conv_id, last_action
 
 
+async def update_conv_users(conn: BuildPgConnection, conv_id: int):
+    """
+    Update v on users participating in a conversation
+    """
+    await conn.execute(
+        """
+        update users set v=v + 1
+          from participants
+          where participants.user_id = users.id and participants.conv = $1 and users.v is not null;
+        """,
+        conv_id
+    )
+
+
 _prt_action_types = {a for a in ActionsTypes if a.value.startswith('participant:')}
 _msg_action_types = {a for a in ActionsTypes if a.value.startswith('message:')}
 _follow_action_types = (_msg_action_types - {ActionsTypes.msg_add}) | {ActionsTypes.prt_modify, ActionsTypes.prt_remove}
@@ -245,6 +259,7 @@ class _Act:
                         self.conv_id,
                         self.actor_user_id,
                     )
+                await update_conv_users(self.conn, self.conv_id)
 
         return self.conv_id, action_id
 

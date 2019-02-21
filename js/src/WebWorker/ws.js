@@ -76,15 +76,16 @@ export default class Websocket {
       // just connecting and nothing has changed
       return
     }
-    const session_update = {user_v: data.user_v}
+
     console.log(this._session.user_v, data.user_v)
-    if (![0, 1].includes(data.user_v - this._session.user_v)) {
+    const session_update = {user_v: data.user_v}
+    if (data.user_v - this._session.user_v !== 1) {
+      // user_v has increased by more than one, we must have missed actions, everything could have changed
       session_update.cache = new Set()
     }
-
     await db.sessions.update(this._session.session_id, session_update)
     Object.assign(this._session, session_update)
-  }
+    }
 }
 
 async function apply_actions (data) {

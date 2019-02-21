@@ -229,15 +229,16 @@ async def test_create_then_publish(cli, url, factory: Factory, db_conn):
 
 async def test_ws_create(cli, url, factory: Factory, db_conn):
     user = await factory.create_user()
+    assert 1 == await db_conn.fetchval('select v from users where id=$1', user.id)
     await factory.create_conv()
-    assert 4 == await db_conn.fetchval('select v from users where id=$1', user.id)
+    assert 2 == await db_conn.fetchval('select v from users where id=$1', user.id)
 
     async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
         msg = await ws.receive()
         assert msg.type == WSMsgType.text
         assert not ws.closed
         assert ws.close_code is None
-        assert json.loads(msg.data) == {'user_v': 4}
+        assert json.loads(msg.data) == {'user_v': 2}
 
         conv = await factory.create_conv()
 
@@ -248,7 +249,7 @@ async def test_ws_create(cli, url, factory: Factory, db_conn):
 
     msg_data = json.loads(msg.data)
     assert msg_data == {
-        'user_v': 7,
+        'user_v': 3,
         'actions': [
             {
                 'id': 1,
@@ -290,12 +291,12 @@ async def test_ws_create(cli, url, factory: Factory, db_conn):
 async def test_ws_add(cli, url, factory: Factory, db_conn):
     user = await factory.create_user()
     conv = await factory.create_conv()
-    assert 4 == await db_conn.fetchval('select v from users where id=$1', user.id)
+    assert 2 == await db_conn.fetchval('select v from users where id=$1', user.id)
 
     async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
         msg = await ws.receive()
         assert msg.type == WSMsgType.text
-        assert json.loads(msg.data) == {'user_v': 4}
+        assert json.loads(msg.data) == {'user_v': 2}
 
         r = await cli.post_json(url('ui:act', conv=conv.key), {'act': 'message:add', 'body': 'this is another message'})
         assert r.status == 200, await r.text()
@@ -305,7 +306,7 @@ async def test_ws_add(cli, url, factory: Factory, db_conn):
 
     msg_data = json.loads(msg.data)
     assert msg_data == {
-        'user_v': 5,
+        'user_v': 3,
         'actions': [
             {
                 'id': 4,

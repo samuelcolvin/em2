@@ -15,7 +15,7 @@ from em2.core import (
     generate_conv_key,
     get_conv_for_user,
     get_create_multiple_users,
-)
+    update_conv_users)
 
 from .utils import ExecView, View
 
@@ -131,6 +131,7 @@ class ConvCreate(ExecView):
                 ts,
                 conv.subject,
             )
+            await update_conv_users(self.conn, conv_id)
 
         await self.push(conv_id, publish_id, True)
         return dict(key=conv_key, status_=201)
@@ -208,6 +209,7 @@ class ConvPublish(ExecView):
                 ts,
                 conv_summary['subject'],
             )
+            await update_conv_users(self.conn, conv_id)
         await self.push(conv_id, publish_action_id, True)
         return dict(key=conv_key)
 

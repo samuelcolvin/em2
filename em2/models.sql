@@ -68,7 +68,7 @@ create index action_id on actions using btree (id);
 create index action_act_id on actions using btree (conv, act, id);
 create index action_conv_parent on actions using btree (conv, parent);
 
--- this could be run on every "migration"
+-- { action-insert
 create or replace function action_insert() returns trigger as $$
   -- could replace all this with plv8
   declare
@@ -107,14 +107,10 @@ create or replace function action_insert() returns trigger as $$
       where id=new.conv
       returning last_action_id into new.id;
 
-    -- TODO is this going to slow things down on the long run?
-    update users set v=v + 1
-      from participants
-      where participants.user_id = users.id and participants.conv = new.conv and users.v is not null;
-
     return new;
   end;
 $$ language plpgsql;
+-- } action-insert
 
 create trigger action_insert before insert on actions for each row execute procedure action_insert();
 
