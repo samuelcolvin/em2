@@ -2,13 +2,25 @@ import React from 'react'
 import ReactMarkdown from 'react-markdown'
 
 // TODO, need to and cache all fonts and image when the message is received. Anything else?
-const IFRAME_CSP = [
+const iframe_csp = [
   `default-src 'none'`,
-  `script-src ${window.location.origin}`,
+  `script-src 'sha256-9/tp0gG/02uaXhcWrCrvIbnLd/X1O+W8mGAk6amY/ho='`,
   `style-src 'unsafe-inline'`,
   `font-src 'unsafe-inline'`,
   `img-src 'unsafe-inline' *`,
 ].join(';')
+
+const iframe_js = `
+const msg = data => window.parent.postMessage(Object.assign(data, {iframe_id: parseInt(document.title)}), '*');
+window.onload = () => {
+  msg({height: Math.min(500, Math.max(50, document.documentElement.offsetHeight))});
+  for(const link of document.links){
+    link.onclick = e => {
+      e.preventDefault();
+      msg({href: link.getAttribute('href')});
+    }
+  }
+}`.replace(/\n */g, '').replace(/ ?(=>?|:|,) /g, '$1')
 
 const iframe_src_base64 = msg => btoa(`
 <!doctype html>
@@ -16,20 +28,21 @@ const iframe_src_base64 = msg => btoa(`
   <head>
     <title>${msg.first_action}</title>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <meta http-equiv="Content-Security-Policy" content="${IFRAME_CSP}">
-    <script src="${window.location.origin}/iframes/html-message.js"></script>
+    <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no">
+    <meta http-equiv="Content-Security-Policy" content="${iframe_csp}">
+    <script>${iframe_js}</script>
   </head>
   <body>${msg.body}</body>
 </html>`)
 
 class Html extends React.Component {
-  state = {height: 0}
+  iframe_id = () => `msg-${this.props.msg.first_action}`
 
   on_message = event => {
     if (event.origin === 'null' && event.data.iframe_id === this.props.msg.first_action) {
       if (event.data.height) {
-        this.setState({height: event.data.height})
+        // do this rather than keeping height in state to avoid rendering the iframe multiple times
+        document.getElementById(this.iframe_id()).style.height = `${event.data.height}px`
       } else if (event.data.href) {
         // checked with https://mathiasbynens.github.io/rel-noopener/malicious.html for opener
         // and https://httpbin.org/get for referer
@@ -50,18 +63,20 @@ class Html extends React.Component {
     window.removeEventListener('message', this.on_message)
   }
 
+  shouldComponentUpdate (nextProps) {
+    return this.props.msg.first_action !== nextProps.msg.first_action || this.props.msg.body !== nextProps.msg.body
+  }
+
   render () {
-    const msg = this.props.msg
     return (
       <iframe
-        id={msg.first_action}
-        title={msg.first_action}
+        id={this.iframe_id()}
+        title={this.props.msg.first_action}
         className="msg-iframe"
         frameBorder="0"
         scrolling="no"
         sandbox="allow-scripts"
-        src={`data:text/html;base64,${iframe_src_base64(msg)}`}
-        style={{height: this.state.height + 'px'}}
+        src={`data:text/html;base64,${iframe_src_base64(this.props.msg)}`}
       />
     )
   }
