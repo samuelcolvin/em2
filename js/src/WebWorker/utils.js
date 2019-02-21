@@ -1,5 +1,6 @@
 import Dexie from 'dexie'
 import {request as basic_request} from '../lib/requests'
+import {sleep} from '../lib'
 
 export function window_call (method, call_args) {
   postMessage({method, call_args})
@@ -74,17 +75,21 @@ export const requests = {
   },
 }
 
-export const unix_ms = s => (new Date(s)).getTime()
+export let CONN_STATUS = null
 
-export async function get_convs (session, page = 1) {
-  const r = await requests.get('ui', '/conv/list/', {args: {page}})
-  const conversations = r.data.conversations.map(c => (
-      Object.assign({}, c, {
-        created_ts: unix_ms(c.created_ts),
-        updated_ts: unix_ms(c.updated_ts),
-        publish_ts: unix_ms(c.publish_ts),
-      })
-  ))
-  await db.conversations.bulkPut(conversations)
-  return {conversations, count: r.data.count}
+export const set_conn_status = conn_status => {
+  CONN_STATUS = conn_status
+  window_call('setState', {conn_status})
 }
+
+export async function get_conn_status () {
+  for (let i = 0; i < 20; i ++) {
+    if (CONN_STATUS !== null) {
+      return CONN_STATUS
+    }
+    await sleep(25)
+  }
+  return CONN_STATUS
+}
+
+export const unix_ms = s => (new Date(s)).getTime()

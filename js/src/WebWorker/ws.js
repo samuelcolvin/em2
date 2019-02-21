@@ -1,12 +1,10 @@
 import {statuses} from '../lib'
 import {make_url} from '../lib/requests'
-import {db, get_convs, unix_ms, window_call} from './utils'
+import {db, unix_ms, window_call, set_conn_status} from './utils'
 
 const offline = 0
 const connecting = 1
 const online = 2
-
-const window_conn_status = conn_status => window_call('setState', {conn_status})
 
 export default class Websocket {
   constructor () {
@@ -19,11 +17,11 @@ export default class Websocket {
 
   async connect (session) {
     if (this._state !== offline) {
-      console.log('ws already connected')
+      console.warn('ws already connected')
       return
     }
     this._session = session || this._session
-    window_conn_status(statuses.connecting)
+    set_conn_status(statuses.connecting)
     this._state = connecting
     let ws_url = make_url('ui', '/ws/').replace('http', 'ws')
 
@@ -32,13 +30,13 @@ export default class Websocket {
     } catch (error) {
       console.error('ws connection error', error)
       this._state = offline
-      window_conn_status(statuses.offline)
+      set_conn_status(statuses.offline)
       return
     }
 
     this._socket.onopen = () => {
       console.log('websocket open')
-      window_conn_status(statuses.online)
+      set_conn_status(statuses.online)
       this._state = online
       setTimeout(() => {
         if (this._state === online) {
@@ -53,35 +51,37 @@ export default class Websocket {
       this._disconnects += 1
       if (e.code === 4403) {
         console.log('websocket closed with 4403, not authorised')
-        window_call('setState', {user: null, conn_status: statuses.online})
+        set_conn_status(statuses.online)
+        window_call('setState', {user: null})
       } else {
         console.log(`websocket closed, reconnecting in ${reconnect_in}ms`, e)
         setTimeout(this.connect, reconnect_in)
-        setTimeout(() => this._state === offline && window_conn_status(statuses.offline), 3000)
+        setTimeout(() => this._state === offline && set_conn_status(statuses.offline), 3000)
       }
     }
     this._socket.onerror = e => {
       console.debug('websocket error:', e)
-      window_conn_status(statuses.offline)
+      set_conn_status(statuses.offline)
     }
     this._socket.onmessage = this._on_message
   }
 
   _on_message = async event => {
-    window_conn_status(statuses.online)
+    set_conn_status(statuses.online)
     const data = JSON.parse(event.data)
 
     if (data.actions) {
       await apply_actions(data)
-    } else if (data.user_v !== this._session.user_v) {
-      // connecting and local data is out of date, needs updating
-      await get_convs()
-    } else {
+    } else if (data.user_v === this._session.user_v) {
       // just connecting and nothing has changed
       return
     }
-
     const session_update = {user_v: data.user_v}
+    console.log(this._session.user_v, data.user_v)
+    if (![0, 1].includes(data.user_v - this._session.user_v)) {
+      session_update.cache = new Set()
+    }
+
     await db.sessions.update(this._session.session_id, session_update)
     Object.assign(this._session, session_update)
   }

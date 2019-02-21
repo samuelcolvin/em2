@@ -5,8 +5,6 @@ module.exports = function override(config, env) {
       rule => rule.loader && rule.loader.indexOf('babel-loader') !== -1
   )
 
-  // babel_loader.exclude = [/WebWorker/]
-
   // copied partially from https://github.com/facebook/create-react-app/pull/5886
   const worker_loader = {
     test: /\/WebWorker\/load\.js$/,

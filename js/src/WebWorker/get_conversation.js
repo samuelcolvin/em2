@@ -96,6 +96,7 @@ function construct_conv (actions) {
 }
 
 export default async function (data) {
+  // TODO also need to look at the conversation and see if there are any new actions we've missed
   let actions = await get_db_actions(data.key)
 
   const last_action = actions_incomplete(actions)
