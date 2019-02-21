@@ -77,7 +77,6 @@ export default class Websocket {
       return
     }
 
-    console.log(this._session.user_v, data.user_v)
     const session_update = {user_v: data.user_v}
     if (data.user_v - this._session.user_v !== 1) {
       // user_v has increased by more than one, we must have missed actions, everything could have changed
@@ -85,7 +84,7 @@ export default class Websocket {
     }
     await db.sessions.update(this._session.session_id, session_update)
     Object.assign(this._session, session_update)
-    }
+  }
 }
 
 async function apply_actions (data) {

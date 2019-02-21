@@ -110,47 +110,49 @@ class ConvDetailsView extends React.Component {
     }
     const Buttons = this.state.conv.published ? PublishedButtons : DraftButtons
     return (
-      <Row>
-        <Col md="8">
-          {this.state.conv.messages.map(msg => (
-            <Message msg={msg}
-                     key={msg.first_action}
-                     state={this.state}
-                     setState={s => this.setState(s)}
-                     comment_ref={this.comment_ref}
-                     add_comment={() => this.add_comment()}/>
-          ))}
-          <div className="box no-pad add-msg">
-            <div className="border-bottom py-2">
-              <b className="mr-1">Add Message</b>
-              <span className="text-muted small">
-                Your message will go to everyone in this conversation.
-              </span>
-            </div>
-            <div className="py-2">
-              <textarea placeholder="reply to all..." className="msg"
-                        disabled={this.state.locked}
-                        value={this.state.new_message || ''}
-                        onChange={e => this.setState({new_message: e.target.value})}/>
+      <div>
+        <div className="h5">
+          {!this.state.conv.published && <span className="badge badge-dark mr-2">Draft</span>}
+          <span className="badge badge-success mr-2">TODO Labels</span>
+        </div>
+        <Row>
+          <Col md="8">
+            {this.state.conv.messages.map(msg => (
+              <Message msg={msg}
+                       key={msg.first_action}
+                       state={this.state}
+                       setState={s => this.setState(s)}
+                       comment_ref={this.comment_ref}
+                       add_comment={() => this.add_comment()}/>
+            ))}
+            <div className="box no-pad add-msg">
+              <div className="border-bottom py-2">
+                <b className="mr-1">Add Message</b>
+                <span className="text-muted small">
+                  Your message will go to everyone in this conversation.
+                </span>
+              </div>
+              <div className="py-2">
+                <textarea placeholder="reply to all..." className="msg"
+                          disabled={this.state.locked}
+                          value={this.state.new_message || ''}
+                          onChange={e => this.setState({new_message: e.target.value})}/>
 
-              <div className="text-right">
-                <Buttons state={this.state} add_msg={this.add_msg} publish={this.publish}/>
+                <div className="text-right">
+                  <Buttons state={this.state} add_msg={this.add_msg} publish={this.publish}/>
+                </div>
               </div>
             </div>
-          </div>
-        </Col>
-        <Col md="4">
-          <div className="h5">
-            {!this.state.conv.published && <span className="badge badge-dark mr-2">Draft</span>}
-            <span className="badge badge-success mr-2">TODO Labels</span>
-          </div>
-          <div className="box">
-            {Object.keys(this.state.conv.participants).map((p, i) => (
-                <div key={i}>{p}</div>
-            ))}
-          </div>
-        </Col>
-      </Row>
+          </Col>
+          <Col md="4">
+            <div className="box">
+              {Object.keys(this.state.conv.participants).map((p, i) => (
+                  <div key={i}>{p}</div>
+              ))}
+            </div>
+          </Col>
+        </Row>
+      </div>
     )
   }
 }

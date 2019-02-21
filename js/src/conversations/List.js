@@ -2,7 +2,6 @@ import React from 'react'
 import {Link} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {withRouter} from 'react-router-dom'
-import {Paginate} from '../lib/retrieve/ListView'
 import {format_ts} from '../lib'
 import {Loading} from '../lib/Errors'
 import WithContext from '../lib/context'
@@ -45,7 +44,32 @@ const ConvList = ({conversations, user_email}) => {
   ))
 }
 
+const Paginate = ({current, onClick, state}) => (
+  <nav>
+    <ul className="pagination">
+      <li className={`page-item${current === 1 ? ' disabled' : ''}`}>
+        <Link className="page-link" onClick={onClick} to={`?page=${current - 1}`}>&laquo;</Link>
+      </li>
+      {[...Array(state.pages || current).keys()].map(i => i + 1).map(p => (
+        <li key={p} className={`page-item${p === current ? ' active' : ''}`}>
+          <Link className="page-link" onClick={onClick} to={`?page=${p}`}>{p}</Link>
+        </li>
+      ))}
+      <li className={`page-item${state.more_pages ? '' : ' disabled'}`}>
+        <Link className="page-link" onClick={onClick} to={`?page=${current + 1}`}>&raquo;</Link>
+      </li>
+    </ul>
+  </nav>
+)
+
+const get_page = s => {
+  const m = s.match(/page=(\d+)/)
+  return m ? parseInt(m[1]) : 1
+}
+
 class ConvListView extends React.Component {
+  state = {more_pages: true}
+
   async componentDidMount () {
     this.mounted = true
     this.props.ctx.setTitle('Conversations')
@@ -66,17 +90,35 @@ class ConvListView extends React.Component {
     this.setState(await this.props.ctx.worker.call('list-conversations', {page: this.get_page()}))
   }
 
-  get_page = () => {
-    const m = this.props.location.search.match(/page=(\d+)/)
-    return m ? parseInt(m[1]) : 1
+  get_page = () => get_page(this.props.location.search)
+
+  on_pagination_click = async e => {
+    const link = e.target.getAttribute('href')
+    e.preventDefault()
+    const next_page = get_page(link)
+    if (next_page === this.get_page()) {
+      return
+    }
+    const r = await this.props.ctx.worker.call('list-conversations', {page: next_page})
+    if (r.conversations.length) {
+      this.setState(r)
+      this.props.history.push(link)
+    } else {
+      this.props.ctx.setMessage({icon: 'times', message: 'No more conversations found'})
+      this.setState({more_pages: false})
+    }
   }
 
   render () {
     const user_email = this.props.ctx.user && this.props.ctx.user.email
     return (
-      <div className="box conv-list">
-        <ConvList conversations={this.state && this.state.conversations} user_email={user_email}/>
-        <Paginate pages={this.state && this.state['pages']} current_page={this.get_page()}/>
+      <div>
+        <div className="box conv-list">
+          <ConvList conversations={this.state && this.state.conversations} user_email={user_email}/>
+        </div>
+        <div className="d-flex justify-content-center">
+          <Paginate current={this.get_page()} onClick={this.on_pagination_click} state={this.state}/>
+        </div>
       </div>
     )
   }

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, Set
 
-from atoolbox import JsonErrors, parse_request_query, raw_json_response
+from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
 from pydantic import BaseModel, EmailStr, constr, validator
 
 from em2.core import (
@@ -23,9 +23,14 @@ from .utils import ExecView, View
 class ConvList(View):
     sql = """
     select json_build_object(
-      'conversations', conversations,
-      'count', count
+      'count', count,
+      'conversations', conversations
     ) from (
+      select count(*) from conversations as c
+        join participants as p on c.id = p.conv
+        where p.user_id=$1
+        limit 999
+    ) as count, (
       select coalesce(array_to_json(array_agg(row_to_json(t)), true), '[]') as conversations
       from (
         select key, created_ts, updated_ts, publish_ts, last_action_id, p.seen as seen, details
@@ -34,18 +39,13 @@ class ConvList(View):
         where p.user_id=$1 and (publish_ts is not null or creator=$1)
         order by c.created_ts, c.id desc
         limit 50
+        offset $2
       ) t
-    ) as conversations,
-    (
-      select count(*) from conversations as c
-        join participants as p on c.id = p.conv
-        where p.user_id=$1
-        limit 999
-    ) as count
+    ) as conversations
     """
 
     async def call(self):
-        raw_json = await self.conn.fetchval(self.sql, self.session.user_id)
+        raw_json = await self.conn.fetchval(self.sql, self.session.user_id, get_offset(self.request, paginate_by=50))
         return raw_json_response(raw_json)
 
 

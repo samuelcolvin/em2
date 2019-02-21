@@ -27,12 +27,14 @@ add_listener('list-conversations', async data => {
       ))
       await db.conversations.bulkPut(conversations)
       session.cache.add(cache_key)
-      await db.sessions.update(session.session_id, {cache: session.cache})
+      await db.sessions.update(session.session_id, {cache: session.cache, conv_count: r.data.count})
     }
   }
 
+  const count = await db.conversations.count()
   return {
-    conversations: await db.conversations.orderBy('updated_ts').reverse().limit(P).offset((page - 1) * P).toArray()
+    conversations: await db.conversations.orderBy('updated_ts').reverse().offset((page - 1) * P).limit(P).toArray(),
+    pages: Math.ceil(count / P)
   }
 })
 

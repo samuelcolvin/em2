@@ -8,7 +8,7 @@ import RetrieveWrapper from './RetrieveWrapper'
 
 export const Paginate = ({pages, current_page}) => (
   pages > 1 ? (
-    <nav aria-label="Page navigation example">
+    <nav>
       <ul className="pagination justify-content-center">
         {[...Array(pages).keys()].map(i => i + 1).map(p => (
           <li key={p} className={'page-item' + (p === current_page ? ' active' : '')}>
