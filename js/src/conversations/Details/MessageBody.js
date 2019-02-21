@@ -36,13 +36,13 @@ const iframe_src_base64 = msg => btoa(`
 </html>`)
 
 class Html extends React.Component {
-  iframe_id = () => `msg-${this.props.msg.first_action}`
+  iframe_ref = React.createRef()
 
   on_message = event => {
     if (event.origin === 'null' && event.data.iframe_id === this.props.msg.first_action) {
       if (event.data.height) {
         // do this rather than keeping height in state to avoid rendering the iframe multiple times
-        document.getElementById(this.iframe_id()).style.height = `${event.data.height}px`
+        this.iframe_ref.current.style.height = event.data.height + 'px'
       } else if (event.data.href) {
         // checked with https://mathiasbynens.github.io/rel-noopener/malicious.html for opener
         // and https://httpbin.org/get for referer
@@ -70,7 +70,7 @@ class Html extends React.Component {
   render () {
     return (
       <iframe
-        id={this.iframe_id()}
+        ref={this.iframe_ref}
         title={this.props.msg.first_action}
         className="msg-iframe"
         frameBorder="0"

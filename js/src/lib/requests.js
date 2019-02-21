@@ -1,8 +1,6 @@
 // TODO move to WebWorker/utils/requests.js
 import {DetailedError} from './index'
 
-const request_domain = process.env.REACT_APP_DOMAIN
-
 export function make_url (app_name, path) {
   if (path.match(/^https?:\//)) {
     return path
@@ -14,10 +12,10 @@ export function make_url (app_name, path) {
       throw Error('app_name must be "ui" or "auth"')
     }
 
-    if (request_domain === 'localhost') {
+    if (process.env.NODE_ENV === 'development') {
       return `http://localhost:8000/${app_name}${path}`
     } else {
-      return `https://${app_name}.${request_domain}${path}`
+      return `https://${app_name}.${process.env.REACT_APP_DOMAIN}${path}`
     }
   }
 }

@@ -12,48 +12,40 @@ function next_url (location) {
   return next === '/logout/' || next === null ? null : next
 }
 
-const post2iframe = msg => document.getElementById('login-iframe').contentWindow.postMessage(JSON.stringify(msg), '*')
-
-function recaptcha_callback (grecaptcha_token) {
-  post2iframe({grecaptcha_token})
-}
-
 
 class Login extends React.Component {
-  constructor (props) {
-    super(props)
-    this.state = {error: null, recaptcha_shown: false}
-    this.on_message = this.on_message.bind(this)
-    this.authenticate = this.authenticate.bind(this)
-  }
+  state = {error: null, recaptcha_shown: false}
+  iframe_ref = React.createRef()
 
-  async authenticate (data) {
+  authenticate = async data => {
     const user = await this.props.ctx.worker.call('auth-token', data)
     this.props.ctx.setUser(user)
     this.props.ctx.setMessage({icon: 'user', message: `Logged in successfully as ${user.name}`})
     this.props.history.replace(next_url(this.props.location) || '/')
   }
 
-  async on_message (event) {
+  on_message = async event => {
     if (event.origin !== 'null') {
       return
     }
-
-    const data = JSON.parse(event.data)
-    if (data.grecaptcha_required !== undefined) {
-      if (data.grecaptcha_required && this.state.recaptcha_shown) {
+    if (event.data.grecaptcha_required !== undefined) {
+      if (event.data.grecaptcha_required && this.state.recaptcha_shown) {
         Recaptcha.reset()
       }
-      this.setState({recaptcha_shown: data.grecaptcha_required})
-    } else if (data.auth_token) {
-      await this.authenticate(data)
-    } else if (data.error) {
-      console.log(data.error)
-      this.props.ctx.setError(DetailedError(data.error.message, data.error.details))
+      this.setState({recaptcha_shown: event.data.grecaptcha_required})
+    } else if (event.data.auth_token) {
+      await this.authenticate(event.data)
+    } else if (event.data.error) {
+      console.log(event.data.error)
+      this.props.ctx.setError(DetailedError(event.data.error.message, event.data.error.details))
     } else {
-      throw DetailedError('unknown message from iframe', data)
+      throw DetailedError('unknown message from iframe', event.data)
     }
   }
+
+  recaptcha_callback = grecaptcha_token => (
+    this.iframe_ref.current.contentWindow.postMessage({grecaptcha_token}, '*')
+  )
 
   componentDidMount () {
     window.addEventListener('message', this.on_message)
@@ -90,13 +82,13 @@ class Login extends React.Component {
 
         {this.state.recaptcha_shown && (
           <Row className="justify-content-center mt-4">
-            <Recaptcha callback={recaptcha_callback}/>
+            <Recaptcha callback={this.recaptcha_callback}/>
           </Row>
         )}
 
         <Row className="justify-content-center">
           <Col xl="4" lg="6" md="8" className="login">
-            <IFrame id="login-iframe" title="Login" src="/iframes/login.html"/>
+            <IFrame iframe_ref={this.iframe_ref}/>
           </Col>
         </Row>
         <div className="text-center">
