@@ -85,6 +85,8 @@ function construct_conv (actions) {
 
   return {
     // actions: actions,
+    key: actions[0].conv,
+    published: Boolean(actions.find(a => a.act === 'conv:publish')),
     subject: subject,
     created: created,
     messages: msg_list,

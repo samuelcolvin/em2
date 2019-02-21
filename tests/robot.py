@@ -34,7 +34,7 @@ class Client:
 
     async def run(self):
         while True:
-            if random() > 0.8:
+            if random() > 0.5:
                 await self.create()
             else:
                 await self.act()

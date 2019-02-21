@@ -21,6 +21,11 @@ add_listener('act', async data => {
   return await requests.post('ui', `/conv/${data.conv}/act/`, data.act)
 })
 
+add_listener('publish', async data => {
+  const r = await requests.post('ui', `/conv/${data.conv}/publish/`, {publish: true})
+  await db.conversations.update(data.conv, {new_key: r.data.key})
+})
+
 add_listener('auth-token', async data => {
   await requests.post('ui', '/auth-token/', {auth_token: data.auth_token})
   delete data.session.ts
@@ -30,7 +35,6 @@ add_listener('auth-token', async data => {
 })
 
 add_listener('create-conversation', async data => {
-  console.log('worker, conv data:', data)
   return await requests.post('ui', '/conv/create/', data, {expected_status: [201, 400]})
 })
 

@@ -9,17 +9,16 @@ create index user_v on users using btree (v);
 create table conversations (
   id bigserial primary key,
   key varchar(64) unique,
-  -- TODO client key: ref for the browser to match a webhook with a conversation it just created
-  published bool default false,
   creator int not null references users on delete restrict,
   created_ts timestamptz not null,
   updated_ts timestamptz not null,
+  publish_ts timestamptz,
   last_action_id int not null default 0 check (last_action_id >= 0),
   details json
 );
 create index conversations_created_ts on conversations using btree (created_ts);
 create index conversations_updated_ts on conversations using btree (updated_ts);
-create index conversations_published on conversations using btree (published);
+create index conversations_publish_ts on conversations using btree (publish_ts);
 create index conversations_creator on conversations using btree (creator);
 
 create table participants (

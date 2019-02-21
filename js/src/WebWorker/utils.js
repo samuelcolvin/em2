@@ -47,7 +47,7 @@ export function route_message (message) {
 export const db = new Dexie('em2')
 db.version(1).stores({
   sessions: '&session_id, email',
-  conversations: '&key, created_ts, updated_ts, published', // TODO new_key so drafts can be deleted on publish
+  conversations: '&key, new_key, created_ts, updated_ts, publish_ts',
   actions: '[conv+id], [conv+act], conv, ts',
 })
 
@@ -61,13 +61,6 @@ async function request (method, app_name, path, config) {
       // window_call here to update status
       await db.sessions.toCollection().delete()
     }
-    // if (config.allow_fail) {
-    //   if (e.status === 0) {
-    //     return conn_status.not_connected
-    //   } else if (e.status === 401) {
-    //     return conn_status.unauthorised
-    //   }
-    // }
     throw e
   }
 }
@@ -89,6 +82,7 @@ export async function get_convs (session, page = 1) {
       Object.assign({}, c, {
         created_ts: unix_ms(c.created_ts),
         updated_ts: unix_ms(c.updated_ts),
+        publish_ts: unix_ms(c.publish_ts),
       })
   ))
   await db.conversations.bulkPut(conversations)

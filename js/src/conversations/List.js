@@ -17,13 +17,16 @@ const ConvList = ({conversations, user_email}) => {
       </div>
     )
   }
-  // TODO include read notifications, popovers, use first name not addr
+  // TODO include read notifications, use first name not addr
   return conversations.map((conv, i) => (
     <div key={i}>
       <Link to={`/${conv.key.substr(0, 10)}/`}>
         <div className="subject">{conv.details.sub}</div>
-        <div className="body">
-          {conv.details.email === user_email ? 'you' : conv.details.email}: {conv.details.body}
+        <div>
+          {!conv.publish_ts && <span className="badge badge-dark mr-2">Draft</span>}
+          <span className="body">
+            {conv.details.email === user_email ? 'you' : conv.details.email}: {conv.details.body}
+          </span>
         </div>
 
         <div>

@@ -104,7 +104,7 @@ from (
     from participants as p
     join conversations as c on p.conv = c.id
     join users u on p.user_id = u.id
-    where conv=$1 and (c.published=true or p.user_id=c.creator)
+    where conv=$1 and (c.publish_ts is not null or p.user_id=c.creator)
   ) as t
 ) as participants,
 (

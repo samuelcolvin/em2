@@ -50,10 +50,10 @@ async def test_create_conv(cli, url, factory: Factory, db_conn):
     assert conv == {
         'id': AnyInt(),
         'key': conv_key,
-        'published': False,
         'creator': user.id,
         'created_ts': CloseToNow(),
         'updated_ts': CloseToNow(),
+        'publish_ts': None,
         'last_action_id': 3,  # add participant, add message, publish
         'details': RegexStr(r'\{.*\}'),
     }
@@ -81,10 +81,10 @@ async def test_create_conv_publish(cli, url, factory: Factory, db_conn):
     assert conv == {
         'id': AnyInt(),
         'key': conv_key,
-        'published': True,
         'creator': user.id,
         'created_ts': CloseToNow(),
         'updated_ts': CloseToNow(),
+        'publish_ts': CloseToNow(),
         'last_action_id': 3,  # add participant, add message, publish
         'details': RegexStr(r'\{.*\}'),
     }
@@ -113,7 +113,7 @@ async def test_conv_list(cli, url, factory: Factory, db_conn):
                 'key': conv.key,
                 'created_ts': CloseToNow(),
                 'updated_ts': CloseToNow(),
-                'published': False,
+                'publish_ts': None,
                 'last_action_id': 3,
                 'seen': True,
                 'details': {

@@ -111,7 +111,7 @@ async def get_conv_for_user(
     conv_key_match = conv_key_prefix + '%'
     r = await conn.fetchrow(
         """
-        select c.id, c.published, c.creator from conversations as c
+        select c.id, c.publish_ts, c.creator from conversations as c
         join participants as p on c.id=p.conv
         where p.user_id=$1 and c.key like $2
         order by c.created_ts desc
@@ -121,15 +121,15 @@ async def get_conv_for_user(
         conv_key_match,
     )
     if r:
-        conv_id, published, creator = r
+        conv_id, publish_ts, creator = r
         last_action = None
     else:
         # can happen legitimately when a user was removed from the conversation,
         # but can still view it up to that point
-        conv_id, published, creator, last_action = await or404(
+        conv_id, publish_ts, creator, last_action = await or404(
             conn.fetchrow(
                 """
-                select c.id, c.published, c.creator, a.id from actions as a
+                select c.id, c.publish_ts, c.creator, a.id from actions as a
                 join conversations as c on a.conv = c.id
                 where c.key like $2 and a.participant_user=$1 and a.act='participant:remove'
                 order by c.created_ts desc, a.id desc
@@ -141,9 +141,9 @@ async def get_conv_for_user(
             msg='Conversation not found',
         )
 
-    if not published and user_id != creator:
+    if not publish_ts and user_id != creator:
         raise JsonErrors.HTTPForbidden('conversation is unpublished and you are not the creator')
-    if req_pub is not None and published != req_pub:
+    if req_pub is not None and bool(publish_ts) != req_pub:
         msg = 'Conversation not yet published' if req_pub else 'Conversation already published'
         raise JsonErrors.HTTPBadRequest(msg)
     return conv_id, last_action

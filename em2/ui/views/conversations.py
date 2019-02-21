@@ -28,10 +28,10 @@ class ConvList(View):
     ) from (
       select coalesce(array_to_json(array_agg(row_to_json(t)), true), '[]') as conversations
       from (
-        select key, created_ts, updated_ts, published, last_action_id, p.seen as seen, details
+        select key, created_ts, updated_ts, publish_ts, last_action_id, p.seen as seen, details
         from conversations as c
         join participants as p on c.id = p.conv
-        where p.user_id=$1 and (c.published or c.creator=$1)
+        where p.user_id=$1 and (publish_ts is not null or creator=$1)
         order by c.created_ts, c.id desc
         limit 50
       ) t
@@ -74,14 +74,14 @@ class ConvCreate(ExecView):
         async with self.conn.transaction():
             conv_id = await self.conn.fetchval(
                 """
-                insert into conversations (key, creator, published, created_ts, updated_ts)
-                values                    ($1,  $2     , $3       , $4        , $4        )
+                insert into conversations (key, creator, publish_ts, created_ts, updated_ts)
+                values                    ($1,  $2     , $3        , $4        , $4        )
                 on conflict (key) do nothing
                 returning id
                 """,
                 conv_key,
                 creator_id,
-                conv.publish,
+                ts if conv.publish else None,
                 ts,
             )
             if conv_id is None:
@@ -170,14 +170,16 @@ class ConvPublish(ExecView):
             async with self.conn.transaction():
                 # this is a hard check that conversations can't be published multiple times,
                 # "for no key update" locks the row during this transaction
-                publish = await self.conn.fetchval(
-                    'select published from conversations where id=$1 for no key update', conv_id
+                publish_ts = await self.conn.fetchval(
+                    'select publish_ts from conversations where id=$1 for no key update', conv_id
                 )
                 # this prevents a race condition if ConvPublish is called concurrently
-                if publish:
+                if publish_ts:
                     raise JsonErrors.HTTPBadRequest('Conversation already published')
                 await self.conn.execute(
-                    'update conversations set published=true, last_action_id=0, key=$2 where id=$1', conv_id, conv_key
+                    'update conversations set publish_ts=current_timestamp, last_action_id=0, key=$2 where id=$1',
+                    conv_id,
+                    conv_key,
                 )
 
             # TODO, maybe in future we'll need a record of these old actions?

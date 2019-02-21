@@ -93,23 +93,32 @@ async function apply_actions (data) {
   await db.actions.bulkPut(actions)
   const action = actions[actions.length - 1]
   const conv = await db.conversations.get(action.conv)
-  const published = Boolean(actions.find(a => a.act === 'conv:publish'))
+  const publish_action = actions.find(a => a.act === 'conv:publish')
   if (conv) {
-    await db.conversations.update(action.conv, {
+    const update = {
       updated_ts: action.ts,
+      publish_ts: conv.publish_ts,
       last_action_id: action.id,
-      published: published || conv.published,
       details: data.conv_details,
-    })
+    }
+    if (publish_action) {
+      update.publish_ts = publish_action.ts
+    }
+    await db.conversations.update(action.conv, update)
   } else {
     await db.conversations.add({
       key: action.conv,
       created_ts: actions[0].ts,
       updated_ts: action.ts,
+      publish_ts: publish_action ? publish_action.ts : null,
       last_action_id: action.id,
-      published: published,
       details: data.conv_details,
     })
+    const old_conv = await db.conversations.get({new_key: action.conv})
+    if (old_conv) {
+      await db.conversations.delete(old_conv.key)
+      window_call('change', {conv: old_conv.key, new_key: action.conv})
+    }
   }
   window_call('change', {conv: action.conv})
 }
