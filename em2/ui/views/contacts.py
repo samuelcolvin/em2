@@ -1,6 +1,5 @@
 from atoolbox import json_response, parse_request_query
-from pydantic import BaseModel, EmailError, constr
-from pydantic.utils import validate_email
+from pydantic import BaseModel, constr
 
 from .utils import View
 
@@ -10,18 +9,23 @@ class ContactSearch(View):
         query: constr(min_length=3, max_length=256, strip_whitespace=True)  # doesn't have to be an email address
 
     async def call(self):
-        # TODO, actually look up contacts
+        # just a bodge for now, need to use proper contact lookup
         m = parse_request_query(self.request, self.Model)
 
-        options = [
-            {'name': 'anne', 'email': 'anne@example.com'},
-            {'name': 'ben', 'email': 'ben@example.com'},
-            {'name': 'charlie', 'email': 'charlie@example.com'},
-        ]
-        try:
-            query_name, query_email = validate_email(m.query)
-        except EmailError:
-            pass
-        else:
-            options.append({'name': query_name, 'email': query_email})
-        return json_response(list_=options)
+        q = m.query.lower().strip('%')
+        results = await self.conn.fetch(
+            """
+            select distinct u.email from participants as p 
+            join users as u on u.id = p.user_id 
+            join conversations as c on c.id = p.conv 
+            join participants as p2 on p2.conv = c.id 
+            where p2.user_id=$1 and u.email like $2
+            """,
+            self.session.user_id,
+            f'%{q}%',
+        )
+        return json_response(list_=[
+            {'name': r[0].split('@', 1)[0], 'email': r[0]}
+            for r in results
+        ])
+

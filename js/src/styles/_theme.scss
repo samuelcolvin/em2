@@ -105,6 +105,10 @@ $stripe-width: 10px;
   .rbt-token {
     width: 100%;
   }
+  .rbt-input {
+    // matches when searching so no flicker when searching/not searching
+    padding-right: 34px;
+  }
   .form-control {
     height: auto;
   }

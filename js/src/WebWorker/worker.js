@@ -1,4 +1,5 @@
 import debounce from 'debounce-async'
+import isEmail from 'validator/lib/isEmail'
 import {statuses} from '../lib'
 import {make_url} from '../lib/requests'
 import {add_listener, db, requests, window_call, get_conn_status, unix_ms} from './utils'
@@ -62,14 +63,40 @@ add_listener('create-conversation', async data => {
   return await requests.post('ui', '/conv/create/', data, {expected_status: [201, 400]})
 })
 
+add_listener('fast-email-lookup', async data => {
+  let email = data.query
+  let name = ''
+  const m = email.match(/^ *([\w ]+?) *<(.+)> *$/)
+  if (m) {
+    name = m[1]
+    email = m[2]
+  }
+  email = email.trim()
+  // console.log([name, email], isEmail(email))
+  if (!isEmail(email)) {
+    return null
+  }
+  // TODO search for email addresses in indexeddb
+  return [{name, email: email.toLowerCase()}]
+})
+
 const request_contacts = debounce(
   data => requests.get('ui', '/contacts/lookup-email/', {args: data}),
-  1000
+  300 // may have to increase this in future
 )
 
-add_listener('contacts-lookup-email', async data => {
-  const r = await request_contacts(data)
-  return r.data
+add_listener('slow-email-lookup', async data => {
+  try {
+    const r = await request_contacts(data)
+    console.log(r)
+    return r.data
+  } catch (e) {
+    if (e === 'canceled') {
+      return null
+    } else {
+      throw e
+    }
+  }
 })
 
 add_listener('start', async () => {
