@@ -1,6 +1,6 @@
-import Dexie from 'dexie'
 import {request as basic_request} from '../lib/requests'
 import {sleep} from '../lib'
+import db from './worker_db'
 
 export function window_call (method, call_args) {
   postMessage({method, call_args})
@@ -44,13 +44,6 @@ export function route_message (message) {
     }
   }
 }
-
-export const db = new Dexie('em2')
-db.version(1).stores({
-  sessions: '&session_id, email',
-  conversations: '&key, new_key, created_ts, updated_ts, publish_ts',
-  actions: '[conv+id], [conv+act], conv, ts',
-})
 
 async function request (method, app_name, path, config) {
   // wraps basic_request and re-authenticates when a session has expired, also takes care of allow_fail

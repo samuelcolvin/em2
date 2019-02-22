@@ -1,6 +1,7 @@
 import {statuses} from '../lib'
 import {make_url} from '../lib/requests'
-import {db, unix_ms, window_call, set_conn_status} from './utils'
+import db from './worker_db'
+import {unix_ms, window_call, set_conn_status} from './worker_utils'
 
 const offline = 0
 const connecting = 1

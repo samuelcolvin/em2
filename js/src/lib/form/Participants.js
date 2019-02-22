@@ -41,7 +41,6 @@ class Participants extends React.Component {
 
     const options2 = await this.props.ctx.worker.call('slow-email-lookup', {query})
     // null when the request was cancelled, or offline
-    // console.log(options1, options2)
     if (options2 && options2.length) {
       // could combine first and second set of options, but in general second set will override first
       // eg. options2.concat(options1 || [])
@@ -66,7 +65,6 @@ class Participants extends React.Component {
 
   onChange = addresses => {
     const existing_participants = this.props.existing_participants || 0
-    console.log(this.props, existing_participants, addresses.length)
     if (existing_participants + addresses.length > max_participants) {
       this.props.ctx.setMessage({icon: 'times', message: `Maximum ${max_participants} participants permitted`})
     } else {

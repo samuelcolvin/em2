@@ -1,68 +1,12 @@
 import React from 'react'
-import ReactDOM from 'react-dom'
 import {
-  Button,
-  ButtonGroup,
   Modal,
-  ModalBody,
-  ModalFooter as BsModalFooter,
   ModalHeader,
 } from 'reactstrap'
 import {withRouter} from 'react-router-dom'
 import WithContext from './context'
-import {as_title, get_component_name} from './index'
-import Detail, {render} from './retrieve/Detail'
+import {get_component_name} from './index'
 
-export const ModalFooter = ({done, disabled, label, cancel_disabled}) => (
-  <BsModalFooter>
-    <ButtonGroup>
-      <Button type="button" color="secondary" onClick={() => done()} disabled={cancel_disabled}>
-        Cancel
-      </Button>
-      <Button type="submit" color="primary" disabled={disabled}>
-        {label || 'Book'}
-      </Button>
-    </ButtonGroup>
-  </BsModalFooter>
-)
-
-export const InfoModal = ({onClose, isOpen, title, fields, extra_fields, object, children}) => {
-  const e_fields = Object.assign({}, extra_fields)
-  return (
-    <Modal isOpen={isOpen} toggle={onClose} size="lg">
-      <ModalHeader toggle={onClose}>{title}</ModalHeader>
-      <ModalBody>
-        {children}
-        {object && (
-          <div>
-            {Object.entries(fields).map(([k, value]) => (
-              <Detail k={k} name={value.title || as_title(k)}>
-                {value.render ? value.render(object[k], object) : object[k]}
-              </Detail>
-            ))}
-            {Object.entries(object.extra || []).map(([k, value]) => (
-              <Detail key={`extra_${k}`} name={(e_fields[k] && e_fields[k].title) || as_title(k)}>
-                {(e_fields[k] && e_fields[k].render && e_fields[k].render(value, object)) || render(value)}
-              </Detail>
-            ))}
-          </div>
-        )}
-      </ModalBody>
-      <BsModalFooter>
-        <Button color="secondary" onClick={onClose}>Close</Button>
-      </BsModalFooter>
-    </Modal>
-  )
-}
-
-export const SetModalTitle = ({children}) => {
-  const el = document.getElementById('modal-title')
-  if (children && el) {
-    return ReactDOM.createPortal(children, el)
-  } else {
-    return null
-  }
-}
 
 export default function AsModal (WrappedComponent) {
   class AsModal extends React.Component {

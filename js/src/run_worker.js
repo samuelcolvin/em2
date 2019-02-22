@@ -1,4 +1,4 @@
-import MainWorker from './WebWorker/load.js'
+import MainWorker from './worker/worker.js'
 import {DetailedError} from './lib'
 
 if (!window) {
@@ -6,7 +6,6 @@ if (!window) {
 }
 
 const random = () => Math.floor(Math.random() * 1e6)
-
 
 class Worker {
   constructor (app) {

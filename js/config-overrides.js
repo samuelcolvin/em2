@@ -7,7 +7,7 @@ module.exports = function override(config, env) {
 
   // copied partially from https://github.com/facebook/create-react-app/pull/5886
   const worker_loader = {
-    test: /\/WebWorker\/load\.js$/,
+    test: /\/worker\/worker\.js$/,
     include: babel_loader.include,
     use: [
       require.resolve('worker-loader'),

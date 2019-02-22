@@ -1,4 +1,6 @@
-import {db, requests, unix_ms} from './utils'
+import db, {get_session} from './worker_db'
+import {add_listener, get_conn_status, requests, unix_ms} from './worker_utils'
+import {statuses} from '../lib'
 
 
 function actions_incomplete (actions) {
@@ -95,7 +97,7 @@ function construct_conv (actions) {
   }
 }
 
-export default async function (data) {
+async function get_conversation (data) {
   // TODO also need to look at the conversation and see if there are any new actions we've missed
   let actions = await get_db_actions(data.key)
 
@@ -111,4 +113,53 @@ export default async function (data) {
     actions = await get_db_actions(data.key)
   }
   return construct_conv(actions)
+}
+
+const P = 50  // list pagination
+
+async function list_conversations (data) {
+  const page = data.page
+  const status = await get_conn_status()
+  if (status === statuses.online) {
+    const session = await get_session()
+    const cache_key = `page-${data.page}`
+    if (!session.cache.has(cache_key)) {
+      const r = await requests.get('ui', '/conv/list/', {args: {page}})
+      const conversations = r.data.conversations.map(c => (
+          Object.assign({}, c, {
+            created_ts: unix_ms(c.created_ts),
+            updated_ts: unix_ms(c.updated_ts),
+            publish_ts: unix_ms(c.publish_ts),
+          })
+      ))
+      await db.conversations.bulkPut(conversations)
+      session.cache.add(cache_key)
+      await db.sessions.update(session.session_id, {cache: session.cache, conv_count: r.data.count})
+    }
+  }
+
+  const count = await db.conversations.count()
+  return {
+    conversations: await db.conversations.orderBy('updated_ts').reverse().offset((page - 1) * P).limit(P).toArray(),
+    pages: Math.ceil(count / P),
+  }
+}
+
+export default function () {
+  add_listener('list-conversations', list_conversations)
+
+  add_listener('get-conversation', get_conversation)
+
+  add_listener('act', async data => {
+    return await requests.post('ui', `/conv/${data.conv}/act/`, {actions: data.actions})
+  })
+
+  add_listener('publish', async data => {
+    const r = await requests.post('ui', `/conv/${data.conv}/publish/`, {publish: true})
+    await db.conversations.update(data.conv, {new_key: r.data.key})
+  })
+
+  add_listener('create-conversation', async data => {
+    return await requests.post('ui', '/conv/create/', data, {expected_status: [201, 400]})
+  })
 }
