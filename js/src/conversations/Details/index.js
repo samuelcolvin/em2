@@ -5,6 +5,7 @@ import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {Loading} from '../../lib/Errors'
 import WithContext from '../../lib/context'
 import Message from './Message'
+import Participants from '../../lib/form/Participants'
 
 const DraftButtons = ({state, add_msg, publish}) => (
   <ButtonGroup>
@@ -66,41 +67,50 @@ class ConvDetailsView extends React.Component {
       const conv = await this.props.ctx.worker.call('get-conversation', this.props.match.params)
       this.props.ctx.setTitle(conv.subject)
       this.setState({conv})
-      this.check_locked()
+      if (this.action_ids && this.state.locked && this.action_ids.filter(id => this.state.conv.action_ids.has(id))) {
+        this.action_ids = null
+        this.setState({locked: false})
+      }
     }
   }
 
   publish = async () => {
-    if (!this.state.conv.published) {
+    if (!this.state.locked && !this.state.conv.published) {
       this.setState({locked: true})
       await this.props.ctx.worker.call('publish', {conv: this.state.conv.key})
     }
   }
 
   add_msg = async () => {
-    if (this.state.new_message) {
+    if (!this.state.locked && this.state.new_message) {
       this.setState({locked: true})
-      const act = {act: 'message:add', body: this.state.new_message}
-      const r = await this.props.ctx.worker.call('act', {conv: this.state.conv.key, act})
-      this.new_action = r.data.action_id
+      const actions = [{act: 'message:add', body: this.state.new_message}]
+      const r = await this.props.ctx.worker.call('act', {conv: this.state.conv.key, actions})
+      this.action_ids = r.data.action_ids
       this.setState({new_message: null})
     }
   }
 
   add_comment = async () => {
-    if (this.state.comment && this.state.comment_parent) {
+    if (!this.state.locked && this.state.comment && this.state.comment_parent) {
       this.setState({locked: true})
-      const act = {act: 'message:add', body: this.state.comment, parent: this.state.comment_parent}
-      const r = await this.props.ctx.worker.call('act', {conv: this.state.conv.key, act})
-      this.new_action = r.data.action_id
+      const actions = [{act: 'message:add', body: this.state.comment, parent: this.state.comment_parent}]
+      const r = await this.props.ctx.worker.call('act', {conv: this.state.conv.key, actions})
+      this.action_ids = r.data.action_ids
       this.setState({comment: null, comment_parent: null})
     }
   }
 
-  check_locked = () => {
-    if (this.new_action && this.state.locked && this.state.conv.action_ids.has(this.new_action)) {
-      this.new_action = null
-      this.setState({locked: false})
+  add_participants = async () => {
+    if (!this.state.locked && this.state.extra_prts.length) {
+      this.setState({locked: true})
+      console.log(this.state.extra_prts)
+      const actions = this.state.extra_prts.map(p => (
+        {act: 'participant:add', participant: p.email}
+      ))
+      const r = await this.props.ctx.worker.call('act', {conv: this.state.conv.key, actions})
+      this.action_ids = r.data.action_ids
+      this.setState({extra_prts: null})
     }
   }
 
@@ -134,7 +144,7 @@ class ConvDetailsView extends React.Component {
               </div>
               <div className="py-2">
                 <textarea placeholder="reply to all..." className="msg"
-                          disabled={this.state.locked}
+                          disabled={!!(this.state.locked || this.state.comment_parent || this.state.extra_prts)}
                           value={this.state.new_message || ''}
                           onChange={e => this.setState({new_message: e.target.value})}/>
 
@@ -149,6 +159,37 @@ class ConvDetailsView extends React.Component {
               {Object.keys(this.state.conv.participants).map((p, i) => (
                   <div key={i}>{p}</div>
               ))}
+              {this.state.extra_prts ? (
+                <div className="mt-2">
+                  <Participants name="participants"
+                                ctx={this.props.ctx}
+                                value={this.state.extra_prts || []}
+                                disabled={this.state.locked}
+                                existing_participants={Object.keys(this.state.conv.participants).length}
+                                onChange={extra_prts => this.setState({extra_prts})}/>
+
+                  <div className="d-flex flex-row-reverse mt-2">
+                    <Button color="primary" disabled={this.state.locked} size="sm"
+                            onClick={this.add_participants}>
+                      Add
+                    </Button>
+                    <Button size="sm" color="link" className="text-muted"
+                            disabled={this.state.locked}
+                            onClick={() => this.setState({extra_prts: null})}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-right mt-2">
+                  <Button color="primary"
+                          disabled={!!(this.state.locked || this.state.comment_parent || this.state.new_message)}
+                          size="sm"
+                          onClick={() => this.setState({extra_prts: []})}>
+                    Add Participants
+                  </Button>
+                </div>
+              )}
             </div>
           </Col>
         </Row>

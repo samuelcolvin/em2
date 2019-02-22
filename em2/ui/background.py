@@ -113,12 +113,14 @@ from (
 """
 
 push_sql_all = push_sql_template.format('where a.conv=$1 order by a.id')
-push_sql_single = push_sql_template.format('where a.conv=$1 and a.id=$2')
+push_sql_multiple = push_sql_template.format('where a.conv=$1 and a.id=any($2)')
 
 
-async def push(pg_conn: BuildPgConnection, redis: Redis, conv_id: int, action_id: int, all_actions: bool):
-    if all_actions:
-        data = await pg_conn.fetchval(push_sql_all, conv_id)
-    else:
-        data = await pg_conn.fetchval(push_sql_single, conv_id, action_id)
+async def push_all(pg_conn: BuildPgConnection, redis: Redis, conv_id: int):
+    data = await pg_conn.fetchval(push_sql_all, conv_id)
+    await redis.publish(channel_name, data)
+
+
+async def push_multiple(pg_conn: BuildPgConnection, redis: Redis, conv_id: int, action_ids: List[int]):
+    data = await pg_conn.fetchval(push_sql_multiple, conv_id, action_ids)
     await redis.publish(channel_name, data)

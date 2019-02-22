@@ -168,6 +168,7 @@ _msg_action_types = {a for a in ActionsTypes if a.value.startswith('message:')}
 _follow_action_types = (_msg_action_types - {ActionsTypes.msg_add}) | {ActionsTypes.prt_modify, ActionsTypes.prt_remove}
 # actions that don't materially change the conversation, and therefore don't effect whether someone has seen it
 _meta_action_types = {a for a in ActionsTypes if a.value.endswith((':lock', ':release'))} | {ActionsTypes.seen}
+max_participants = 64
 
 
 class ActionModel(BaseModel):
@@ -266,6 +267,10 @@ class _Act:
     async def _act_on_participant(self) -> int:
         follows_pk = None
         if self.action.act == ActionsTypes.prt_add:
+            prts_count = await self.conn.fetchval('select count(*) from participants where conv=$1', self.conv_id)
+            if prts_count == max_participants:
+                raise JsonErrors.HTTPBadRequest(f'no more than {max_participants} participants permitted')
+
             prt_user_id = await get_create_user(self.conn, self.action.participant)
             prt_id = await self.conn.fetchval(
                 """

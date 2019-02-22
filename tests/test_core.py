@@ -452,3 +452,19 @@ async def test_already_seen(factory: Factory, db_conn, settings):
     assert False is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
     assert None is not await act(db_conn, settings, user2_id, conv.key, ActionModel(act=ActionsTypes.seen))
     assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
+
+
+async def test_participant_add_many(factory: Factory, db_conn, settings):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+
+    for i in range(63):
+        action = ActionModel(act=ActionsTypes.prt_add, participant=f'new-{i}@example.com')
+        await act(db_conn, settings, user.id, conv.key, action)
+
+    assert 64 == await db_conn.fetchval('select count(*) from participants where conv=$1', conv.id)
+
+    action = ActionModel(act=ActionsTypes.prt_add, participant=f'too-many@example.com')
+    with pytest.raises(JsonErrors.HTTPBadRequest) as exc_info:
+        await act(db_conn, settings, user.id, conv.key, action)
+    assert exc_info.value.message == 'no more than 64 participants permitted'

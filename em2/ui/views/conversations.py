@@ -15,6 +15,7 @@ from em2.core import (
     generate_conv_key,
     get_conv_for_user,
     get_create_multiple_users,
+    max_participants,
     update_conv_users,
 )
 
@@ -73,6 +74,12 @@ class ConvCreate(ExecView):
 
         participants: List[Participants] = []
 
+        @validator('participants', whole=True)
+        def check_participants_count(cls, v):
+            if len(v) > max_participants:
+                raise ValueError(f'no more than {max_participants} participants permitted')
+            return v
+
     async def execute(self, conv: Model):
         ts = datetime.utcnow()
         conv_key = generate_conv_key(self.session.email, ts, conv.subject) if conv.publish else draft_conv_key()
@@ -127,11 +134,10 @@ class ConvCreate(ExecView):
                 conv.message,
                 conv.msg_format,
             )
-            publish_id = await self.conn.fetchval(
+            await self.conn.execute(
                 """
                 insert into actions (conv, act, actor, ts, body)
                 values              ($1  , $2 , $3   , $4, $5)
-                returning id
                 """,
                 conv_id,
                 ActionsTypes.conv_publish if conv.publish else ActionsTypes.conv_create,
@@ -141,19 +147,25 @@ class ConvCreate(ExecView):
             )
             await update_conv_users(self.conn, conv_id)
 
-        await self.push(conv_id, publish_id, True)
+        await self.push_all(conv_id)
         return dict(key=conv_key, status_=201)
 
 
 class ConvAct(ExecView):
-    Model = ActionModel
+    class Model(BaseModel):
+        actions: List[ActionModel]
 
-    async def execute(self, action: Model):
+    async def execute(self, m: Model):
         conv_prefix = self.request.match_info['conv']
-        conv_id, action_id = await act(self.conn, self.settings, self.session.user_id, conv_prefix, action)
-        if action_id:
-            await self.push(conv_id, action_id, False)
-        return {'action_id': action_id}
+        action_ids = []
+        conv_id = None
+        async with self.conn.transaction():
+            for action in m.actions:
+                conv_id, action_id = await act(self.conn, self.settings, self.session.user_id, conv_prefix, action)
+                action_ids.append(action_id)
+        if action_ids:
+            await self.push_multiple(conv_id, action_ids)
+        return {'action_ids': action_ids}
 
 
 class ConvPublish(ExecView):
@@ -206,11 +218,10 @@ class ConvPublish(ExecView):
             for msg in conv_summary['messages']:
                 await self.add_msg(msg, conv_id, ts)
 
-            publish_action_id = await self.conn.fetchval(
+            await self.conn.execute(
                 """
                 insert into actions (conv, act           , actor, ts, body)
                 values              ($1  , 'conv:publish', $2   , $3, $4)
-                returning id
                 """,
                 conv_id,
                 self.session.user_id,
@@ -218,7 +229,7 @@ class ConvPublish(ExecView):
                 conv_summary['subject'],
             )
             await update_conv_users(self.conn, conv_id)
-        await self.push(conv_id, publish_action_id, True)
+        await self.push_all(conv_id)
         return dict(key=conv_key)
 
     async def add_msg(self, msg_info: Dict[str, Any], conv_id: int, ts: datetime, parent: int = None):

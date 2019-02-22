@@ -13,7 +13,7 @@ const CommentButton = ({msg, state, setState, comment_ref, children}) => {
   return (
     <div className="text-right">
       <Button size="sm" color="comment" id={btn_id}
-              disabled={state.locked || !!state.comment_parent}
+              disabled={!!(state.locked || state.comment_parent || state.new_message || state.extra_prts)}
               onClick={click}>
         <FontAwesomeIcon icon="reply" className="mr-1"/>
       </Button>

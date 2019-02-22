@@ -112,6 +112,9 @@ $stripe-width: 10px;
   .form-control {
     height: auto;
   }
+  .rbt-menu li.disabled {  // nothing found message
+    font-size: 0.8rem;
+  }
 }
 
 .conv-list {

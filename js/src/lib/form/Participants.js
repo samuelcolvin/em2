@@ -20,7 +20,9 @@ const static_props = {
   allowNew: false,
   delay: 100,
   selectHintOnEnter: true,
+  emptyLabel: 'no match found & invalid email address',
 }
+const max_participants = 64
 
 class Participants extends React.Component {
   state = {options: [], ongoing_searches: 0}
@@ -54,11 +56,21 @@ class Participants extends React.Component {
       e.preventDefault()
       const [addresses, bad_count] = await this.props.ctx.worker.call('parse-multiple-addresses', {raw})
       if (addresses) {
-        this.props.onChange(this.props.value.concat(addresses))
+        this.onChange(this.props.value.concat(addresses))
       }
       if (bad_count) {
         this.props.ctx.setMessage({icon: 'times', message: `Skipped ${bad_count} invalid addresses while pasting`})
       }
+    }
+  }
+
+  onChange = addresses => {
+    const existing_participants = this.props.existing_participants || 0
+    console.log(this.props, existing_participants, addresses.length)
+    if (existing_participants + addresses.length > max_participants) {
+      this.props.ctx.setMessage({icon: 'times', message: `Maximum ${max_participants} participants permitted`})
+    } else {
+      this.props.onChange(addresses)
     }
   }
 
@@ -74,7 +86,7 @@ class Participants extends React.Component {
                       id={this.props.name}
                       required={this.props.required}
                       inputProps={{onPaste: this.onPaste}}
-                      onChange={s => this.props.onChange(s)}/>
+                      onChange={this.onChange}/>
         {count ? (
           <small className="text-muted">{count} {count === 1 ? 'Person' : 'People'}</small>
         ) : null}

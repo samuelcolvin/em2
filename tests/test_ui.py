@@ -228,11 +228,11 @@ async def test_act(cli, url, factory: Factory):
     await factory.create_user()
     conv = await factory.create_conv()
 
-    data = {'act': 'message:add', 'body': 'this is another message'}
+    data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}]}
     r = await cli.post_json(url('ui:act', conv=conv.key), data)
     assert r.status == 200, await r.text()
     obj = await r.json()
-    assert obj == {'action_id': 4}
+    assert obj == {'action_ids': [4]}
 
     r = await cli.get(url('ui:get', conv=conv.key))
     assert r.status == 200, await r.text()
@@ -253,14 +253,14 @@ async def test_create_then_publish(cli, url, factory: Factory, db_conn):
     user = await factory.create_user()
     conv = await factory.create_conv()
 
-    data = {'act': 'message:lock', 'follows': 2}
+    data = {'actions': [{'act': 'message:lock', 'follows': 2}]}
     r = await cli.post_json(url('ui:act', conv=conv.key), data)
     assert r.status == 200, await r.text()
-    assert {'action_id': 4} == await r.json()
-    data = {'act': 'message:modify', 'body': 'msg changed', 'follows': 4}
+    assert {'action_ids': [4]} == await r.json()
+    data = {'actions': [{'act': 'message:modify', 'body': 'msg changed', 'follows': 4}]}
     r = await cli.post_json(url('ui:act', conv=conv.key), data)
     assert r.status == 200, await r.text()
-    assert {'action_id': 5} == await r.json()
+    assert {'action_ids': [5]} == await r.json()
 
     obj1 = await construct_conv(db_conn, user.id, conv.key)
     assert obj1 == {
@@ -356,7 +356,8 @@ async def test_ws_add(cli, url, factory: Factory, db_conn):
         assert msg.type == WSMsgType.text
         assert json.loads(msg.data) == {'user_v': 2}
 
-        r = await cli.post_json(url('ui:act', conv=conv.key), {'act': 'message:add', 'body': 'this is another message'})
+        d = {'actions': [{'act': 'message:add', 'body': 'this is another message'}]}
+        r = await cli.post_json(url('ui:act', conv=conv.key), d)
         assert r.status == 200, await r.text()
 
         msg = await ws.receive()
@@ -385,3 +386,12 @@ async def test_ws_add(cli, url, factory: Factory, db_conn):
             'msgs': 2,
         },
     }
+
+
+async def test_create_conv_many_participants(cli, url, factory: Factory):
+    await factory.create_user()
+
+    prts = [{f'email': f'p-{i}@example.com'} for i in range(66)]
+    r = await cli.post_json(url('ui:create'), {'subject': 'Sub', 'message': 'Msg', 'participants': prts})
+    assert r.status == 400, await r.text()
+    assert 'no more than 64 participants permitted' in await r.text()

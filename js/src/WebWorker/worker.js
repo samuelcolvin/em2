@@ -42,7 +42,7 @@ add_listener('list-conversations', async data => {
 add_listener('get-conversation', get_conversation)
 
 add_listener('act', async data => {
-  return await requests.post('ui', `/conv/${data.conv}/act/`, data.act)
+  return await requests.post('ui', `/conv/${data.conv}/act/`, {actions: data.actions})
 })
 
 add_listener('publish', async data => {
@@ -99,15 +99,15 @@ add_listener('slow-email-lookup', async data => {
 })
 
 add_listener('parse-multiple-addresses', data => {
-  let raw
+  let addresses
   if (data.raw.indexOf(',') === -1) {
     // no commas, split on spaces
-    raw = data.raw.split(' ')
+    addresses = data.raw.split(/[\n ]/)
   } else {
     // includes commas, split on commas
-    raw = data.raw.split(',')
+    addresses = data.raw.split(/[\n,]/)
   }
-  const results = raw.filter(v => v).map(parse_address)
+  const results = addresses.filter(v => v).map(parse_address)
   return [results.filter(v => v), results.filter(v => !v).length]
 })
 
