@@ -65,6 +65,64 @@ async def test_create_conv(cli, url, factory: Factory, db_conn):
         'prts': 1,
         'msgs': 1,
     }
+    results = await db_conn.fetch(
+        """
+        select u.email from users as u
+        join participants p on u.id = p.user_id
+        where p.conv=$1
+        """,
+        conv['id'],
+    )
+    participants = [r[0] for r in results]
+    assert participants == ['testing-1@example.com']
+
+
+async def test_create_conv_participants(cli, url, factory: Factory, db_conn):
+    user = await factory.create_user()
+
+    r = await cli.post_json(
+        url('ui:create'),
+        {
+            'subject': 'Sub',
+            'message': 'Msg',
+            'participants': [{'email': 'foobar@example.com', 'name': 'foo bar'}, {'email': 'another@example.com'}],
+        },
+    )
+    assert r.status == 201, await r.text()
+    obj = await r.json()
+    conv_key = obj['key']
+    assert len(conv_key) == 20
+
+    assert 1 == await db_conn.fetchval('select count(*) from conversations')
+    conv = dict(await db_conn.fetchrow('select * from conversations'))
+    assert conv == {
+        'id': AnyInt(),
+        'key': conv_key,
+        'creator': user.id,
+        'created_ts': CloseToNow(),
+        'updated_ts': CloseToNow(),
+        'publish_ts': None,
+        'last_action_id': 5,
+        'details': RegexStr(r'\{.*\}'),
+    }
+    assert json.loads(conv['details']) == {
+        'act': 'conv:create',
+        'sub': 'Sub',
+        'email': 'testing-1@example.com',
+        'body': 'Msg',
+        'prts': 3,
+        'msgs': 1,
+    }
+    results = await db_conn.fetch(
+        """
+        select u.email from users as u
+        join participants p on u.id = p.user_id
+        where p.conv=$1
+        """,
+        conv['id'],
+    )
+    participants = {r[0] for r in results}
+    assert participants == {'foobar@example.com', 'another@example.com', 'testing-1@example.com'}
 
 
 async def test_create_conv_publish(cli, url, factory: Factory, db_conn):

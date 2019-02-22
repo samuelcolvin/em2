@@ -21,6 +21,7 @@ const static_props = {
   delay: 100,
   selectHintOnEnter: true,
 }
+
 class Participants extends React.Component {
   state = {options: [], ongoing_searches: 0}
 
@@ -47,6 +48,20 @@ class Participants extends React.Component {
     this.setState({ongoing_searches: this.state.ongoing_searches - 1})
   }
 
+  onPaste = async e => {
+    const raw = e.clipboardData.getData('Text')
+    if (raw) {
+      e.preventDefault()
+      const [addresses, bad_count] = await this.props.ctx.worker.call('parse-multiple-addresses', {raw})
+      if (addresses) {
+        this.props.onChange(this.props.value.concat(addresses))
+      }
+      if (bad_count) {
+        this.props.ctx.setMessage({icon: 'times', message: `Skipped ${bad_count} invalid addresses while pasting`})
+      }
+    }
+  }
+
   render () {
     const count = this.props.value.length
     return (
@@ -58,6 +73,7 @@ class Participants extends React.Component {
                       name={this.props.name}
                       id={this.props.name}
                       required={this.props.required}
+                      inputProps={{onPaste: this.onPaste}}
                       onChange={s => this.props.onChange(s)}/>
         {count ? (
           <small className="text-muted">{count} {count === 1 ? 'Person' : 'People'}</small>

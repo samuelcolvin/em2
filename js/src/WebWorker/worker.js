@@ -35,7 +35,7 @@ add_listener('list-conversations', async data => {
   const count = await db.conversations.count()
   return {
     conversations: await db.conversations.orderBy('updated_ts').reverse().offset((page - 1) * P).limit(P).toArray(),
-    pages: Math.ceil(count / P)
+    pages: Math.ceil(count / P),
   }
 })
 
@@ -63,8 +63,7 @@ add_listener('create-conversation', async data => {
   return await requests.post('ui', '/conv/create/', data, {expected_status: [201, 400]})
 })
 
-add_listener('fast-email-lookup', async data => {
-  let email = data.query
+function parse_address (email) {
   let name = ''
   const m = email.match(/^ *([\w ]+?) *<(.+)> *$/)
   if (m) {
@@ -72,12 +71,13 @@ add_listener('fast-email-lookup', async data => {
     email = m[2]
   }
   email = email.trim()
-  // console.log([name, email], isEmail(email))
-  if (!isEmail(email)) {
-    return null
-  }
+  return isEmail(email) ? {name, email: email.toLowerCase()} : null
+}
+
+add_listener('fast-email-lookup', async data => {
+  const r = parse_address(data.query)
   // TODO search for email addresses in indexeddb
-  return [{name, email: email.toLowerCase()}]
+  return r && [r]
 })
 
 const request_contacts = debounce(
@@ -88,7 +88,6 @@ const request_contacts = debounce(
 add_listener('slow-email-lookup', async data => {
   try {
     const r = await request_contacts(data)
-    console.log(r)
     return r.data
   } catch (e) {
     if (e === 'canceled') {
@@ -98,6 +97,20 @@ add_listener('slow-email-lookup', async data => {
     }
   }
 })
+
+add_listener('parse-multiple-addresses', data => {
+  let raw
+  if (data.raw.indexOf(',') === -1) {
+    // no commas, split on spaces
+    raw = data.raw.split(' ')
+  } else {
+    // includes commas, split on commas
+    raw = data.raw.split(',')
+  }
+  const results = raw.filter(v => v).map(parse_address)
+  return [results.filter(v => v), results.filter(v => !v).length]
+})
+
 
 add_listener('start', async () => {
   const session = await get_session()

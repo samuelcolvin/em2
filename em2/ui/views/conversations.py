@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, Set
+from typing import Any, Dict, List
 
 from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
 from pydantic import BaseModel, EmailStr, constr, validator
@@ -15,7 +15,8 @@ from em2.core import (
     generate_conv_key,
     get_conv_for_user,
     get_create_multiple_users,
-    update_conv_users)
+    update_conv_users,
+)
 
 from .utils import ExecView, View
 
@@ -63,9 +64,14 @@ class ConvCreate(ExecView):
     class Model(BaseModel):
         subject: constr(max_length=255, strip_whitespace=True)
         message: constr(max_length=10000, strip_whitespace=True)
-        participants: Set[EmailStr] = set()
         msg_format: MsgFormat = MsgFormat.markdown
         publish = False
+
+        class Participants(BaseModel):
+            email: EmailStr
+            name: str = None
+
+        participants: List[Participants] = []
 
     async def execute(self, conv: Model):
         ts = datetime.utcnow()
@@ -87,7 +93,9 @@ class ConvCreate(ExecView):
             if conv_id is None:
                 raise JsonErrors.HTTPConflict(error='key conflicts with existing conversation')
 
-            part_users = await get_create_multiple_users(self.conn, conv.participants)
+            # TODO currently only email is used
+            participants = set(p.email for p in conv.participants)
+            part_users = await get_create_multiple_users(self.conn, participants)
 
             await self.conn.execute(
                 'insert into participants (conv, user_id, seen) (select $1, $2, true)', conv_id, creator_id

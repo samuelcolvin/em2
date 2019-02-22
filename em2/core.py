@@ -159,7 +159,7 @@ async def update_conv_users(conn: BuildPgConnection, conv_id: int):
           from participants
           where participants.user_id = users.id and participants.conv = $1 and users.v is not null;
         """,
-        conv_id
+        conv_id,
     )
 
 
