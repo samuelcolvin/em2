@@ -491,3 +491,14 @@ async def test_participant_add_many(factory: Factory, db_conn, settings):
     with pytest.raises(JsonErrors.HTTPBadRequest) as exc_info:
         await act(db_conn, settings, user.id, conv.key, action)
     assert exc_info.value.message == 'no more than 64 participants permitted'
+
+
+async def test_publish_remote(factory: Factory, redis, db_conn, worker):
+    await factory.create_user()
+    await factory.create_conv(participants=[{'email': 'whatever@remote.com'}], publish=True)
+    assert 4 == await db_conn.fetchval('select count(*) from actions')
+    await worker.async_run()
+    assert worker.jobs_complete == 1
+    job_results = await redis.all_job_results()
+    assert len(job_results) == 1
+    assert job_results[0]['result'] == 'retry=0 fallback=1 em2=0'

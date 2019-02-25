@@ -3,11 +3,13 @@ import logging
 from asyncio import CancelledError
 from typing import Dict, List
 
+from aiohttp.abc import Application
 from aiohttp.web_ws import WebSocketResponse
-from aioredis import Redis
+from arq.connections import ArqRedis
 from buildpg.asyncpg import BuildPgConnection
 
 import ujson
+from em2.core import UserTypes
 from em2.settings import Settings
 
 logger = logging.getLogger('em2.ui.background')
@@ -73,11 +75,52 @@ class Background:
                 self.remove_ws(user_id, ws)
 
 
-push_sql_template = """
+local_users_sql = """
 select json_build_object(
-  'actions', actions,
   'users', participants,
   'conv_details', conv_details
+)
+from (
+  select array_to_json(array_agg(t.a)) as participants
+  from (
+    select array[p.user_id, u.v] as a
+    from participants as p
+    join conversations as c on p.conv = c.id
+    join users as u on p.user_id = u.id
+    where conv=$1
+      and (c.publish_ts is not null or p.user_id=c.creator)
+      and u.user_type = any(array['new', 'local']::UserTypes[])
+  ) as t
+) as participants,
+(
+  select details as conv_details from conversations where id=$1
+) as conv_details
+"""
+
+
+async def _push_local(pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int, actions_data: str):
+    extra = await pg_conn.fetchval(local_users_sql, conv_id)
+    await redis.publish(channel_name, actions_data[:-1] + ',' + extra[1:])
+
+
+remote_users_sql = """
+select u.email, u.user_type
+from participants as p
+join conversations as c on p.conv = c.id
+join users as u on p.user_id = u.id
+where conv=$1 and c.publish_ts is not null and u.user_type != 'local'
+"""
+
+
+async def _push_remote(pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int, actions_data: str):
+    remote_users = [(r[0], UserTypes(r[1])) for r in await pg_conn.fetch(remote_users_sql, conv_id)]
+    if remote_users:
+        await redis.enqueue_job('push_actions', actions_data, remote_users)
+
+
+push_sql_template = """
+select json_build_object(
+  'actions', actions
 )
 from (
   select array_to_json(array_agg(json_strip_nulls(row_to_json(t)))) as actions
@@ -96,31 +139,20 @@ from (
     left join actions as parent_action on a.parent = parent_action.pk
     {}
   ) as t
-) as actions,
-(
-  select array_to_json(array_agg(t.a)) as participants
-  from (
-    select array[p.user_id, u.v] as a
-    from participants as p
-    join conversations as c on p.conv = c.id
-    join users u on p.user_id = u.id
-    where conv=$1 and (c.publish_ts is not null or p.user_id=c.creator)
-  ) as t
-) as participants,
-(
-  select details as conv_details from conversations where id=$1
-) as conv_details
+) as actions
 """
 
 push_sql_all = push_sql_template.format('where a.conv=$1 order by a.id')
 push_sql_multiple = push_sql_template.format('where a.conv=$1 and a.id=any($2)')
 
 
-async def push_all(pg_conn: BuildPgConnection, redis: Redis, conv_id: int):
-    data = await pg_conn.fetchval(push_sql_all, conv_id)
-    await redis.publish(channel_name, data)
+async def push_all(app: Application, pg_conn: BuildPgConnection, conv_id: int):
+    actions_data = await pg_conn.fetchval(push_sql_all, conv_id)
+    await _push_local(pg_conn, app['redis'], conv_id, actions_data)
+    await _push_remote(pg_conn, app['redis'], conv_id, actions_data)
 
 
-async def push_multiple(pg_conn: BuildPgConnection, redis: Redis, conv_id: int, action_ids: List[int]):
-    data = await pg_conn.fetchval(push_sql_multiple, conv_id, action_ids)
-    await redis.publish(channel_name, data)
+async def push_multiple(app: Application, pg_conn: BuildPgConnection, conv_id: int, action_ids: List[int]):
+    actions_data = await pg_conn.fetchval(push_sql_multiple, conv_id, action_ids)
+    await _push_local(pg_conn, app['redis'], conv_id, actions_data)
+    await _push_remote(pg_conn, app['redis'], conv_id, actions_data)

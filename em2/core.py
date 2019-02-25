@@ -47,21 +47,31 @@ class MsgFormat(str, Enum):
     html = 'html'
 
 
-async def get_create_user(conn: BuildPgConnection, email: str) -> int:
+@unique
+class UserTypes(str, Enum):
+    new = 'new'
+    local = 'local'
+    remote_em2 = 'remote_em2'
+    remote_other = 'remote_other'
+
+
+async def get_create_user(conn: BuildPgConnection, email: str, user_type: UserTypes = UserTypes.new) -> int:
     """
     get a user by email address or create them if they don't yet exist, return their id.
-    """
 
+    user_type is only set if the user is created.
+    """
     user_id = await conn.fetchval('select id from users where email = $1', email)
     if user_id is None:
         # update here should happen very rarely
         user_id = await conn.fetchval(
             """
-            insert into users (email) values ($1)
+            insert into users (email, user_type) values ($1, $2)
             on conflict (email) do update set email=EXCLUDED.email
             returning id
             """,
             email,
+            user_type,
         )
     return user_id
 
@@ -157,7 +167,7 @@ async def update_conv_users(conn: BuildPgConnection, conv_id: int):
         """
         update users set v=v + 1
           from participants
-          where participants.user_id = users.id and participants.conv = $1 and users.v is not null;
+          where participants.user_id = users.id and participants.conv = $1 and users.user_type = 'local';
         """,
         conv_id,
     )

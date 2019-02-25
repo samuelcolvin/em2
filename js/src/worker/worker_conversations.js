@@ -123,7 +123,7 @@ async function list_conversations (data) {
   if (status === statuses.online) {
     const session = await get_session()
     const cache_key = `page-${data.page}`
-    if (!session.cache.has(cache_key)) {
+    if (session && !session.cache.has(cache_key)) {
       const r = await requests.get('ui', '/conv/list/', {args: {page}})
       const conversations = r.data.conversations.map(c => (
           Object.assign({}, c, {

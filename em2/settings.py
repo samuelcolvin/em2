@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from atoolbox import BaseSettings
 
@@ -10,8 +11,10 @@ class Settings(BaseSettings):
     cookie_name = 'em2'
     sql_path = SRC_DIR / 'models.sql'
     create_app = 'em2.main.create_app'
+    worker_func = 'em2.worker.run'
 
     domain: str = 'localhost'  # currently used as a proxy for development mode, should probably be changed
+    local_port: Optional[int] = 8000
     commit: str = 'unknown'
     build_time: str = 'unknown'
 

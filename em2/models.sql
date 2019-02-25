@@ -1,10 +1,13 @@
+create type UserTypes as enum ('new', 'local', 'remote_em2', 'remote_other');
+
 -- includes both local and remote users
 create table users (
   id bigserial primary key,
+  user_type UserTypes not null default 'new',
   email varchar(255) not null unique,
   v bigint default 1  -- null for remote users, set thus when the local check returns false
 );
-create index user_v on users using btree (v);
+create index user_type on users using btree (user_type);
 
 create table conversations (
   id bigserial primary key,
@@ -128,7 +131,7 @@ create trigger action_insert before insert on actions for each row execute proce
 ----------------------------------------------------------------------------------
 -- todo table of supported domains/nodes
 
-create type account_status as enum ('pending', 'active', 'suspended');
+create type AccountStatuses as enum ('pending', 'active', 'suspended');
 
 create table auth_users (
   id bigserial primary key,
@@ -138,7 +141,7 @@ create table auth_users (
   password_hash varchar(63),
   otp_secret varchar(20),
   recovery_email varchar(63) unique,
-  account_status account_status not null default 'pending'
+  account_status AccountStatuses not null default 'pending'
   -- todo: node that the user is registered to
 );
 create unique index auth_users_email on auth_users using btree (email);

@@ -3,9 +3,10 @@ import logging
 from time import time
 
 import bcrypt
+from aiohttp.web_response import Response
 from atoolbox import ExecView, encrypt_json, get_ip, json_response
 from atoolbox.auth import check_grecaptcha
-from atoolbox.utils import JsonErrors
+from atoolbox.utils import JsonErrors, decrypt_json
 from pydantic import BaseModel, EmailStr, constr
 
 logger = logging.getLogger('em2.auth')
@@ -90,3 +91,9 @@ class Login(ExecView):
     def _get_repeat_cache_key(self):
         ip = get_ip(self.request)
         return f'login-attempt:{ip}', ip
+
+
+async def check_address(request):
+    data = decrypt_json(request.app, await request.read(), ttl=10)
+    found = await request['conn'].fetchval('select 1 from auth_users where email=$1', data['email'])
+    return Response(body=b'1' if found else b'0')

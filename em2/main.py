@@ -12,9 +12,8 @@ from em2.settings import SRC_DIR, Settings
 from em2.ui import create_app_ui
 from em2.utils.web import build_index
 
-copied_context = 'pg', 'redis', 'http_client', 'expected_origin'
-
 logger = logging.getLogger('em2.main')
+copied_context = 'pg', 'redis', 'http_client', 'expected_origin'
 
 
 async def startup_populate_subapps(app: Application):
@@ -57,7 +56,9 @@ async def create_app(settings: Settings = None):
         app.add_subapp('/protocol/', app['protocol_app'])
         app.add_subapp('/auth/', app['auth_app'])
         routes_description = (
-            '  /ui/ - user interface routes\n  /protocol/ - em2 protocol routes\n  /auth/ - auth routes'
+            '  http://localhost:8000/ui/ - user interface routes\n'
+            '  http://localhost:8000/protocol/ - em2 protocol routes\n'
+            '  http://localhost:8000/auth/ - auth routes\n'
         )
         app['expected_origin'] = 'http://localhost:3000'
     else:
@@ -68,7 +69,7 @@ async def create_app(settings: Settings = None):
         routes_description = (
             f'  https://ui.{settings.domain}/ - user interface routes\n'
             f'  https://em2.{settings.domain}/ - em2 protocol routes\n'
-            f'  https://auth.{settings.domain}/ - auth routes'
+            f'  https://auth.{settings.domain}/ - auth routes\n'
         )
     app['index_path'] = build_index(app, 'root interface', routes_description)
     return app

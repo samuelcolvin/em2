@@ -23,7 +23,7 @@ host = 'localhost:8000'
 email = 'robot@example.com'
 password = 'testing'
 
-other_users = ['testing@example.com']
+other_users = [{'email': 'testing@example.com'}, {'email': 'different@remote.com'}]
 
 
 class Client:
@@ -119,7 +119,7 @@ class Client:
                 raise RuntimeError(f'unexpected response {r.status}')
             return await r.json()
 
-    async def _post_json(self, view_name, *, headers_=None, **data):
+    async def _post_json(self, view_name, *, headers_=None, **request_data):
         # TODO origin will need to be fixed for non local host usage
         headers = {
             'Content-Type': 'application/json',
@@ -131,14 +131,13 @@ class Client:
         headers = {k: v for k, v in headers.items() if v is not None}
 
         url = self._make_url(view_name)
-        data = json.dumps(data)
-        async with self.session.post(url, data=data, headers=headers) as r:
+        async with self.session.post(url, data=json.dumps(request_data), headers=headers) as r:
             if r.status not in {200, 201}:
                 try:
                     data = await r.json()
                 except ValueError:
                     data = await r.text()
-                devtools.debug(url, data, headers, r.status, dict(r.headers), data)
+                devtools.debug(url, request_data, headers, r.status, dict(r.headers), data)
                 raise RuntimeError(f'unexpected response {r.status}')
             return await r.json()
 

@@ -18,7 +18,7 @@ from .views.ws import websocket
 
 
 async def startup(app):
-    app['background'] = Background(app)
+    app.update(background=Background(app))
 
 
 no_pg_conn = {'ui.index', 'ui.online', 'ui.websocket'}

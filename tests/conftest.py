@@ -2,12 +2,18 @@ import asyncio
 import json
 from dataclasses import dataclass
 
+import aiodns
 import pytest
+from aiohttp import ClientSession, ClientTimeout
 from aiohttp.test_utils import teardown_test_loop
+from aioredis import create_redis
+from arq import ArqRedis, Worker
+from atoolbox.db.helpers import SimplePgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
 
 from em2.auth.utils import mk_password
 from em2.main import create_app
+from em2.protocol.worker import WorkerSettings
 from em2.settings import Settings
 from em2.utils.web import MakeUrl
 
@@ -70,9 +76,8 @@ async def _fix_db_conn(loop, settings, clean_db):
 @pytest.yield_fixture
 async def redis(loop, settings):
     addr = settings.redis_settings.host, settings.redis_settings.port
-    from aioredis import create_redis
 
-    redis = await create_redis(addr, db=settings.redis_settings.database, loop=loop)
+    redis = await create_redis(addr, db=settings.redis_settings.database, encoding='utf8', commands_factory=ArqRedis)
     await redis.flushdb()
 
     yield redis
@@ -82,8 +87,6 @@ async def redis(loop, settings):
 
 
 async def pre_startup_app(app):
-    from atoolbox.db.helpers import SimplePgPool
-
     app['pg'] = SimplePgPool(app['test_conn'])
 
 
@@ -93,6 +96,7 @@ async def _fix_cli(settings, db_conn, aiohttp_client, redis, loop):
     app['test_conn'] = db_conn
     app.on_startup.insert(0, pre_startup_app)
     cli = await aiohttp_client(app)
+    settings.local_port = cli.server.port
 
     async def post_json(url, data, *, origin=None):
         if isinstance(data, (dict, list)):
@@ -205,3 +209,26 @@ class Factory:
 @pytest.fixture
 async def factory(db_conn, cli, url):
     return Factory(db_conn, cli, url)
+
+
+@pytest.yield_fixture(name='worker')
+async def _fix_worker(redis, settings, db_conn, cli):
+    session = ClientSession(timeout=ClientTimeout(total=10))
+    worker = Worker(
+        functions=WorkerSettings.functions,
+        redis_pool=redis,
+        burst=True,
+        poll_delay=0.01,
+        ctx=dict(
+            settings=settings,
+            pg=SimplePgPool(db_conn),
+            session=session,
+            resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
+        ),
+    )
+
+    yield worker
+
+    worker.pool = None
+    await worker.close()
+    await session.close()
