@@ -16,7 +16,7 @@ from .utils.db import or404
 
 
 @unique
-class ActionsTypes(str, Enum):
+class ActionTypes(str, Enum):
     """
     Action types (component and verb), used for both urls and in db ENUM see models.sql
     """
@@ -163,11 +163,18 @@ async def update_conv_users(conn: BuildPgConnection, conv_id: int):
     )
 
 
-_prt_action_types = {a for a in ActionsTypes if a.value.startswith('participant:')}
-_msg_action_types = {a for a in ActionsTypes if a.value.startswith('message:')}
-_follow_action_types = (_msg_action_types - {ActionsTypes.msg_add}) | {ActionsTypes.prt_modify, ActionsTypes.prt_remove}
+_prt_action_types = {a for a in ActionTypes if a.value.startswith('participant:')}
+_msg_action_types = {a for a in ActionTypes if a.value.startswith('message:')}
+_follow_action_types = (_msg_action_types - {ActionTypes.msg_add}) | {ActionTypes.prt_modify, ActionTypes.prt_remove}
 # actions that don't materially change the conversation, and therefore don't effect whether someone has seen it
-_meta_action_types = {a for a in ActionsTypes if a.value.endswith((':lock', ':release'))} | {ActionsTypes.seen}
+_meta_action_types = {a for a in ActionTypes if a.value.endswith((':lock', ':release'))} | {ActionTypes.seen}
+_meta_action_types = {
+    ActionTypes.seen,
+    ActionTypes.subject_lock,
+    ActionTypes.subject_release,
+    ActionTypes.msg_lock,
+    ActionTypes.msg_release,
+}
 max_participants = 64
 
 
@@ -176,7 +183,7 @@ class ActionModel(BaseModel):
     Representation of an action to perform.
     """
 
-    act: ActionsTypes
+    act: ActionTypes
     participant: Optional[EmailStr] = None
     body: Optional[constr(min_length=1, max_length=10000, strip_whitespace=True)] = None
     follows: Optional[int] = None
@@ -185,13 +192,13 @@ class ActionModel(BaseModel):
 
     @validator('act')
     def check_act(cls, v):
-        if v in {ActionsTypes.conv_publish, ActionsTypes.conv_create}:
+        if v in {ActionTypes.conv_publish, ActionTypes.conv_create}:
             raise ValueError('Action not permitted')
         return v
 
     @validator('participant', always=True)
     def check_participant(cls, v, values, **kwargs):
-        act: ActionsTypes = values.get('act')
+        act: ActionTypes = values.get('act')
         if act and not v and act in _prt_action_types:
             raise ValueError('participant is required for participant actions')
         if act and v and act not in _prt_action_types:
@@ -200,16 +207,16 @@ class ActionModel(BaseModel):
 
     @validator('body', always=True)
     def check_body(cls, v, values, **kwargs):
-        act: ActionsTypes = values.get('act')
-        if act and v is None and act in {ActionsTypes.msg_add, ActionsTypes.msg_modify}:
+        act: ActionTypes = values.get('act')
+        if act and v is None and act in {ActionTypes.msg_add, ActionTypes.msg_modify}:
             raise ValueError('body is required for message:add and message:modify')
-        if act and v is not None and act not in {ActionsTypes.msg_add, ActionsTypes.msg_modify}:
+        if act and v is not None and act not in {ActionTypes.msg_add, ActionTypes.msg_modify}:
             raise ValueError('body must be omitted except for message:add and message:modify')
         return v
 
     @validator('follows', always=True)
     def check_follows(cls, v, values, **kwargs):
-        act: ActionsTypes = values.get('act')
+        act: ActionTypes = values.get('act')
         if act and v is None and act in _follow_action_types:
             raise ValueError('follows is required for this action')
         return v
@@ -243,7 +250,7 @@ class _Act:
                 action_id = await self._act_on_participant()
             elif self.action.act in _msg_action_types:
                 action_id = await self._act_on_message()
-            elif self.action.act is ActionsTypes.seen:
+            elif self.action.act is ActionTypes.seen:
                 action_id = await self._seen()
             else:
                 raise NotImplementedError
@@ -266,7 +273,7 @@ class _Act:
 
     async def _act_on_participant(self) -> int:
         follows_pk = None
-        if self.action.act == ActionsTypes.prt_add:
+        if self.action.act == ActionTypes.prt_add:
             prts_count = await self.conn.fetchval('select count(*) from participants where conv=$1', self.conv_id)
             if prts_count == max_participants:
                 raise JsonErrors.HTTPBadRequest(f'no more than {max_participants} participants permitted')
@@ -283,8 +290,8 @@ class _Act:
             if not prt_id:
                 raise JsonErrors.HTTPConflict('user already a participant in this conversation')
         else:
-            follows_pk, *_ = await self._get_follows({ActionsTypes.prt_add, ActionsTypes.prt_modify})
-            if self.action.act == ActionsTypes.prt_remove:
+            follows_pk, *_ = await self._get_follows({ActionTypes.prt_add, ActionTypes.prt_modify})
+            if self.action.act == ActionTypes.prt_remove:
                 prt_id, prt_user_id = await or404(
                     self.conn.fetchrow(
                         """
@@ -319,7 +326,7 @@ class _Act:
         )
 
     async def _act_on_message(self) -> int:
-        if self.action.act == ActionsTypes.msg_add:
+        if self.action.act == ActionTypes.msg_add:
             parent_pk = None
             if self.action.parent:
                 # just check tha parent really is an action on this conversation of type message:add
@@ -348,19 +355,19 @@ class _Act:
 
         follows_pk, follows_act, follows_actor, follows_age = await self._get_follows(_msg_action_types)
 
-        if self.action.act == ActionsTypes.msg_recover:
-            if follows_act != ActionsTypes.msg_delete:
+        if self.action.act == ActionTypes.msg_recover:
+            if follows_act != ActionTypes.msg_delete:
                 raise JsonErrors.HTTPBadRequest('message:recover can only occur on a deleted message')
-        elif self.action.act in {ActionsTypes.msg_modify, ActionsTypes.msg_release}:
-            if follows_act != ActionsTypes.msg_lock or follows_actor != self.actor_user_id:
+        elif self.action.act in {ActionTypes.msg_modify, ActionTypes.msg_release}:
+            if follows_act != ActionTypes.msg_lock or follows_actor != self.actor_user_id:
                 # TODO lock maybe shouldn't be required when conversation is draft
                 raise JsonErrors.HTTPBadRequest(f'{self.action.act} must follow message:lock by the same user')
         else:
             # just lock and delete here
-            if follows_act == ActionsTypes.msg_delete:
+            if follows_act == ActionTypes.msg_delete:
                 raise JsonErrors.HTTPBadRequest('only message:recover can occur on a deleted message')
             elif (
-                follows_act == ActionsTypes.msg_lock
+                follows_act == ActionTypes.msg_lock
                 and follows_actor != self.actor_user_id
                 and follows_age <= self.settings.message_lock_duration
             ):
@@ -417,7 +424,7 @@ class _Act:
             self.actor_user_id,
         )
 
-    async def _get_follows(self, permitted_acts: Set[ActionsTypes]) -> Tuple[int, str, int, int]:
+    async def _get_follows(self, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
         follows_pk, follows_act, follows_actor, follows_age = await or404(
             self.conn.fetchrow(
                 """
@@ -502,14 +509,14 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
     participants = {}
 
     for action in actions:
-        act: ActionsTypes = action['act']
+        act: ActionTypes = action['act']
         action_id: int = action['id']
-        if act in {ActionsTypes.conv_publish, ActionsTypes.conv_create}:
+        if act in {ActionTypes.conv_publish, ActionTypes.conv_create}:
             subject = action['body']
             created = action['ts']
-        elif act == ActionsTypes.subject_lock:
+        elif act == ActionTypes.subject_lock:
             subject = action['body']
-        elif act == ActionsTypes.msg_add:
+        elif act == ActionTypes.msg_add:
             messages[action_id] = {
                 'ref': action_id,
                 'body': action['body'],
@@ -521,16 +528,16 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
         elif act in _msg_action_types:
             message = messages[action['follows']]
             message['ref'] = action_id
-            if act == ActionsTypes.msg_modify:
+            if act == ActionTypes.msg_modify:
                 message['body'] = action['body']
-            elif act == ActionsTypes.msg_delete:
+            elif act == ActionTypes.msg_delete:
                 message['active'] = False
-            elif act == ActionsTypes.msg_recover:
+            elif act == ActionTypes.msg_recover:
                 message['active'] = True
             messages[action_id] = message
-        elif act == ActionsTypes.prt_add:
+        elif act == ActionTypes.prt_add:
             participants[action['participant']] = {'id': action_id}  # perms not implemented yet
-        elif act == ActionsTypes.prt_remove:
+        elif act == ActionTypes.prt_remove:
             participants.pop(action['participant'])
         else:
             raise NotImplementedError(f'action "{act}" construction not implemented')

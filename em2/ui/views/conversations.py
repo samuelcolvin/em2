@@ -6,7 +6,7 @@ from pydantic import BaseModel, EmailStr, constr, validator
 
 from em2.core import (
     ActionModel,
-    ActionsTypes,
+    ActionTypes,
     MsgFormat,
     act,
     construct_conv,
@@ -140,7 +140,7 @@ class ConvCreate(ExecView):
                 values              ($1  , $2 , $3   , $4, $5)
                 """,
                 conv_id,
-                ActionsTypes.conv_publish if conv.publish else ActionsTypes.conv_create,
+                ActionTypes.conv_publish if conv.publish else ActionTypes.conv_create,
                 creator_id,
                 ts,
                 conv.subject,

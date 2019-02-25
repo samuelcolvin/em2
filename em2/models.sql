@@ -31,7 +31,7 @@ create table participants (
 );
 create index participants_user_id on participants using btree (user_id);
 
--- see core.ActionsTypes enum which matches this
+-- see core.ActionTypes enum which matches this
 create type ActionTypes as enum (
   'conv:publish', 'conv:create',
   'subject:modify', 'subject:lock', 'subject:release',
@@ -75,37 +75,42 @@ create or replace function action_insert() returns trigger as $$
     -- todo add actor name when we have it, could add attachment count etc. here too
     old_details_ json;
     details_ json;
+    subject_ats ActionTypes[] = array['conv:publish', 'conv:create', 'subject:modify'];
+    add_mod_msg_ats ActionTypes[] = array['message:add', 'message:modify'];
+    add_del_msg_ats ActionTypes[] = array['message:add', 'message:delete'];
+    meta_ats ActionTypes[] = array['seen','subject:release','subject:lock','message:lock','message:release'];
   begin
-    select details into old_details_ from conversations where id=new.conv;
-    details_ := json_build_object(
-      'act', new.act,
-      'sub', (
-        case when new.act=any(array['conv:publish', 'conv:create', 'subject:modify']::ActionTypes[]) then
-          new.body
-        else
-          old_details_->>'sub'
-        end
-      ),
-      'email', (select email from users where id=new.actor),
-      'body', left(
-        case when new.act=any(array['message:add', 'message:modify']::ActionTypes[]) then
-          new.body
-        else
-          old_details_->>'body'
-        end, 100
-      ),
-      'prts', (select count(*) from participants where conv=new.conv),
-      'msgs', (
-        select count(*) filter (where act='message:add') - count(*) filter (where act='message:delete')
-        from actions where conv=new.conv and act=any(array['message:add', 'message:delete']::ActionTypes[])
-      ) + case when new.act='message:add' then 1
-               when new.act='message:delete' then -1
-               else 0 end
-    );
-    update conversations
-      set updated_ts=new.ts, details=details_, last_action_id=last_action_id + 1
-      where id=new.conv
-      returning last_action_id into new.id;
+    if new.act=any(meta_ats) then
+      update conversations
+        set last_action_id=last_action_id + 1
+        where id=new.conv
+        returning last_action_id into new.id;
+    else
+      select details into old_details_ from conversations where id=new.conv;
+      details_ := json_build_object(
+        'act', new.act,
+        'sub', case when new.act=any(subject_ats) then new.body else old_details_->>'sub' end,
+        'email', (select email from users where id=new.actor),
+        'body', left(
+          case when new.act=any(add_mod_msg_ats) then
+            new.body
+          else
+            old_details_->>'body'
+          end, 100
+        ),
+        'prts', (select count(*) from participants where conv=new.conv),
+        'msgs', (
+          select count(*) filter (where act='message:add') - count(*) filter (where act='message:delete')
+          from actions where conv=new.conv and act=any(add_del_msg_ats)
+        ) + case when new.act='message:add' then 1
+                 when new.act='message:delete' then -1
+                 else 0 end
+      );
+      update conversations
+        set updated_ts=new.ts, details=details_, last_action_id=last_action_id + 1
+        where id=new.conv
+        returning last_action_id into new.id;
+    end if;
 
     return new;
   end;
