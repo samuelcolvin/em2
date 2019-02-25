@@ -8,7 +8,7 @@ from em2.core import (
     ActionModel,
     ActionTypes,
     MsgFormat,
-    act,
+    apply_actions,
     construct_conv,
     conv_actions_json,
     draft_conv_key,
@@ -156,13 +156,10 @@ class ConvAct(ExecView):
         actions: List[ActionModel]
 
     async def execute(self, m: Model):
-        conv_prefix = self.request.match_info['conv']
-        action_ids = []
-        conv_id = None
-        async with self.conn.transaction():
-            for action in m.actions:
-                conv_id, action_id = await act(self.conn, self.settings, self.session.user_id, conv_prefix, action)
-                action_id and action_ids.append(action_id)
+        conv_id, action_ids = await apply_actions(
+            self.conn, self.settings, self.session.user_id, self.request.match_info['conv'], m.actions
+        )
+
         if action_ids:
             await self.push_multiple(conv_id, action_ids)
         return {'action_ids': action_ids}

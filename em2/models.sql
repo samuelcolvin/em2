@@ -54,7 +54,7 @@ create table actions (
   follows bigint references actions,  -- when modifying/deleting etc. a component
   participant_user bigint references users on delete restrict,
   body text,
-   -- used for child message "comments", the thing seen , could also be used on message updates?
+   -- used for child message "comments", the thing seen, could also be used on message updates?
   parent bigint references actions,
   msg_format MsgFormat,
 

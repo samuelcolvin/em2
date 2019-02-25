@@ -167,7 +167,6 @@ _prt_action_types = {a for a in ActionTypes if a.value.startswith('participant:'
 _msg_action_types = {a for a in ActionTypes if a.value.startswith('message:')}
 _follow_action_types = (_msg_action_types - {ActionTypes.msg_add}) | {ActionTypes.prt_modify, ActionTypes.prt_remove}
 # actions that don't materially change the conversation, and therefore don't effect whether someone has seen it
-_meta_action_types = {a for a in ActionTypes if a.value.endswith((':lock', ':release'))} | {ActionTypes.seen}
 _meta_action_types = {
     ActionTypes.seen,
     ActionTypes.subject_lock,
@@ -227,58 +226,43 @@ class _Act:
     See act() below for details.
     """
 
-    __slots__ = 'conn', 'settings', 'actor_user_id', 'action', 'conv_id'
+    __slots__ = 'conn', 'settings', 'actor_user_id', 'conv_id'
 
-    def __init__(self, conn: BuildPgConnection, settings: Settings, actor_user_id: int, action: ActionModel):
+    def __init__(self, conn: BuildPgConnection, settings: Settings, actor_user_id: int):
         self.conn = conn
         self.settings = settings
         self.actor_user_id = actor_user_id
-        self.action = action
-        self.conv_id = None
+        self.conv_id: int = None
 
-    async def run(self, conv_prefix: str) -> Tuple[int, Optional[int]]:
+    async def prepare(self, conv_prefix: str) -> int:
         self.conv_id, last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_prefix)
         if last_action:
             # if the usr has be removed from the conversation they can't act
             raise JsonErrors.HTTPNotFound(message='Conversation not found')
 
-        async with self.conn.transaction():
-            # this is a hard check that conversations can only have on act applied at a time
-            await self.conn.fetchval('select 1 from conversations where id=$1 for no key update', self.conv_id)
-            # IMPORTANT we do nothing that could be slow (eg. networking) inside this transaction
-            if self.action.act in _prt_action_types:
-                action_id = await self._act_on_participant()
-            elif self.action.act in _msg_action_types:
-                action_id = await self._act_on_message()
-            elif self.action.act is ActionTypes.seen:
-                action_id = await self._seen()
-            else:
-                raise NotImplementedError
+        # we must be in a transaction
+        # this is a hard check that conversations can only have on act applied at a time
+        await self.conn.fetchval('select 1 from conversations where id=$1 for no key update', self.conv_id)
+        return self.conv_id
 
-            if action_id:
-                # the actor is assumed to have seen the conversation as they've acted upon it
-                await self.conn.execute(
-                    'update participants set seen=true where conv=$1 and user_id=$2', self.conv_id, self.actor_user_id
-                )
-                # everyone else hasn't seen this action if it's "worth seeing"
-                if self.action.act not in _meta_action_types:
-                    await self.conn.execute(
-                        'update participants set seen=false where conv=$1 and user_id!=$2',
-                        self.conv_id,
-                        self.actor_user_id,
-                    )
-                await update_conv_users(self.conn, self.conv_id)
+    async def run(self, action: ActionModel) -> Optional[int]:
+        if action.act in _prt_action_types:
+            return await self._act_on_participant(action)
+        elif action.act in _msg_action_types:
+            return await self._act_on_message(action)
+        elif action.act is ActionTypes.seen:
+            return await self._seen()
 
-        return self.conv_id, action_id
+        raise NotImplementedError
 
-    async def _act_on_participant(self) -> int:
+    async def _act_on_participant(self, action: ActionModel) -> int:
         follows_pk = None
-        if self.action.act == ActionTypes.prt_add:
+        if action.act == ActionTypes.prt_add:
             prts_count = await self.conn.fetchval('select count(*) from participants where conv=$1', self.conv_id)
             if prts_count == max_participants:
                 raise JsonErrors.HTTPBadRequest(f'no more than {max_participants} participants permitted')
 
-            prt_user_id = await get_create_user(self.conn, self.action.participant)
+            prt_user_id = await get_create_user(self.conn, action.participant)
             prt_id = await self.conn.fetchval(
                 """
                 insert into participants (conv, user_id) values ($1, $2)
@@ -290,8 +274,8 @@ class _Act:
             if not prt_id:
                 raise JsonErrors.HTTPConflict('user already a participant in this conversation')
         else:
-            follows_pk, *_ = await self._get_follows({ActionTypes.prt_add, ActionTypes.prt_modify})
-            if self.action.act == ActionTypes.prt_remove:
+            follows_pk, *_ = await self._get_follows(action, {ActionTypes.prt_add, ActionTypes.prt_modify})
+            if action.act == ActionTypes.prt_remove:
                 prt_id, prt_user_id = await or404(
                     self.conn.fetchrow(
                         """
@@ -299,7 +283,7 @@ class _Act:
                         where conv=$1 and email=$2
                         """,
                         self.conv_id,
-                        self.action.participant,
+                        action.participant,
                     ),
                     msg='user not found on conversation',
                 )
@@ -319,22 +303,22 @@ class _Act:
             returning id
             """,
             self.conv_id,
-            self.action.act,
+            action.act,
             self.actor_user_id,
             follows_pk,
             prt_user_id,
         )
 
-    async def _act_on_message(self) -> int:
-        if self.action.act == ActionTypes.msg_add:
+    async def _act_on_message(self, action: ActionModel) -> int:
+        if action.act == ActionTypes.msg_add:
             parent_pk = None
-            if self.action.parent:
+            if action.parent:
                 # just check tha parent really is an action on this conversation of type message:add
                 parent_pk = await or404(
                     self.conn.fetchval(
                         "select pk from actions where conv=$1 and id=$2 and act='message:add'",
                         self.conv_id,
-                        self.action.parent,
+                        action.parent,
                     ),
                     msg='parent action not found',
                 )
@@ -348,20 +332,20 @@ class _Act:
                 """,
                 self.conv_id,
                 self.actor_user_id,
-                self.action.body,
+                action.body,
                 parent_pk,
-                self.action.msg_format,
+                action.msg_format,
             )
 
-        follows_pk, follows_act, follows_actor, follows_age = await self._get_follows(_msg_action_types)
+        follows_pk, follows_act, follows_actor, follows_age = await self._get_follows(action, _msg_action_types)
 
-        if self.action.act == ActionTypes.msg_recover:
+        if action.act == ActionTypes.msg_recover:
             if follows_act != ActionTypes.msg_delete:
                 raise JsonErrors.HTTPBadRequest('message:recover can only occur on a deleted message')
-        elif self.action.act in {ActionTypes.msg_modify, ActionTypes.msg_release}:
+        elif action.act in {ActionTypes.msg_modify, ActionTypes.msg_release}:
             if follows_act != ActionTypes.msg_lock or follows_actor != self.actor_user_id:
                 # TODO lock maybe shouldn't be required when conversation is draft
-                raise JsonErrors.HTTPBadRequest(f'{self.action.act} must follow message:lock by the same user')
+                raise JsonErrors.HTTPBadRequest(f'{action.act} must follow message:lock by the same user')
         else:
             # just lock and delete here
             if follows_act == ActionTypes.msg_delete:
@@ -382,8 +366,8 @@ class _Act:
             """,
             self.conv_id,
             self.actor_user_id,
-            self.action.act,
-            self.action.body,
+            action.act,
+            action.body,
             follows_pk,
         )
 
@@ -424,7 +408,7 @@ class _Act:
             self.actor_user_id,
         )
 
-    async def _get_follows(self, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
+    async def _get_follows(self, action: ActionModel, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
         follows_pk, follows_act, follows_actor, follows_age = await or404(
             self.conn.fetchrow(
                 """
@@ -432,7 +416,7 @@ class _Act:
                 from actions where conv=$1 and id=$2
                 """,
                 self.conv_id,
-                self.action.follows,
+                action.follows,
             ),
             msg='"follows" action not found',
         )
@@ -446,19 +430,39 @@ class _Act:
         )
         if existing:
             # is 409 really the right status to use here?
-            raise JsonErrors.HTTPConflict(f'other actions already follow action {self.action.follows}')
+            raise JsonErrors.HTTPConflict(f'other actions already follow action {action.follows}')
         return follows_pk, follows_act, follows_actor, follows_age
 
 
-async def act(
-    conn: BuildPgConnection, settings: Settings, actor_user_id: int, conv_prefix: str, action: ActionModel
-) -> Tuple[int, Optional[int]]:
+async def apply_actions(
+    conn: BuildPgConnection, settings: Settings, actor_user_id: int, conv_prefix: str, actions: List[ActionModel]
+) -> Tuple[int, List[int]]:
     """
-    Apply an action and return its id.
+    Apply actions and return their ids.
 
-    Should be used for both remove platforms adding events and local users adding actions.
+    Should be used for both remote platforms adding events and local users adding actions.
     """
-    return await _Act(conn, settings, actor_user_id, action).run(conv_prefix)
+    action_ids = []
+    act_cls = _Act(conn, settings, actor_user_id)
+    async with conn.transaction():
+        # IMPORTANT we do nothing that could be slow (eg. networking) inside this transaction,
+        # as the conv is locked for update from prepare onwards
+        conv_id = await act_cls.prepare(conv_prefix)
+
+        for action in actions:
+            action_id = await act_cls.run(action)
+            action_id and action_ids.append(action_id)
+
+        if action_ids:
+            # the actor is assumed to have seen the conversation as they've acted upon it
+            await conn.execute('update participants set seen=true where conv=$1 and user_id=$2', conv_id, actor_user_id)
+            # everyone else hasn't seen this action if it's "worth seeing"
+            if any(a.act not in _meta_action_types for a in actions):
+                await conn.execute(
+                    'update participants set seen=false where conv=$1 and user_id!=$2', conv_id, actor_user_id
+                )
+            await update_conv_users(conn, conv_id)
+    return conv_id, action_ids
 
 
 async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_prefix: str, since_id: int = None):

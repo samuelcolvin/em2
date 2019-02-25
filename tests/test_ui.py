@@ -424,3 +424,22 @@ async def test_create_conv_many_participants(cli, url, factory: Factory):
     r = await cli.post_json(url('ui:create'), {'subject': 'Sub', 'message': 'Msg', 'participants': prts})
     assert r.status == 400, await r.text()
     assert 'no more than 64 participants permitted' in await r.text()
+
+
+async def test_act_multiple(cli, url, factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+    assert 2 == await db_conn.fetchval('select v from users where id=$1', user.id)
+
+    data = {
+        'actions': [
+            {'act': 'participant:add', 'participant': 'user-2@example.com'},
+            {'act': 'participant:add', 'participant': 'user-3@example.com'},
+            {'act': 'participant:add', 'participant': 'user-4@example.com'},
+        ]
+    }
+    r = await cli.post_json(url('ui:act', conv=conv.key), data)
+    assert r.status == 200, await r.text()
+    obj = await r.json()
+    assert obj == {'action_ids': [4, 5, 6]}
+    assert 3 == await db_conn.fetchval('select v from users where id=$1', user.id)
