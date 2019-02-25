@@ -151,7 +151,17 @@ export default function () {
   add_listener('get-conversation', get_conversation)
 
   add_listener('act', async data => {
-    return await requests.post('ui', `/conv/${data.conv}/act/`, {actions: data.actions})
+    const r = await requests.post('ui', `/conv/${data.conv}/act/`, {actions: data.actions})
+    await db.conversations.update(data.conv, {seen: true})
+    return r
+  })
+
+  add_listener('seen', async data => {
+    const conv = await db.conversations.get(data.conv)
+    if (!conv.seen) {
+      await requests.post('ui', `/conv/${data.conv}/act/`, {actions: [{act: 'seen'}]})
+      await db.conversations.update(data.conv, {seen: true})
+    }
   })
 
   add_listener('publish', async data => {

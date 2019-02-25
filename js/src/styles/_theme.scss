@@ -121,29 +121,36 @@ $stripe-width: 10px;
   padding: 0;
   a {
     display: grid;
-    grid-template-columns: 220px 1fr auto;
+    grid-template-columns: 220px 1fr 220px;
     align-items: baseline;
     color: $gray-800;
     padding: 0.5rem 1rem;
     border-top: 1px solid $gray-200;
     &:hover {
       text-decoration: none;
-      background-color: $gray-100;
+      //background-color: $gray-100;
+      box-shadow: inset 0 0 0 2px $input-btn-focus-color;
     }
-    div {
+    > div {
       display: inline-block;
       text-overflow: ellipsis;
       overflow: hidden;
       white-space: nowrap;
     }
     .subject {
-      font-size: 1.1rem;
+      //font-size: 1.1rem;
       margin-right: 0.5rem;
+      font-weight: bold;
     }
-    .body {
+    .summary {
       color: #7790a9;
-      font-size: 0.9em;
-      vertical-align: bottom;
+      .body {
+        font-size: 0.9em;
+        vertical-align: bottom;
+      }
+    }
+    .details {
+      text-align: right;
     }
 
     .icon {
@@ -152,6 +159,13 @@ $stripe-width: 10px;
       margin-right: 0.6rem;
       .fa {
         margin-right: 0.2rem;
+      }
+    }
+
+    &.seen {
+      background-color: darken($gray-100, 1%);
+      .subject {
+        font-weight: normal;
       }
     }
   }

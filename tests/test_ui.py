@@ -1,5 +1,7 @@
 import json
+from asyncio import TimeoutError
 
+import pytest
 from aiohttp import WSMsgType
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
@@ -249,6 +251,33 @@ async def test_act(cli, url, factory: Factory):
     }
 
 
+async def test_seen(cli, url, factory: Factory):
+    await factory.create_user()
+    conv = await factory.create_conv()
+
+    async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
+        msg = await ws.receive(timeout=0.1)
+        assert json.loads(msg.data) == {'user_v': 2}
+
+        r = await cli.post_json(url('ui:act', conv=conv.key), {'actions': [{'act': 'seen'}]})
+        assert r.status == 200, await r.text()
+        obj = await r.json()
+        assert obj == {'action_ids': [4]}
+
+        msg = await ws.receive(timeout=0.1)
+        msg = json.loads(msg.data)
+        assert len(msg['actions']) == 1
+        assert msg['actions'][0]['act'] == 'seen'
+
+        r = await cli.post_json(url('ui:act', conv=conv.key), {'actions': [{'act': 'seen'}]})
+        assert r.status == 200, await r.text()
+        obj = await r.json()
+        assert obj == {'action_ids': []}
+
+        with pytest.raises(TimeoutError):  # no ws message sent in this case
+            await ws.receive(timeout=0.1)
+
+
 async def test_create_then_publish(cli, url, factory: Factory, db_conn):
     user = await factory.create_user()
     conv = await factory.create_conv()
@@ -292,7 +321,7 @@ async def test_ws_create(cli, url, factory: Factory, db_conn):
     assert 2 == await db_conn.fetchval('select v from users where id=$1', user.id)
 
     async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
-        msg = await ws.receive()
+        msg = await ws.receive(timeout=0.1)
         assert msg.type == WSMsgType.text
         assert not ws.closed
         assert ws.close_code is None
@@ -300,7 +329,7 @@ async def test_ws_create(cli, url, factory: Factory, db_conn):
 
         conv = await factory.create_conv()
 
-        msg = await ws.receive()
+        msg = await ws.receive(timeout=0.1)
         assert msg.type == WSMsgType.text
         assert not ws.closed
         assert ws.close_code is None
@@ -346,13 +375,13 @@ async def test_ws_create(cli, url, factory: Factory, db_conn):
     }
 
 
-async def test_ws_add(cli, url, factory: Factory, db_conn):
+async def test_ws_add_msg(cli, url, factory: Factory, db_conn):
     user = await factory.create_user()
     conv = await factory.create_conv()
     assert 2 == await db_conn.fetchval('select v from users where id=$1', user.id)
 
     async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
-        msg = await ws.receive()
+        msg = await ws.receive(timeout=0.1)
         assert msg.type == WSMsgType.text
         assert json.loads(msg.data) == {'user_v': 2}
 
@@ -360,7 +389,7 @@ async def test_ws_add(cli, url, factory: Factory, db_conn):
         r = await cli.post_json(url('ui:act', conv=conv.key), d)
         assert r.status == 200, await r.text()
 
-        msg = await ws.receive()
+        msg = await ws.receive(timeout=0.1)
         assert msg.type == WSMsgType.text
 
     msg_data = json.loads(msg.data)

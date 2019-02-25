@@ -249,7 +249,7 @@ class _Act:
                 raise NotImplementedError
 
             if action_id:
-                # the actor is assumed to have seen the conversation AS they've acted upon it
+                # the actor is assumed to have seen the conversation as they've acted upon it
                 await self.conn.execute(
                     'update participants set seen=true where conv=$1 and user_id=$2', self.conv_id, self.actor_user_id
                 )

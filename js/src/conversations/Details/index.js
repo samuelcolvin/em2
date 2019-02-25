@@ -2,10 +2,11 @@ import React from 'react'
 import {Button, ButtonGroup, Col, Row} from 'reactstrap'
 import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+import {sleep} from '../../lib'
 import {Loading} from '../../lib/Errors'
 import WithContext from '../../lib/context'
-import Message from './Message'
 import Participants from '../../lib/form/Participants'
+import Message from './Message'
 
 const DraftButtons = ({state, add_msg, publish}) => (
   <ButtonGroup>
@@ -34,6 +35,10 @@ class ConvDetailsView extends React.Component {
     this.mounted = true
     this.update()
     this.remove_listener = this.props.ctx.worker.add_listener('change', this.update)
+    await sleep(1000)
+    if (this.mounted) {
+      await this.props.ctx.worker.call('seen', {conv: this.state.conv.key})
+    }
   }
 
   componentDidUpdate (prevProps, prevState, snapshot) {

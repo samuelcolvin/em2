@@ -162,7 +162,7 @@ class ConvAct(ExecView):
         async with self.conn.transaction():
             for action in m.actions:
                 conv_id, action_id = await act(self.conn, self.settings, self.session.user_id, conv_prefix, action)
-                action_ids.append(action_id)
+                action_id and action_ids.append(action_id)
         if action_ids:
             await self.push_multiple(conv_id, action_ids)
         return {'action_ids': action_ids}

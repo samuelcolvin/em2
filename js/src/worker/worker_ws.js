@@ -7,6 +7,14 @@ const offline = 0
 const connecting = 1
 const online = 2
 
+const meta_action_types = new Set([
+  'seen',
+  'subject:release',
+  'subject:lock',
+  'message:lock',
+  'message:release',
+])
+
 export default class Websocket {
   constructor () {
     this._state = offline  // see above for options
@@ -70,9 +78,10 @@ export default class Websocket {
   _on_message = async event => {
     set_conn_status(statuses.online)
     const data = JSON.parse(event.data)
+    console.log('ws message:', data)
 
     if (data.actions) {
-      await apply_actions(data)
+      await apply_actions(data, this._session.email)
     } else if (data.user_v === this._session.user_v) {
       // just connecting and nothing has changed
       return
@@ -88,22 +97,29 @@ export default class Websocket {
   }
 }
 
-async function apply_actions (data) {
+async function apply_actions (data, session_email) {
   const actions = data.actions.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
 
   await db.actions.bulkPut(actions)
   const action = actions[actions.length - 1]
   const conv = await db.conversations.get(action.conv)
   const publish_action = actions.find(a => a.act === 'conv:publish')
+
+  const other_actor = Boolean(actions.find(a => a.actor !== session_email))
+  const real_act = Boolean(actions.find(a => !meta_action_types.has(a.act)))
   if (conv) {
     const update = {
-      updated_ts: action.ts,
-      publish_ts: conv.publish_ts,
       last_action_id: action.id,
       details: data.conv_details,
     }
+    if (real_act) {
+      update.updated_ts = action.ts
+    }
     if (publish_action) {
       update.publish_ts = publish_action.ts
+    }
+    if (other_actor && real_act) {
+      update.seen = false
     }
     await db.conversations.update(action.conv, update)
   } else {
@@ -114,6 +130,7 @@ async function apply_actions (data) {
       publish_ts: publish_action ? publish_action.ts : null,
       last_action_id: action.id,
       details: data.conv_details,
+      seen: !(other_actor && real_act),
     })
     const old_conv = await db.conversations.get({new_key: action.conv})
     if (old_conv) {

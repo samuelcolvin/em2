@@ -6,43 +6,29 @@ import {format_ts} from '../lib'
 import {Loading} from '../lib/Errors'
 import WithContext from '../lib/context'
 
-const ConvList = ({conversations, user_email}) => {
-  if (!conversations) {
-    return <Loading/>
-  } else if (conversations.length === 0) {
-    return (
-      <div key="f" className="text-muted text-center h5 pt-3 pb-4">
-        No Conversations found
-      </div>
-    )
-  }
-  // TODO include read notifications, use first name not addr
-  return conversations.map((conv, i) => (
-    <div key={i}>
-      <Link to={`/${conv.key.substr(0, 10)}/`}>
-        <div className="subject">{conv.details.sub}</div>
-        <div>
-          {!conv.publish_ts && <span className="badge badge-dark mr-2">Draft</span>}
-          <span className="body">
-            {conv.details.email === user_email ? 'you' : conv.details.email}: {conv.details.body}
-          </span>
-        </div>
-
-        <div>
-          <span className="icon">
-            <FontAwesomeIcon icon="comment"/> {conv.details.msgs}
-          </span>
-          <span className="icon">
-            <FontAwesomeIcon icon="users"/> {conv.details.prts}
-          </span>
-          <span>
-            {format_ts(conv.updated_ts)}
-          </span>
-        </div>
-      </Link>
+const ConvList = ({conversations, user_email}) => conversations.map((conv, i) => (
+  <Link key={i} to={`/${conv.key.substr(0, 10)}/`} className={conv.seen ? 'seen' : ''}>
+    <div className="subject">{conv.details.sub}</div>
+    <div className="summary">
+      {!conv.publish_ts && <span className="badge badge-dark mr-2">Draft</span>}
+      <span className="body">
+        {conv.details.email === user_email ? 'you' : conv.details.email}: {conv.details.body}
+      </span>
     </div>
-  ))
-}
+
+    <div className="details">
+      <span className="icon">
+        <FontAwesomeIcon icon="comment"/> {conv.details.msgs}
+      </span>
+      <span className="icon">
+        <FontAwesomeIcon icon="users"/> {conv.details.prts}
+      </span>
+      <span>
+        {format_ts(conv.updated_ts)}
+      </span>
+    </div>
+  </Link>
+))
 
 const Paginate = ({current, onClick, state}) => (
   <nav>
@@ -111,10 +97,20 @@ class ConvListView extends React.Component {
 
   render () {
     const user_email = this.props.ctx.user && this.props.ctx.user.email
+    const conversations = this.state && this.state.conversations
+    if (!conversations) {
+      return <Loading/>
+    } else if (conversations.length === 0) {
+      return (
+        <div key="f" className="text-muted text-center h5 pt-3 pb-4">
+          No Conversations found
+        </div>
+      )
+  }
     return (
       <div>
         <div className="box conv-list">
-          <ConvList conversations={this.state && this.state.conversations} user_email={user_email}/>
+          <ConvList conversations={conversations} user_email={user_email}/>
         </div>
         <div className="d-flex justify-content-center">
           <Paginate current={this.get_page()} onClick={this.on_pagination_click} state={this.state}/>

@@ -23,7 +23,7 @@ const iframe_src_base64 = btoa(`
     <title>Login Form</title>
     <meta http-equiv="Content-Security-Policy" content="${iframe_csp.join(';')}">
     <link rel="stylesheet" crossorigin="anonymous" \
-      integrity="sha256-azvvU9xKluwHFJ0Cpgtf0CYzK7zgtOznnzxV4924X1w=" \
+      integrity="sha256-YLGeXaapI0/5IgZopewRJcFXomhRMlYYjugPLSyNjTY=" \
       href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/css/bootstrap.min.css">
     <link rel="stylesheet" href="${origin}/iframes/styles.css">
   </head>

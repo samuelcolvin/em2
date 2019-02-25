@@ -65,13 +65,12 @@ class Client:
 
         if seen:
             print(f'marking {conv_key:.10} as seen...')
-            response = await self._post_json(self._make_url('ui:act', conv=conv_key), act='seen')
+            response = await self._post_json(self._make_url('ui:act', conv=conv_key), actions=[dict(act='seen')])
         else:
             msg_format, msg_body = self._msg_body()
             print(f'adding message to {conv_key:.10}, format: {msg_format}...')
-            response = await self._post_json(
-                self._make_url('ui:act', conv=conv_key), act='message:add', msg_format=msg_format, body=msg_body
-            )
+            actions = [dict(act='message:add', msg_format=msg_format, body=msg_body)]
+            response = await self._post_json(self._make_url('ui:act', conv=conv_key), actions=actions)
         devtools.debug(response)
 
     async def create(self, *, publish=None):
