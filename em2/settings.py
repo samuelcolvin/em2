@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     commit: str = 'unknown'
     build_time: str = 'unknown'
 
+    aws_access_key: str = None
+    aws_secret_key: str = None
+    aws_region: str = 'eu-west-1'
+    # set here so they can be overridden during tests
+    aws_ses_host = 'email.{region}.amazonaws.com'
+    aws_ses_endpoint = 'https://{host}/'
+    aws_ses_webhook_auth: bytes = None
+
     # used for hashing when the user in the db has no password, or no user is found
     dummy_password = '__dummy_password__'
     bcrypt_work_factor = 12
