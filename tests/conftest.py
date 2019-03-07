@@ -1,6 +1,7 @@
 import asyncio
 import json
 from dataclasses import dataclass
+from typing import List
 
 import aiodns
 import pytest
@@ -12,11 +13,15 @@ from atoolbox.db.helpers import SimplePgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
 
 from em2.auth.utils import mk_password
+from em2.core import apply_actions
 from em2.main import create_app
-from em2.protocol.fallback import LogFallbackHandler
+from em2.protocol.fallback import LogFallbackHandler, SesFallbackHandler
 from em2.protocol.worker import WorkerSettings
 from em2.settings import Settings
+from em2.ui.background import push_multiple
 from em2.utils.web import MakeUrl
+
+from . import dummy_server
 
 
 def pytest_addoption(parser):
@@ -28,6 +33,8 @@ settings_args = dict(
     REDISCLOUD_URL='redis://localhost:6379/6',
     bcrypt_work_factor=6,
     max_request_size=1024 ** 2,
+    ses_access_key='testing_access_key',
+    ses_secret_key='testing_secret_key',
 )
 
 
@@ -48,10 +55,11 @@ def _fix_clean_db(request, settings_session):
 
 @pytest.fixture(name='dummy_server')
 async def _fix_dummy_server(loop, aiohttp_server):
-    return await create_dummy_server(aiohttp_server)
+    ctx = {'smtp': []}
+    return await create_dummy_server(aiohttp_server, extra_routes=dummy_server.routes, extra_context=ctx)
 
 
-replaced_url_fields = ('grecaptcha_url',)
+replaced_url_fields = ('grecaptcha_url', 'ses_endpoint')
 
 
 @pytest.fixture(name='settings')
@@ -139,8 +147,9 @@ class Conv:
 
 
 class Factory:
-    def __init__(self, conn, cli, url):
+    def __init__(self, conn, redis, cli, url):
         self.conn = conn
+        self.redis: ArqRedis = redis
         self.cli = cli
         self.url = url
         self.settings: Settings = cli.server.app['settings']
@@ -206,10 +215,17 @@ class Factory:
         self.conv = self.conv or conv
         return conv
 
+    async def act(self, settings, actor_user_id, conv_prefix, action) -> List[int]:
+        conv_id, action_ids = await apply_actions(self.conn, settings, actor_user_id, conv_prefix, [action])
+
+        if action_ids:
+            await push_multiple(self.conn, self.redis, conv_id, action_ids)
+        return action_ids
+
 
 @pytest.fixture
-async def factory(db_conn, cli, url):
-    return Factory(db_conn, cli, url)
+async def factory(db_conn, redis, cli, url):
+    return Factory(db_conn, redis, cli, url)
 
 
 @pytest.yield_fixture(name='worker')
@@ -226,6 +242,26 @@ async def _fix_worker(redis, settings, db_conn):
 
     yield worker
 
+    worker.pool = None
+    await worker.close()
+    await session.close()
+
+
+@pytest.yield_fixture(name='ses_worker')
+async def _fix_ses_worker(redis, settings, db_conn):
+    session = ClientSession(timeout=ClientTimeout(total=10))
+    ctx = dict(
+        settings=settings,
+        pg=SimplePgPool(db_conn),
+        session=session,
+        resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
+    )
+    ctx['fallback_handler'] = SesFallbackHandler(ctx)
+    worker = Worker(functions=WorkerSettings.functions, redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)
+
+    yield worker
+
+    await ctx['fallback_handler'].shutdown()
     worker.pool = None
     await worker.close()
     await session.close()

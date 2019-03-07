@@ -5,7 +5,7 @@ from textwrap import indent
 from typing import Set
 
 from .base_handler import BaseFallbackHandler
-from .aws import AwsFallbackHandler  # noqa F401
+from .ses import SesFallbackHandler  # noqa F401
 
 logger = logging.getLogger('em2.fallback')
 

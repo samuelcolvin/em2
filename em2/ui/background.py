@@ -17,7 +17,7 @@ channel_name = 'actions'
 
 
 class Background:
-    def __init__(self, app):
+    def __init__(self, app: Application):
         self.app = app
         self.settings: Settings = app['settings']
         self.connections: Dict[int, List[WebSocketResponse]] = {}
@@ -146,13 +146,13 @@ push_sql_all = push_sql_template.format('where a.conv=$1 order by a.id')
 push_sql_multiple = push_sql_template.format('where a.conv=$1 and a.id=any($2)')
 
 
-async def push_all(app: Application, pg_conn: BuildPgConnection, conv_id: int):
+async def push_all(pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int):
     actions_data = await pg_conn.fetchval(push_sql_all, conv_id)
-    await _push_local(pg_conn, app['redis'], conv_id, actions_data)
-    await _push_remote(pg_conn, app['redis'], conv_id, actions_data)
+    await _push_local(pg_conn, redis, conv_id, actions_data)
+    await _push_remote(pg_conn, redis, conv_id, actions_data)
 
 
-async def push_multiple(app: Application, pg_conn: BuildPgConnection, conv_id: int, action_ids: List[int]):
+async def push_multiple(pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int, action_ids: List[int]):
     actions_data = await pg_conn.fetchval(push_sql_multiple, conv_id, action_ids)
-    await _push_local(pg_conn, app['redis'], conv_id, actions_data)
-    await _push_remote(pg_conn, app['redis'], conv_id, actions_data)
+    await _push_local(pg_conn, redis, conv_id, actions_data)
+    await _push_remote(pg_conn, redis, conv_id, actions_data)

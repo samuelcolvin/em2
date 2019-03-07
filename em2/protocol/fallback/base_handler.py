@@ -20,16 +20,16 @@ class BaseFallbackHandler:
         self.settings: Settings = ctx['settings']
         self.pg: Pool = ctx['pg']
 
-    async def startup(self):
+    async def startup(self):  # pragma: no cover
         pass
 
-    async def shutdown(self):
+    async def shutdown(self):  # pragma: no cover
         pass
 
     async def send_message(self, *, e_from: str, to: Set[str], email_msg: EmailMessage) -> str:
         raise NotImplementedError()
 
-    async def send(self, actions: List[Dict[str, Any]]):
+    async def send(self, actions: List[Dict[str, Any]]):  # noqa: 901
         # conv and actor are all the same
         conv_key = actions[0]['conv']
         conv_id = await self.pg.fetchval('select id from conversations where key=$1', conv_key)
@@ -44,42 +44,59 @@ class BaseFallbackHandler:
         else:
             raise NotImplementedError()
 
-        if 'addresses' not in ctx:
+        if 'subject' in ctx:
+            subject = ctx['subject']
+        else:
+            subject = await self.pg.fetchval(
+                """
+                select body from actions
+                where conv=$1 and act=any(array['conv:publish', 'conv:create', 'subject:modify']::ActionTypes[])
+                """,
+                conv_id,
+            )
+
+        if 'addresses' in ctx:
+            addresses = ctx['addresses']
+        else:
             prts = await self.pg.fetch(
                 'select u.email from participants p join users u on p.user_id = u.id where p.conv = $1', conv_id
             )
-            ctx['addresses'] = [r[0] for r in prts]
+            addresses = [r[0] for r in prts]
 
-        if 'references' not in ctx:
+        if 'references' in ctx:
+            references = ctx['references']
+        else:
             msg_ids = await self.pg.fetch(
                 'select ref from sends s join actions a on s.action = a.pk where conv = $1 order by a.id desc', conv_id
             )
-            ctx['references'] = [r[0] for r in msg_ids]
+            references = [r[0] for r in msg_ids]
 
-        if 'in_reply_to' not in ctx:
-            ctx['in_reply_to'] = ctx['references'][-1]
+        if 'in_reply_to' in ctx:
+            in_reply_to = ctx['in_reply_to']
+        else:
+            in_reply_to = references[-1]
 
         actor = actions[0]['actor']
-        to = set(ctx['addresses'])
+        to = set(addresses)
         if actor in to:
             to.remove(actor)
 
         e_msg = EmailMessage()
-        e_msg['Subject'] = ctx['subject']
+        e_msg['Subject'] = subject
         e_msg['From'] = actor
         e_msg['To'] = ','.join(to)
         e_msg['EM2-ID'] = f'{conv_key}-{last_action_id}'
 
-        in_reply_to, references = ctx['in_reply_to'], ctx['references']
         if in_reply_to:
             e_msg['In-Reply-To'] = f'<{in_reply_to}>'
         if references:
             e_msg['References'] = ' '.join(f'<{msg_id}>' for msg_id in references)
 
-        e_msg.set_content(ctx['body'])
-        if ctx['msg_format'] in {MsgFormat.markdown, MsgFormat.html}:
-            html = ctx['body']
-            if ctx['msg_format'] == MsgFormat.markdown:
+        body, msg_format = ctx['body'], ctx['msg_format']
+        e_msg.set_content(body)
+        if msg_format in {MsgFormat.markdown, MsgFormat.html}:
+            html = body
+            if msg_format == MsgFormat.markdown:
                 html = safe_markdown(html)
             e_msg.add_alternative(html, subtype='html')
 

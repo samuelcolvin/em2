@@ -18,7 +18,7 @@ class ExecView(_ExecView):
         self.session: Session = request['session']
 
     async def push_all(self, conv_id: int):
-        return await push_all(self.app, self.conn, conv_id)
+        return await push_all(self.conn, self.app['redis'], conv_id)
 
     async def push_multiple(self, conv_id: int, action_ids: List[int]):
-        return await push_multiple(self.app, self.conn, conv_id, action_ids)
+        return await push_multiple(self.conn, self.app['redis'], conv_id, action_ids)

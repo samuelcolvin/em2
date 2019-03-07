@@ -528,7 +528,7 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
         if act in {ActionTypes.conv_publish, ActionTypes.conv_create}:
             subject = action['body']
             created = action['ts']
-        elif act == ActionTypes.subject_lock:
+        elif act == ActionTypes.subject_modify:
             subject = action['body']
         elif act == ActionTypes.msg_add:
             messages[action_id] = {

@@ -42,16 +42,20 @@ _AUTH_HEADER = (
 )
 
 
-class AwsFallbackHandler(BaseFallbackHandler):
+class SesFallbackHandler(BaseFallbackHandler):
     """
     Use AWS's SES service to send SMTP emails.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if not (self.settings.ses_access_key and self.settings.ses_secret_key):
+            raise RuntimeError(
+                'both settings.ses_access_key and settings.ses_secret_key must be set to use SesFallbackHandler'
+            )
         self.session = ClientSession(timeout=ClientTimeout(total=5))
-        self._host = self.settings.aws_ses_host.format(region=self.settings.aws_region)
-        self._endpoint = self.settings.aws_ses_endpoint.format(host=self._host)
+        self._host = self.settings.ses_host.format(region=self.settings.ses_region)
+        self._endpoint = self.settings.ses_endpoint.format(host=self._host)
 
     async def shutdown(self):
         await self.session.close()
@@ -61,7 +65,7 @@ class AwsFallbackHandler(BaseFallbackHandler):
         x_amz_date = n.strftime('%Y%m%dT%H%M%SZ')
         date_stamp = n.strftime('%Y%m%d')
         ctx = dict(
-            access_key=self.settings.aws_access_key,
+            access_key=self.settings.ses_access_key,
             algorithm=_AUTH_ALGORITHM,
             x_amz_date=x_amz_date,
             auth_request=_AWS_AUTH_REQUEST,
@@ -69,7 +73,7 @@ class AwsFallbackHandler(BaseFallbackHandler):
             date_stamp=date_stamp,
             host=self._host,
             payload_hash=hashlib.sha256(data).hexdigest(),
-            region=self.settings.aws_region,
+            region=self.settings.ses_region,
             service=_AWS_SERVICE,
             signed_headers=';'.join(_SIGNED_HEADERS),
         )
@@ -81,9 +85,9 @@ class AwsFallbackHandler(BaseFallbackHandler):
         s2s = _STRING_TO_SIGN.format(canonical_request_hash=hashlib.sha256(canonical_request).hexdigest(), **ctx)
 
         key_parts = (
-            b'AWS4' + self.settings.aws_secret_key.encode(),
+            b'AWS4' + self.settings.ses_secret_key.encode(),
             date_stamp,
-            self.settings.aws_region,
+            self.settings.ses_region,
             _AWS_SERVICE,
             _AWS_AUTH_REQUEST,
             s2s,
@@ -109,4 +113,4 @@ class AwsFallbackHandler(BaseFallbackHandler):
         if r.status != 200:
             raise RequestError(r.status, self._endpoint, text=text)
         msg_id = re.search('<MessageId>(.+?)</MessageId>', text).groups()[0]
-        return msg_id + f'@{self.settings.aws_region}.amazonses.com'
+        return msg_id + f'@{self.settings.ses_region}.amazonses.com'
