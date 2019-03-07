@@ -122,6 +122,27 @@ $$ language plpgsql;
 
 create trigger action_insert before insert on actions for each row execute procedure action_insert();
 
+create type SendStatus as enum ('temporary_failure', 'failed', 'partially_successful', 'successful');
+
+create table sends (
+  id bigserial primary key,
+  action bigint references actions not null,
+  ref varchar(100),
+  node varchar(255),  -- null for fallback
+  status SendStatus,
+  unique (action, node),
+  unique (action, ref)
+);
+create index sends_ref ON sends USING btree (node, ref);
+
+create table send_events (
+  id bigserial primary key,
+  send bigint references sends not null,
+  ts timestamptz not null default current_timestamp,
+  extra json
+);
+create index send_events_send ON send_events USING btree (send);
+
 -- todo attachments
 
 

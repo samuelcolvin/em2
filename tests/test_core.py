@@ -1,7 +1,9 @@
 import json
+import logging
 from typing import List
 
 import pytest
+from arq import Worker
 from atoolbox import JsonErrors
 from pydantic import ValidationError
 from pytest_toolbox.comparison import AnyInt, CloseToNow
@@ -493,12 +495,17 @@ async def test_participant_add_many(factory: Factory, db_conn, settings):
     assert exc_info.value.message == 'no more than 64 participants permitted'
 
 
-async def test_publish_remote(factory: Factory, redis, db_conn, worker):
+async def test_publish_remote(factory: Factory, redis, db_conn, worker: Worker, caplog):
+    caplog.set_level(logging.INFO)
     await factory.create_user()
     await factory.create_conv(participants=[{'email': 'whatever@remote.com'}], publish=True)
     assert 4 == await db_conn.fetchval('select count(*) from actions')
     await worker.async_run()
-    assert worker.jobs_complete == 1
+    assert (worker.jobs_complete, worker.jobs_failed, worker.jobs_retried) == (2, 0, 0)
     job_results = await redis.all_job_results()
-    assert len(job_results) == 1
-    assert job_results[0]['result'] == 'retry=0 fallback=1 em2=0'
+    assert len(job_results) == 2
+    push_job = next(j for j in job_results if j['function'] == 'push_actions')
+    assert push_job['result'] == 'retry=0 fallback=1 em2=0'
+
+    log = '\n'.join(r.message for r in caplog.records)
+    assert "testing-1@example.com > {'whatever@remote.com'}\n  Subject: Test Subject" in log

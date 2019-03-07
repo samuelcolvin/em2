@@ -89,7 +89,7 @@ from (
     join users as u on p.user_id = u.id
     where conv=$1
       and (c.publish_ts is not null or p.user_id=c.creator)
-      and u.user_type = any(array['new', 'local']::UserTypes[])
+      and (u.user_type = 'new' or u.user_type = 'local')
   ) as t
 ) as participants,
 (

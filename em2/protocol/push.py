@@ -15,6 +15,7 @@ from cryptography.fernet import Fernet
 from pydantic import BaseModel, UrlStr
 
 from em2.core import UserTypes
+from em2.protocol.fallback import BaseFallbackHandler
 from em2.settings import Settings
 
 logger = logging.getLogger('em2.push')
@@ -42,7 +43,12 @@ class RouteModel(BaseModel):
 
 async def push_actions(ctx, actions_data: str, users: List[Tuple[str, UserTypes]]):
     pusher = Pusher(ctx)
-    return await pusher.push(actions_data, users)
+    return await pusher.split_destinations(actions_data, users)
+
+
+async def fallback_send(ctx, actions: List[Dict[str, Any]]):
+    fallback_handler: BaseFallbackHandler = ctx['fallback_handler']
+    return await fallback_handler.send(actions)
 
 
 class Pusher:
@@ -62,7 +68,7 @@ class Pusher:
         else:
             self.local_check_url = f'https://auth.{settings.domain}/check/'
 
-    async def push(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
+    async def split_destinations(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
         results = await asyncio.gather(*[self.resolve_user(*u) for u in users])
         retry_users, fallback, em2 = set(), set(), set()
         for node, email in filter(None, results):
@@ -77,10 +83,13 @@ class Pusher:
             await self.redis.enqueue_job(
                 'push_actions', actions_data, retry_users, _job_try=self.job_try + 1, _defer_by=self.job_try * 10
             )
+        actions = json.loads(actions_data)['actions']
         if fallback:
             logger.info('%d fallback emails to send', len(fallback))
+            await self.redis.enqueue_job('fallback_send', actions)
         else:
             logger.info('%d em2 nodes to push action to', len(em2))
+            raise NotImplementedError('pushing to other em2 platforms not yet supported')
         return f'retry={len(retry_users)} fallback={len(fallback)} em2={len(em2)}'
 
     async def resolve_user(self, email: str, current_user_type: UserTypes):

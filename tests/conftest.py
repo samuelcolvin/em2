@@ -13,6 +13,7 @@ from atoolbox.test_utils import DummyServer, create_dummy_server
 
 from em2.auth.utils import mk_password
 from em2.main import create_app
+from em2.protocol.fallback import LogFallbackHandler
 from em2.protocol.worker import WorkerSettings
 from em2.settings import Settings
 from em2.utils.web import MakeUrl
@@ -212,20 +213,16 @@ async def factory(db_conn, cli, url):
 
 
 @pytest.yield_fixture(name='worker')
-async def _fix_worker(redis, settings, db_conn, cli):
+async def _fix_worker(redis, settings, db_conn):
     session = ClientSession(timeout=ClientTimeout(total=10))
-    worker = Worker(
-        functions=WorkerSettings.functions,
-        redis_pool=redis,
-        burst=True,
-        poll_delay=0.01,
-        ctx=dict(
-            settings=settings,
-            pg=SimplePgPool(db_conn),
-            session=session,
-            resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
-        ),
+    ctx = dict(
+        settings=settings,
+        pg=SimplePgPool(db_conn),
+        session=session,
+        resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
+    ctx['fallback_handler'] = LogFallbackHandler(ctx)
+    worker = Worker(functions=WorkerSettings.functions, redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)
 
     yield worker
 
