@@ -3,7 +3,7 @@ import json
 import secrets
 from datetime import datetime
 from enum import Enum, unique
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from atoolbox import JsonErrors
 from buildpg import V
@@ -13,6 +13,9 @@ from pydantic import BaseModel, EmailStr, constr, validator
 from .settings import Settings
 from .utils.datetime import to_unix_ms
 from .utils.db import or404
+
+
+StrInt = Union[str, int]
 
 
 @unique
@@ -112,44 +115,71 @@ def draft_conv_key() -> str:
 
 
 async def get_conv_for_user(
-    conn: BuildPgConnection, user_id: int, conv_key_prefix: str, *, req_pub: bool = None
+    conn: BuildPgConnection, user_id: int, conv_ref: StrInt, *, req_pub: bool = None
 ) -> Tuple[int, Optional[int]]:
     """
     Get a conversation id for a user based on the beginning of the conversation key, if the user has been
     removed from the conversation the id of the last action they can see will also be returned.
     """
-    conv_key_match = conv_key_prefix + '%'
-    r = await conn.fetchrow(
-        """
-        select c.id, c.publish_ts, c.creator from conversations as c
-        join participants as p on c.id=p.conv
-        where p.user_id=$1 and c.key like $2
-        order by c.created_ts desc
-        limit 1
-        """,
-        user_id,
-        conv_key_match,
-    )
+    if isinstance(conv_ref, int):
+        r = await conn.fetchrow(
+            """
+            select c.id, c.publish_ts, c.creator from conversations as c
+            join participants p on c.id=p.conv
+            where p.user_id = $1 and c.id = $2
+            order by c.created_ts desc
+            """,
+            user_id,
+            conv_ref,
+        )
+    else:
+        r = await conn.fetchrow(
+            """
+            select c.id, c.publish_ts, c.creator from conversations c
+            join participants p on c.id=p.conv
+            where p.user_id=$1 and c.key like $2
+            order by c.created_ts desc
+            limit 1
+            """,
+            user_id,
+            conv_ref + '%',
+        )
+
     if r:
         conv_id, publish_ts, creator = r
         last_action = None
     else:
         # can happen legitimately when a user was removed from the conversation,
         # but can still view it up to that point
-        conv_id, publish_ts, creator, last_action = await or404(
-            conn.fetchrow(
-                """
-                select c.id, c.publish_ts, c.creator, a.id from actions as a
-                join conversations as c on a.conv = c.id
-                where c.key like $2 and a.participant_user=$1 and a.act='participant:remove'
-                order by c.created_ts desc, a.id desc
-                limit 1
-                """,
-                user_id,
-                conv_key_match,
-            ),
-            msg='Conversation not found',
-        )
+        if isinstance(conv_ref, int):
+            conv_id, publish_ts, creator, last_action = await or404(
+                conn.fetchrow(
+                    """
+                    select c.id, c.publish_ts, c.creator, a.id from actions a
+                    join conversations c on a.conv = c.id
+                    where c.id = $2 and a.participant_user = $1 and a.act='participant:remove'
+                    order by c.created_ts desc, a.id desc
+                    """,
+                    user_id,
+                    conv_ref,
+                ),
+                msg='Conversation not found',
+            )
+        else:
+            conv_id, publish_ts, creator, last_action = await or404(
+                conn.fetchrow(
+                    """
+                    select c.id, c.publish_ts, c.creator, a.id from actions a
+                    join conversations c on a.conv = c.id
+                    where c.key like $2 and a.participant_user=$1 and a.act='participant:remove'
+                    order by c.created_ts desc, a.id desc
+                    limit 1
+                    """,
+                    user_id,
+                    conv_ref + '%',
+                ),
+                msg='Conversation not found',
+            )
 
     if not publish_ts and user_id != creator:
         raise JsonErrors.HTTPForbidden('conversation is unpublished and you are not the creator')
@@ -244,8 +274,8 @@ class _Act:
         self.actor_user_id = actor_user_id
         self.conv_id: int = None
 
-    async def prepare(self, conv_prefix: str) -> int:
-        self.conv_id, last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_prefix)
+    async def prepare(self, conv_ref: StrInt) -> int:
+        self.conv_id, last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_ref)
         if last_action:
             # if the usr has be removed from the conversation they can't act
             raise JsonErrors.HTTPNotFound(message='Conversation not found')
@@ -445,7 +475,7 @@ class _Act:
 
 
 async def apply_actions(
-    conn: BuildPgConnection, settings: Settings, actor_user_id: int, conv_prefix: str, actions: List[ActionModel]
+    conn: BuildPgConnection, settings: Settings, actor_user_id: int, conv_ref: StrInt, actions: List[ActionModel]
 ) -> Tuple[int, List[int]]:
     """
     Apply actions and return their ids.
@@ -457,7 +487,7 @@ async def apply_actions(
     async with conn.transaction():
         # IMPORTANT we do nothing that could be slow (eg. networking) inside this transaction,
         # as the conv is locked for update from prepare onwards
-        conv_id = await act_cls.prepare(conv_prefix)
+        conv_id = await act_cls.prepare(conv_ref)
 
         for action in actions:
             action_id = await act_cls.run(action)
@@ -475,8 +505,8 @@ async def apply_actions(
     return conv_id, action_ids
 
 
-async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_prefix: str, since_id: int = None):
-    conv_id, last_action = await get_conv_for_user(conn, user_id, conv_prefix)
+async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_ref: StrInt, since_id: int = None):
+    conv_id, last_action = await get_conv_for_user(conn, user_id, conv_ref)
     where_logic = V('a.conv') == conv_id
     if last_action:
         where_logic &= V('a.id') <= last_action
@@ -510,8 +540,8 @@ async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_prefix: 
     )
 
 
-async def construct_conv(conn: BuildPgConnection, user_id: int, conv_prefix: str, since_id: int = None):
-    actions_json = await conv_actions_json(conn, user_id, conv_prefix, since_id)
+async def construct_conv(conn: BuildPgConnection, user_id: int, conv_ref: StrInt, since_id: int = None):
+    actions_json = await conv_actions_json(conn, user_id, conv_ref, since_id)
     actions = json.loads(actions_json)
     return _construct_conv_actions(actions)
 

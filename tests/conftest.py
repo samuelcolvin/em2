@@ -13,7 +13,7 @@ from atoolbox.db.helpers import SimplePgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
 
 from em2.auth.utils import mk_password
-from em2.core import apply_actions
+from em2.core import apply_actions, ActionModel
 from em2.main import create_app
 from em2.protocol.fallback import LogFallbackHandler, SesFallbackHandler
 from em2.protocol.worker import WorkerSettings
@@ -215,8 +215,8 @@ class Factory:
         self.conv = self.conv or conv
         return conv
 
-    async def act(self, settings, actor_user_id, conv_prefix, action) -> List[int]:
-        conv_id, action_ids = await apply_actions(self.conn, settings, actor_user_id, conv_prefix, [action])
+    async def act(self, actor_user_id: int, conv_id: int, action: ActionModel) -> List[int]:
+        conv_id, action_ids = await apply_actions(self.conn, self.settings, actor_user_id, conv_id, [action])
 
         if action_ids:
             await push_multiple(self.conn, self.redis, conv_id, action_ids)

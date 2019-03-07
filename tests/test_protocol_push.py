@@ -37,7 +37,7 @@ async def test_publish_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
     }
 
 
-async def test_add_msg_ses(factory: Factory, db_conn, ses_worker: Worker, settings, dummy_server):
+async def test_add_msg_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_server):
     user = await factory.create_user()
     conv = await factory.create_conv(participants=[{'email': 'whatever@remote.com'}], publish=True)
     assert 4 == await db_conn.fetchval('select count(*) from actions')
@@ -45,7 +45,7 @@ async def test_add_msg_ses(factory: Factory, db_conn, ses_worker: Worker, settin
     assert (ses_worker.jobs_complete, ses_worker.jobs_failed, ses_worker.jobs_retried) == (2, 0, 0)
 
     action = ActionModel(act=ActionTypes.msg_add, body='This is **another** message')
-    assert [5] == await factory.act(settings, user.id, conv.key, action)
+    assert [5] == await factory.act(user.id, conv.key, action)
 
     await ses_worker.async_run()
     assert (ses_worker.jobs_complete, ses_worker.jobs_failed, ses_worker.jobs_retried) == (4, 0, 0)
