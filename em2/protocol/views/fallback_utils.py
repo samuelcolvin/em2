@@ -1,7 +1,9 @@
 import email
 import logging
 import quopri
+from datetime import datetime
 from email.message import EmailMessage
+from typing import List
 
 from aiohttp.web_exceptions import HTTPBadRequest
 from arq import ArqRedis
@@ -22,6 +24,29 @@ from em2.core import (
 from em2.settings import Settings
 
 logger = logging.getLogger('em2.protocol.views.fallback')
+
+
+async def remove_participants(conn: BuildPgConnection, conv_id: int, ts: datetime, user_ids: List[int]):
+    """
+    Remove participants from a conversation, doesn't use actions since apply_actions is not used, and actor changes.
+
+    Should be called inside a transaction.
+    """
+    await conn.execute('delete from participants where conv=$1 and user_id=any($2)', conv_id, user_ids)
+
+    # TODO add reason when removing participant
+    r = await conn.fetch(
+        """
+        insert into actions (conv, ts, act, actor, participant_user)
+          (select $1, $2, 'participant:remove', unnest($3::int[]), unnest($3::int[]))
+        returning id
+        """,
+        conv_id,
+        ts,
+        user_ids,
+    )
+    await conn.execute('update participants set seen=false where conv=$1', conv_id)
+    return [r_[0] for r_ in r]
 
 
 class ProcessSMTP:

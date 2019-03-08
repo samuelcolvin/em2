@@ -1,6 +1,6 @@
 create type UserTypes as enum ('new', 'local', 'remote_em2', 'remote_other');
 
--- includes both local and remote users, TODO somehow record unsubscribed when people repeated complain
+-- includes both local and remote users, TODO somehow record unsubscribed when people repeatedly complain
 create table users (
   id bigserial primary key,
   user_type UserTypes not null default 'new',
@@ -136,6 +136,7 @@ create index sends_ref ON sends USING btree (node, ref);
 create table send_events (
   id bigserial primary key,
   send bigint references sends not null,
+  status varchar(100),
   ts timestamptz not null default current_timestamp,
   user_ids int[],
   extra json
@@ -166,7 +167,8 @@ create table auth_users (
   -- todo: node that the user is registered to
 );
 create unique index auth_users_email on auth_users using btree (email);
-create index auth_users_account_status on auth_users using btree (account_status);  -- could be a composite index with email
+-- could be a composite index with email:
+create index auth_users_account_status on auth_users using btree (account_status);
 
 create table auth_sessions (
   id bigserial primary key,

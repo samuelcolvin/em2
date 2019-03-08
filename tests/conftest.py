@@ -35,6 +35,7 @@ settings_args = dict(
     max_request_size=1024 ** 2,
     ses_access_key='testing_access_key',
     ses_secret_key='testing_secret_key',
+    ses_webhook_auth=b'testing',
 )
 
 

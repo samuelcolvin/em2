@@ -1,13 +1,15 @@
 from aiohttp import web
+from atoolbox.middleware import pg_middleware
 
-from em2.protocol.views import testing_view
+from em2.protocol.views.fallback_ses import ses_webhook
 from em2.settings import Settings
 from em2.utils.web import build_index
 
 
 async def create_app_protocol(settings=None):
-    routes = [web.get('/testing/', testing_view, name='testing')]
-    app = web.Application()
+    routes = [web.post('/webhook/ses/', ses_webhook, name='webhook-ses')]
+    middleware = [pg_middleware]
+    app = web.Application(middlewares=middleware)
     app.update(name='auth', settings=settings or Settings())
     app.add_routes(routes)
     app['index_path'] = build_index(app, 'platform-to-platform interface')

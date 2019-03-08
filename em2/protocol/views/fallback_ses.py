@@ -11,9 +11,8 @@ from buildpg import Values
 from pydantic.datetime_parse import parse_datetime
 
 from em2.background import push_multiple
-from em2.core import ActionModel, ActionTypes, apply_actions
 
-from .fallback_utils import ProcessSMTP
+from .fallback_utils import ProcessSMTP, remove_participants
 
 logger = logging.getLogger('em2.protocol.ses')
 
@@ -31,7 +30,7 @@ async def record_email_event(request, message: Dict):
     """
     conn = request['conn']
     msg_id = message['mail']['messageId']
-    r = await conn.fetchval(
+    r = await conn.fetchrow(
         """
         select s.id, s.complete, a.conv from sends s
         join actions a on s.action = a.pk
@@ -44,10 +43,10 @@ async def record_email_event(request, message: Dict):
     send_id, send_complete, conv_id = r
 
     event_type = message.get('eventType')
-    extra = {'type': event_type}
+    extra = {}
     data = message.get(event_type.lower()) or {}
-    refused_prts = []
     user_ids = []
+    complaint = False
 
     if event_type == 'Send':
         data = message['mail']
@@ -59,7 +58,7 @@ async def record_email_event(request, message: Dict):
     elif event_type == 'Bounce':
         user_ids = await conn.fetchval(
             """
-            select array_agg(t.id) from (
+            select array_agg(id) from (
               select u.id from participants p
               join users u on p.user_id = u.id
               where u.email = any($1) and p.conv = $2
@@ -80,10 +79,11 @@ async def record_email_event(request, message: Dict):
         # TODO perhaps need to deal with complaintFeedbackType=not-spam specially
         # see https://docs.aws.amazon.com/ses/latest/DeveloperGuide/notification-contents.html
         emails = [v['emailAddress'] for v in data.get('complainedRecipients', [])]
-        refused_prts, user_ids = await conn.fetchrow(
+        complaint = True
+        user_ids = await conn.fetchval(
             """
-            select array_agg(pid), array_agg(uid) from (
-              select p.id pid, u.id uid from participants p
+            select array_agg(id) from (
+              select u.id from participants p
               join users u on p.user_id = u.id
               where u.email = any($1) and p.conv = $2
             ) as t
@@ -101,29 +101,18 @@ async def record_email_event(request, message: Dict):
         logger.warning('unknown aws webhooks %s', event_type, extra={'data': {'message': message}})
 
     ts = parse_datetime(data['timestamp'])
-    values = dict(
-        send=send_id,
-        status=event_type,
-        extra=json.dumps({k: v for k, v in extra.items() if v}),
-        user_ids=user_ids or None,
-        ts=ts,
-    )
+    values = dict(send=send_id, status=event_type, user_ids=user_ids or None, ts=ts)
+    extra = {k: v for k, v in extra.items() if v}
+    if extra:
+        values['extra'] = json.dumps(extra)
 
     async with conn.transaction():
         await conn.execute_b('insert into send_events (:values__names) values :values', values=Values(**values))
         if not send_complete:
             await conn.execute('update sends set complete=true where id=$1', send_id)
 
-        action_ids = []
-        for actor_id, email_address in zip(user_ids, refused_prts):
-            # TODO add reason when removing participant
-            action = ActionModel(act=ActionTypes.prt_remove, participant=email_address)
-            _, action_ids_ = await apply_actions(conn, request.app['settings'], actor_id, conv_id, [action])
-            assert action_ids_
-            action_ids += action_ids_
-
-        if action_ids:
-            await conn.execute('update actions set ts=$1 where conv=$2 and id=any($3)', ts, conv_id, action_ids)
+        if complaint:
+            action_ids = await remove_participants(conn, conv_id, ts, user_ids)
             await push_multiple(conn, request.app['redis'], conv_id, action_ids)
 
     return event_type
@@ -147,7 +136,8 @@ async def ses_webhook(request):
     else:
         assert sns_type == 'Notification', sns_type
         message = json.loads(data.get('Message'))
-        if message['notificationType'] == 'Received':
+        # is this right?
+        if message.get('notificationType') == 'Received':
             await asyncio.shield(process_email(request, message))
         else:
             await asyncio.shield(record_email_event(request, message))
