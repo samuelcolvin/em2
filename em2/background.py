@@ -3,13 +3,12 @@ import logging
 from asyncio import CancelledError
 from typing import Dict, List
 
+import ujson
 from aiohttp.abc import Application
 from aiohttp.web_ws import WebSocketResponse
 from arq.connections import ArqRedis
 from buildpg.asyncpg import BuildPgConnection
 
-import ujson
-from em2.core import UserTypes
 from em2.settings import Settings
 
 logger = logging.getLogger('em2.ui.background')
@@ -113,7 +112,7 @@ where conv=$1 and c.publish_ts is not null and u.user_type != 'local'
 
 
 async def _push_remote(pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int, actions_data: str):
-    remote_users = [(r[0], UserTypes(r[1])) for r in await pg_conn.fetch(remote_users_sql, conv_id)]
+    remote_users = [tuple(r) for r in await pg_conn.fetch(remote_users_sql, conv_id)]
     if remote_users:
         await redis.enqueue_job('push_actions', actions_data, remote_users)
 
@@ -146,13 +145,17 @@ push_sql_all = push_sql_template.format('where a.conv=$1 order by a.id')
 push_sql_multiple = push_sql_template.format('where a.conv=$1 and a.id=any($2)')
 
 
-async def push_all(pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int):
+async def push_all(pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int, *, transmit=True):
     actions_data = await pg_conn.fetchval(push_sql_all, conv_id)
     await _push_local(pg_conn, redis, conv_id, actions_data)
-    await _push_remote(pg_conn, redis, conv_id, actions_data)
+    if transmit:
+        await _push_remote(pg_conn, redis, conv_id, actions_data)
 
 
-async def push_multiple(pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int, action_ids: List[int]):
+async def push_multiple(
+    pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int, action_ids: List[int], *, transmit=True
+):
     actions_data = await pg_conn.fetchval(push_sql_multiple, conv_id, action_ids)
     await _push_local(pg_conn, redis, conv_id, actions_data)
-    await _push_remote(pg_conn, redis, conv_id, actions_data)
+    if transmit:
+        await _push_remote(pg_conn, redis, conv_id, actions_data)

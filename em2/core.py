@@ -14,7 +14,6 @@ from .settings import Settings
 from .utils.datetime import to_unix_ms
 from .utils.db import or404
 
-
 StrInt = Union[str, int]
 
 
@@ -601,3 +600,96 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
                 msg_list.append(msg)
 
     return {'subject': subject, 'created': created, 'messages': msg_list, 'participants': participants}
+
+
+class CreateConvModel(BaseModel):
+    subject: constr(max_length=255, strip_whitespace=True)
+    message: constr(max_length=10000, strip_whitespace=True)
+    msg_format: MsgFormat = MsgFormat.markdown
+    publish = False
+
+    class Participants(BaseModel):
+        email: EmailStr
+        name: str = None
+
+    participants: List[Participants] = []
+
+    @validator('participants', whole=True)
+    def check_participants_count(cls, v):
+        if len(v) > max_participants:
+            raise ValueError(f'no more than {max_participants} participants permitted')
+        return v
+
+
+async def create_conv(
+    *,
+    conn: BuildPgConnection,
+    creator_email: str,
+    creator_id: int,
+    conv: CreateConvModel,
+    ts: Optional[datetime] = None,
+):
+    ts = ts or datetime.utcnow()
+    conv_key = generate_conv_key(creator_email, ts, conv.subject) if conv.publish else draft_conv_key()
+    async with conn.transaction():
+        conv_id = await conn.fetchval(
+            """
+            insert into conversations (key, creator, publish_ts, created_ts, updated_ts)
+            values                    ($1,  $2     , $3        , $4        , $4        )
+            on conflict (key) do nothing
+            returning id
+            """,
+            conv_key,
+            creator_id,
+            ts if conv.publish else None,
+            ts,
+        )
+        if conv_id is None:
+            raise JsonErrors.HTTPConflict(error='key conflicts with existing conversation')
+
+        # TODO currently only email is used
+        participants = set(p.email for p in conv.participants)
+        part_users = await get_create_multiple_users(conn, participants)
+
+        await conn.execute('insert into participants (conv, user_id, seen) (select $1, $2, true)', conv_id, creator_id)
+        other_user_ids = list(part_users.values())
+        await conn.execute(
+            'insert into participants (conv, user_id) (select $1, unnest($2::int[]))', conv_id, other_user_ids
+        )
+        user_ids = [creator_id] + other_user_ids
+        await conn.execute(
+            """
+            insert into actions (conv, act             , actor, ts, participant_user) (
+              select             $1  , 'participant:add', $2  , $3, unnest($4::int[])
+            )
+            """,
+            conv_id,
+            creator_id,
+            ts,
+            user_ids,
+        )
+        await conn.execute(
+            """
+            insert into actions (conv, act          , actor, ts, body, msg_format)
+            values              ($1  , 'message:add', $2   , $3, $4  , $5)
+            """,
+            conv_id,
+            creator_id,
+            ts,
+            conv.message,
+            conv.msg_format,
+        )
+        await conn.execute(
+            """
+            insert into actions (conv, act, actor, ts, body)
+            values              ($1  , $2 , $3   , $4, $5)
+            """,
+            conv_id,
+            ActionTypes.conv_publish if conv.publish else ActionTypes.conv_create,
+            creator_id,
+            ts,
+            conv.subject,
+        )
+        await update_conv_users(conn, conv_id)
+
+    return conv_id, conv_key

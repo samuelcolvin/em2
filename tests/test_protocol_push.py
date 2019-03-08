@@ -33,7 +33,7 @@ async def test_publish_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
         'action': await db_conn.fetchval('select pk from actions where id=4'),
         'ref': 'testing-msg-key@eu-west-1.amazonses.com',
         'node': None,
-        'status': None,
+        'complete': None,
     }
 
 

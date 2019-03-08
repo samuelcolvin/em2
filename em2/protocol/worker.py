@@ -8,8 +8,8 @@ from pydantic.utils import import_string
 
 from em2.settings import Settings
 
-from .fallback import BaseFallbackHandler
-from .push import fallback_send, push_actions
+from .fallback import BaseFallbackHandler, fallback_send
+from .push import push_actions
 
 
 async def startup(ctx):
@@ -31,6 +31,6 @@ async def shutdown(ctx):
 
 
 class WorkerSettings:
-    functions = [push_actions, fallback_send]
+    functions = [fallback_send, push_actions]
     on_startup = startup
     on_shutdown = shutdown

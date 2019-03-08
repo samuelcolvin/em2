@@ -2,20 +2,18 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
-from pydantic import BaseModel, EmailStr, constr, validator
+from pydantic import BaseModel, validator
 
+from em2.background import push_all, push_multiple
 from em2.core import (
     ActionModel,
-    ActionTypes,
-    MsgFormat,
+    CreateConvModel,
     apply_actions,
     construct_conv,
     conv_actions_json,
-    draft_conv_key,
+    create_conv,
     generate_conv_key,
     get_conv_for_user,
-    get_create_multiple_users,
-    max_participants,
     update_conv_users,
 )
 
@@ -62,92 +60,14 @@ class ConvActions(View):
 
 
 class ConvCreate(ExecView):
-    class Model(BaseModel):
-        subject: constr(max_length=255, strip_whitespace=True)
-        message: constr(max_length=10000, strip_whitespace=True)
-        msg_format: MsgFormat = MsgFormat.markdown
-        publish = False
+    Model = CreateConvModel
 
-        class Participants(BaseModel):
-            email: EmailStr
-            name: str = None
+    async def execute(self, conv: CreateConvModel):
+        conv_id, conv_key = await create_conv(
+            conn=self.conn, creator_email=self.session.email, creator_id=self.session.user_id, conv=conv
+        )
 
-        participants: List[Participants] = []
-
-        @validator('participants', whole=True)
-        def check_participants_count(cls, v):
-            if len(v) > max_participants:
-                raise ValueError(f'no more than {max_participants} participants permitted')
-            return v
-
-    async def execute(self, conv: Model):
-        ts = datetime.utcnow()
-        conv_key = generate_conv_key(self.session.email, ts, conv.subject) if conv.publish else draft_conv_key()
-        creator_id = self.session.user_id
-        async with self.conn.transaction():
-            conv_id = await self.conn.fetchval(
-                """
-                insert into conversations (key, creator, publish_ts, created_ts, updated_ts)
-                values                    ($1,  $2     , $3        , $4        , $4        )
-                on conflict (key) do nothing
-                returning id
-                """,
-                conv_key,
-                creator_id,
-                ts if conv.publish else None,
-                ts,
-            )
-            if conv_id is None:
-                raise JsonErrors.HTTPConflict(error='key conflicts with existing conversation')
-
-            # TODO currently only email is used
-            participants = set(p.email for p in conv.participants)
-            part_users = await get_create_multiple_users(self.conn, participants)
-
-            await self.conn.execute(
-                'insert into participants (conv, user_id, seen) (select $1, $2, true)', conv_id, creator_id
-            )
-            other_user_ids = list(part_users.values())
-            await self.conn.execute(
-                'insert into participants (conv, user_id) (select $1, unnest($2::int[]))', conv_id, other_user_ids
-            )
-            user_ids = [creator_id] + other_user_ids
-            await self.conn.execute(
-                """
-                insert into actions (conv, act             , actor, ts, participant_user) (
-                  select             $1  , 'participant:add', $2  , $3, unnest($4::int[])
-                )
-                """,
-                conv_id,
-                creator_id,
-                ts,
-                user_ids,
-            )
-            await self.conn.execute(
-                """
-                insert into actions (conv, act          , actor, ts, body, msg_format)
-                values              ($1  , 'message:add', $2   , $3, $4  , $5)
-                """,
-                conv_id,
-                creator_id,
-                ts,
-                conv.message,
-                conv.msg_format,
-            )
-            await self.conn.execute(
-                """
-                insert into actions (conv, act, actor, ts, body)
-                values              ($1  , $2 , $3   , $4, $5)
-                """,
-                conv_id,
-                ActionTypes.conv_publish if conv.publish else ActionTypes.conv_create,
-                creator_id,
-                ts,
-                conv.subject,
-            )
-            await update_conv_users(self.conn, conv_id)
-
-        await self.push_all(conv_id)
+        await push_all(self.conn, self.app['redis'], conv_id)
         return dict(key=conv_key, status_=201)
 
 
@@ -161,7 +81,7 @@ class ConvAct(ExecView):
         )
 
         if action_ids:
-            await self.push_multiple(conv_id, action_ids)
+            await push_multiple(self.conn, self.app['redis'], conv_id, action_ids)
         return {'action_ids': action_ids}
 
 
@@ -226,7 +146,7 @@ class ConvPublish(ExecView):
                 conv_summary['subject'],
             )
             await update_conv_users(self.conn, conv_id)
-        await self.push_all(conv_id)
+        await push_all(self.conn, self.app['redis'], conv_id)
         return dict(key=conv_key)
 
     async def add_msg(self, msg_info: Dict[str, Any], conv_id: int, ts: datetime, parent: int = None):

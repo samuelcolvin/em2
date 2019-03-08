@@ -13,12 +13,12 @@ from atoolbox.db.helpers import SimplePgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
 
 from em2.auth.utils import mk_password
-from em2.core import apply_actions, ActionModel
+from em2.background import push_multiple
+from em2.core import ActionModel, apply_actions
 from em2.main import create_app
 from em2.protocol.fallback import LogFallbackHandler, SesFallbackHandler
 from em2.protocol.worker import WorkerSettings
 from em2.settings import Settings
-from em2.ui.background import push_multiple
 from em2.utils.web import MakeUrl
 
 from . import dummy_server

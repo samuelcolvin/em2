@@ -5,7 +5,8 @@ from aiohttp import WSMsgType
 from aiohttp.web_ws import WebSocketResponse
 from atoolbox import JsonErrors
 
-from ..background import Background
+from em2.background import Background
+
 from ..middleware import load_session
 
 logger = logging.getLogger('em2.ui.ws')

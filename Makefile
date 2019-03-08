@@ -18,7 +18,7 @@ format:
 .PHONY: lint
 lint:
 	flake8 em2/ tests/
-	$(isort) --check-only -df
+	$(isort) --check-only
 	$(black) --check
 	./tests/check_debug.sh
 	cd js && yarn --offline lint && cd ..

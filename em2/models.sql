@@ -1,6 +1,6 @@
 create type UserTypes as enum ('new', 'local', 'remote_em2', 'remote_other');
 
--- includes both local and remote users
+-- includes both local and remote users, TODO somehow record unsubscribed when people repeated complain
 create table users (
   id bigserial primary key,
   user_type UserTypes not null default 'new',
@@ -122,14 +122,12 @@ $$ language plpgsql;
 
 create trigger action_insert before insert on actions for each row execute procedure action_insert();
 
-create type SendStatus as enum ('temporary_failure', 'failed', 'partially_successful', 'successful');
-
 create table sends (
   id bigserial primary key,
   action bigint references actions not null,
   ref varchar(100),
   node varchar(255),  -- null for fallback
-  status SendStatus,
+  complete boolean,
   unique (action, node),
   unique (action, ref)
 );
@@ -139,9 +137,11 @@ create table send_events (
   id bigserial primary key,
   send bigint references sends not null,
   ts timestamptz not null default current_timestamp,
+  user_ids int[],
   extra json
 );
 create index send_events_send ON send_events USING btree (send);
+create index send_events_user_ids ON send_events USING btree (user_ids);
 
 -- todo attachments
 

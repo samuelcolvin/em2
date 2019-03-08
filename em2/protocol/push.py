@@ -15,7 +15,6 @@ from cryptography.fernet import Fernet
 from pydantic import BaseModel, UrlStr
 
 from em2.core import UserTypes
-from em2.protocol.fallback import BaseFallbackHandler
 from em2.settings import Settings
 
 logger = logging.getLogger('em2.push')
@@ -44,11 +43,6 @@ class RouteModel(BaseModel):
 async def push_actions(ctx, actions_data: str, users: List[Tuple[str, UserTypes]]):
     pusher = Pusher(ctx)
     return await pusher.split_destinations(actions_data, users)
-
-
-async def fallback_send(ctx, actions: List[Dict[str, Any]]):
-    fallback_handler: BaseFallbackHandler = ctx['fallback_handler']
-    return await fallback_handler.send(actions)
 
 
 class Pusher:
