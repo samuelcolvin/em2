@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import email
 import json
 import logging
 from secrets import compare_digest
@@ -15,13 +16,6 @@ from em2.background import push_multiple
 from .fallback_utils import ProcessSMTP, remove_participants
 
 logger = logging.getLogger('em2.protocol.ses')
-
-
-async def process_email(request, message: Dict):
-    # TODO check X-SES-Spam-Verdict, X-SES-Virus-Verdict from message['headers']
-    process_smtp = ProcessSMTP(request['conn'], request.app)
-    smtp_content = base64.b64decode(message['content']).decode()
-    await process_smtp.run(smtp_content)
 
 
 async def record_email_event(request, message: Dict):
@@ -125,8 +119,14 @@ async def ses_webhook(request):
     if not compare_digest(expected_auth_header, actual_auth_header):
         raise HTTPUnauthorized(text='Invalid basic auth', headers={'WWW-Authenticate': 'Basic'})
 
+    return await asyncio.shield(_ses_webhook(request))
+
+
+async def _ses_webhook(request):
     # content type is plain text for SNS, so we have to decode json manually
     data = json.loads(await request.text())
+    # avoid keeping multiple copies of the request data in memory
+    request._read_byte = None
     sns_type = data['Type']
     if sns_type == 'SubscriptionConfirmation':
         logger.info('confirming aws Subscription')
@@ -135,10 +135,16 @@ async def ses_webhook(request):
             assert r.status == 200, r.status
     else:
         assert sns_type == 'Notification', sns_type
-        message = json.loads(data.get('Message'))
-        # is this right?
+        message = json.loads(data['Message'])
+        del data
         if message.get('notificationType') == 'Received':
-            await asyncio.shield(process_email(request, message))
+            # TODO check X-SES-Spam-Verdict, X-SES-Virus-Verdict from message['headers']
+            content = message['content']
+            del message
+            msg = email.message_from_string(base64.b64decode(content).decode())
+            del content
+            process_smtp = ProcessSMTP(request['conn'], request.app)
+            await process_smtp.run(msg)
         else:
-            await asyncio.shield(record_email_event(request, message))
+            await record_email_event(request, message)
     return Response(status=204)

@@ -57,9 +57,8 @@ class ProcessSMTP:
         self.settings: Settings = app['settings']
         self.redis: ArqRedis = app['redis']
 
-    async def run(self, smtp_content: str):
+    async def run(self, msg: EmailMessage):
         # TODO deal with non multipart
-        msg: EmailMessage = email.message_from_string(smtp_content)
         if msg['EM2-ID']:
             # this is an em2 message and should be received via the proper route too
             return
@@ -75,7 +74,7 @@ class ProcessSMTP:
         conv_id, parent_msg_id = await self.get_conv(msg)
         actor_id = await get_create_user(self.conn, actor_email, UserTypes.remote_other)
 
-        body, is_html = get_smtp_body(msg, smtp_content)
+        body, is_html = get_smtp_body(msg, message_id)
         async with self.conn.transaction():
             if conv_id:
                 existing_prts = await self.conn.fetch(
@@ -98,15 +97,16 @@ class ProcessSMTP:
                     'update actions set ts=$1 where conv=$2 and id=any($3)', timestamp, conv_id, action_ids
                 )
                 await self.conn.execute(
-                    "insert into sends (action, ref, complete) values ($1, $2, true)", action_ids[-1], message_id
+                    "insert into sends (action, ref, complete) values ($1, $2, true)", action_ids[0], message_id
                 )
                 await push_multiple(self.conn, self.redis, conv_id, action_ids, transmit=False)
             else:
                 conv = CreateConvModel(
                     subject=msg['Subject'] or '-',
-                    mesage=body,
+                    message=body,
                     msg_format=MsgFormat.html if is_html else MsgFormat.plain,
                     publish=True,
+                    participants=[{'email': r} for r in recipients],
                 )
                 conv_id, conv_key = await create_conv(
                     conn=self.conn, creator_email=actor_email, creator_id=actor_id, conv=conv, ts=timestamp
@@ -114,7 +114,7 @@ class ProcessSMTP:
                 await self.conn.execute(
                     """
                     insert into sends (action, ref, complete)
-                    (select pk, $1, true from actions where conv=$2 order by id desc limit 1)
+                    (select pk, $1, true from actions where conv=$2 order by id limit 1)
                     """,
                     message_id,
                     conv_id,
@@ -126,14 +126,14 @@ class ProcessSMTP:
         recipients = {a for n, a in recipients}
         if not recipients:
             logger.warning('email with no recipient, ignoring %s', message_id)
-            raise HTTPBadRequest(body='no recipient, ignoring')
+            raise HTTPBadRequest(text='no recipient, ignoring')
 
         loc_users = await self.conn.fetchval(
             "select 1 from users where user_type='local' and email=any($1) limit 1", recipients
         )
         if not loc_users:
             logger.warning('email with no local recipient (%r), ignoring %s', recipients, message_id)
-            raise HTTPBadRequest(body='no local recipient, ignoring')
+            raise HTTPBadRequest(text='no local recipient, ignoring')
         return recipients
 
     async def get_conv(self, msg: EmailMessage):
@@ -192,12 +192,12 @@ def get_email_body(msg: EmailMessage):
     return body, False
 
 
-def get_smtp_body(msg: EmailMessage, smtp_content):
+def get_smtp_body(msg: EmailMessage, message_id):
     # text/html is generally the best representation of the email
     body, is_html = get_email_body(msg)
 
     if not body:
-        logger.warning('Unable to find body in email', extra={'data': {'raw-smtp': smtp_content}})
+        logger.warning('Unable to find body in email "%s"', message_id)
 
     if is_html:
         soup = BeautifulSoup(body, 'html.parser')
