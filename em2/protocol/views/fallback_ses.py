@@ -8,6 +8,7 @@ from typing import Dict
 
 from aiohttp.web_exceptions import HTTPUnauthorized
 from aiohttp.web_response import Response
+from atoolbox import JsonErrors
 from buildpg import Values
 from pydantic.datetime_parse import parse_datetime
 
@@ -114,6 +115,9 @@ async def record_email_event(request, message: Dict):
 
 async def ses_webhook(request):
     pw = request.app['settings'].ses_webhook_auth
+    if not pw:
+        raise JsonErrors.HTTPBadRequest('ses webhooks not configured')
+
     expected_auth_header = f'Basic {base64.b64encode(pw).decode()}'
     actual_auth_header = request.headers.get('Authorization', '')
     if not compare_digest(expected_auth_header, actual_auth_header):

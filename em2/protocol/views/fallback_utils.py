@@ -71,7 +71,7 @@ class ProcessSMTP:
         recipients = await self.get_recipients(msg, message_id)
         timestamp = email.utils.parsedate_to_datetime(msg['Date'])
 
-        conv_id, parent_msg_id = await self.get_conv(msg)
+        conv_id = await self.get_conv(msg)
         actor_id = await get_create_user(self.conn, actor_email, UserTypes.remote_other)
 
         body, is_html = get_smtp_body(msg, message_id)
@@ -86,9 +86,7 @@ class ProcessSMTP:
 
                 if body:
                     msg_format = MsgFormat.html if is_html else MsgFormat.plain
-                    actions.append(
-                        ActionModel(act=ActionTypes.msg_add, body=body, msg_format=msg_format, parent=parent_msg_id)
-                    )
+                    actions.append(ActionModel(act=ActionTypes.msg_add, body=body, msg_format=msg_format))
 
                 conv_id, action_ids = await apply_actions(self.conn, self.settings, actor_id, conv_id, actions)
                 assert action_ids
@@ -97,7 +95,13 @@ class ProcessSMTP:
                     'update actions set ts=$1 where conv=$2 and id=any($3)', timestamp, conv_id, action_ids
                 )
                 await self.conn.execute(
-                    "insert into sends (action, ref, complete) values ($1, $2, true)", action_ids[0], message_id
+                    """
+                    insert into sends (action, ref, complete)
+                    (select pk, $1, true from actions where conv=$2 and id=$3)
+                    """,
+                    message_id,
+                    conv_id,
+                    action_ids[0],
                 )
                 await push_multiple(self.conn, self.redis, conv_id, action_ids, transmit=False)
             else:
@@ -136,26 +140,22 @@ class ProcessSMTP:
             raise HTTPBadRequest(text='no local recipient, ignoring')
         return recipients
 
-    async def get_conv(self, msg: EmailMessage):
-        conv_id = parent_msg_id = None
+    async def get_conv(self, msg: EmailMessage) -> str:
+        conv_id = None
 
         # find which conversation this relates to
         in_reply_to = msg['In-Reply-To']
         if in_reply_to:
-            r = await self.conn.fetchrow(
+            conv_id = await self.conn.fetchval(
                 """
-                select a.conv, a.id, a.act from sends
-                join actions a on sends.action = a.id
+                select a.conv from sends
+                join actions a on sends.action = a.pk
                 where sends.node is null and sends.ref = $1
                 order by a.id desc
                 limit 1
                 """,
                 in_reply_to.strip('<>\r\n'),
             )
-            if r:
-                conv_id, parent_id, msg_act = r
-                if msg_act == ActionTypes.msg_add:
-                    parent_msg_id = parent_id
 
         references = msg['References']
         if not conv_id and references:
@@ -165,7 +165,7 @@ class ProcessSMTP:
                 conv_id = await self.conn.fetchval(
                     """
                     select a.conv from sends
-                    join actions a on sends.action = a.id
+                    join actions a on sends.action = a.pk
                     where sends.node is null and sends.ref = any($1)
                     order by a.id desc
                     limit 1
@@ -173,7 +173,7 @@ class ProcessSMTP:
                     ref_msg_ids,
                 )
 
-        return conv_id, parent_msg_id
+        return conv_id
 
 
 def get_email_body(msg: EmailMessage):
@@ -207,5 +207,6 @@ def get_smtp_body(msg: EmailMessage, message_id):
         if gmail_extra:
             gmail_extra.decompose()
 
-        body = soup.prettify()
+        # body = soup.prettify()
+        body = str(soup)
     return body.strip('\n'), is_html

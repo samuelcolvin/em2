@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 
 from arq import Worker
-from pytest_toolbox.comparison import AnyInt
+from pytest_toolbox.comparison import AnyInt, CloseToNow
 
 from em2.core import construct_conv
 
@@ -28,10 +28,11 @@ def build_message(
     to=('testing-1@example.com',),
     text_body='this is a message.',
     html_body='this is an html <b>message</b>.',
+    message_id='message-id@remote.com',
     **headers,
 ):
     email_msg = EmailMessage()
-    email_msg['Message-ID'] = 'message-id@remote.com'
+    email_msg['Message-ID'] = message_id
     email_msg['Subject'] = subject
     email_msg['From'] = e_from
     email_msg['To'] = ','.join(to)
@@ -164,7 +165,7 @@ async def test_ses_new_email(factory: Factory, db_conn, cli, url):
         'messages': [
             {
                 'ref': 3,
-                'body': 'this is an html\n<b>\n message\n</b>\n.',
+                'body': 'this is an html <b>message</b>.',
                 'created': '2032-01-01T12:00:00+00:00',
                 'format': 'html',
                 'active': True,
@@ -183,3 +184,34 @@ async def test_ses_new_email(factory: Factory, db_conn, cli, url):
     }
     action = await db_conn.fetchrow('select id, conv, actor, act from actions where pk=$1', r['action'])
     assert dict(action) == {'id': 1, 'conv': conv_id, 'actor': new_user_id, 'act': 'participant:add'}
+
+
+async def test_ses_reply(factory: Factory, worker: Worker, db_conn, cli, url):
+    send_id, message_id = await create_send(factory, worker, db_conn)
+    assert 1 == await db_conn.fetchval('select count(*) from conversations')
+    msg_extra = {'html_body': 'This is a <u>reply</u>.', 'In-Reply-To': message_id}
+    data = {
+        'Type': 'Notification',
+        'Message': json.dumps({'notificationType': 'Received', 'content': build_message(**msg_extra)}),
+    }
+    r = await cli.post(url('protocol:webhook-ses'), json=data, headers={'Authorization': 'Basic dGVzdGluZw=='})
+    assert r.status == 204, await r.text()
+    assert 1 == await db_conn.fetchval('select count(*) from conversations')
+
+    new_user_id = await db_conn.fetchval('select id from users where email=$1', 'whomever@remote.com')
+    obj = await construct_conv(db_conn, new_user_id, factory.conv.id)
+    assert obj == {
+        'subject': 'Test Subject',
+        'created': CloseToNow(),
+        'messages': [
+            {'ref': 3, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True},
+            {
+                'ref': 5,
+                'body': 'This is a <u>reply</u>.',
+                'created': '2032-01-01T12:00:00+00:00',
+                'format': 'html',
+                'active': True,
+            },
+        ],
+        'participants': {'testing-1@example.com': {'id': 1}, 'whomever@remote.com': {'id': 2}},
+    }
