@@ -10,6 +10,7 @@
   [headers.values]
     X-Frame-Options = "deny"
 
+[[headers]]
   for = "iframes/*"
   [headers.values]
     X-Frame-Options = "sameorigin"
