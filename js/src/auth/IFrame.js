@@ -25,7 +25,7 @@ const iframe_src_base64 = btoa(`
     <link rel="stylesheet" crossorigin="anonymous" \
       integrity="sha256-YLGeXaapI0/5IgZopewRJcFXomhRMlYYjugPLSyNjTY=" \
       href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/css/bootstrap.min.css">
-    <link rel="stylesheet" href="${origin}/iframes/styles.css">
+    <link rel="stylesheet" href="${origin}/auth-iframes.css">
   </head>
   <body class="pt-2 px-1">
     <form id="login-form" action="${login_url}" method="POST" data-origin="${window.location.origin}">
