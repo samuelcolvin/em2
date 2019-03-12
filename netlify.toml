@@ -3,18 +3,18 @@
 [build]
   base = "js/"
   publish = "js/build/"
-  command = "yarn build"
+  command = "./build.py"
 
 [build.environment]
   NODE_VERSION = "10.15.3"
   YARN_VERSION = "1.13.0"
 
+[[redirects]]
+  from = "/*"
+  to = "/"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]
     X-Frame-Options = "deny"
-
-[[headers]]
-  for = "iframes/*"
-  [headers.values]
-    X-Frame-Options = "sameorigin"
