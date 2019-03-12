@@ -82,6 +82,12 @@ def before():
 def after():
     csp = dict(CSP)
 
+    main_domain = os.getenv('REACT_APP_DOMAIN')
+    if main_domain:
+        csp['connect-src'] += [f'ui.{main_domain}', f'auth.{main_domain}']
+    else:
+        print('WARNING: "REACT_APP_DOMAIN" env var not set')
+
     content = (THIS_DIR / 'build' / 'index.html').read_text()
     m = re.search(r'<script>(.+?)</script>', content, flags=re.S)
     if m:

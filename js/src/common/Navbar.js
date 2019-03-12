@@ -16,7 +16,7 @@ const StatusBar = ({title, message, conn_status, user}) => {
   const class_name = ['extra-menu', 'fixed-top']
   // TODO replace connection_status_text with a symbol, eg. circle of different colour
   let connection_status_text
-  if (conn_status === statuses.connecting) {
+  if (!conn_status || conn_status === statuses.connecting) {
     // no connection status yet
     connection_status_text = 'connecting...'
     class_name.push('offline')

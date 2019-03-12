@@ -21,7 +21,7 @@ FaLibrary.add(far, fas, fab)
 const Main = ({app_state}) => {
   if (app_state.error) {
     return <Error error={app_state.error}/>
-  } else if (app_state.conn_status === statuses.connecting) {
+  } else if (!app_state.conn_status) {
     // this should happen very briefly, don't show loading to avoid FOUC
     return null
   } else if (app_state.conn_status === statuses.offline && !app_state.user) {
@@ -52,7 +52,7 @@ class App extends Component {
       error: null,
       message: null,
       user: null,
-      conn_status: statuses.connecting,
+      conn_status: null,
     }
     this.worker = new Worker(this)
     this.message_timeout1 = null
@@ -69,9 +69,7 @@ class App extends Component {
     if (this.props.location !== prevProps.location) {
       this.state.error && this.setState({error: null})
     }
-    if (!this.state.user &&
-        this.state.conn_status !== statuses.connecting &&
-        this.props.location.pathname !== '/login/') {
+    if (!this.state.user && this.state.conn_status && this.props.location.pathname !== '/login/') {
       this.props.history.push('/login/')
     }
   }
