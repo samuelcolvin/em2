@@ -10,6 +10,7 @@ from em2.settings import Settings
 
 from .fallback import BaseFallbackHandler, fallback_send
 from .push import push_actions
+from .views.fallback_ses import record_ses_email
 
 
 async def startup(ctx):
@@ -31,6 +32,6 @@ async def shutdown(ctx):
 
 
 class WorkerSettings:
-    functions = [fallback_send, push_actions]
+    functions = [fallback_send, push_actions, record_ses_email]
     on_startup = startup
     on_shutdown = shutdown

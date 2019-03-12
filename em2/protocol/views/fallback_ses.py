@@ -1,25 +1,96 @@
 import asyncio
 import base64
 import email
+import hashlib
 import json
 import logging
 from secrets import compare_digest
 from typing import Dict
 
-from aiohttp.web_exceptions import HTTPUnauthorized
+import aiobotocore
 from aiohttp.web_response import Response
 from atoolbox import JsonErrors
 from buildpg import Values
+from cryptography import x509
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from pydantic.datetime_parse import parse_datetime
+from yarl import URL
 
 from em2.background import push_multiple
+from em2.settings import Settings
 
-from .fallback_utils import ProcessSMTP, remove_participants
+from .fallback_utils import ProcessSMTP, get_email_recipients, remove_participants
 
 logger = logging.getLogger('em2.protocol.ses')
 
 
-async def record_email_event(request, message: Dict):
+async def ses_webhook(request):
+    if not compare_digest(request.app['settings'].ses_url_token, request.match_info['token']):
+        raise JsonErrors.HTTPForbidden('invalid url')
+
+    # content type is plain text for SNS, so we have to decode json manually
+    try:
+        data = json.loads(await request.text())
+    except ValueError:
+        raise JsonErrors.HTTPBadRequest('invalid json')
+    await verify_sns(request, data)
+
+    # avoid keeping multiple copies of the request data in memory
+    request._read_byte = None
+    sns_type = data['Type']
+    if sns_type == 'SubscriptionConfirmation':
+        logger.info('confirming aws Subscription')
+        # TODO check we actually want this subscription
+        async with request.app['http_client'].head(data['SubscribeURL']) as r:
+            assert r.status == 200, r.status
+    else:
+        assert sns_type == 'Notification', sns_type
+        message = json.loads(data['Message'])
+        del data
+        if message.get('notificationType') == 'Received':
+            await asyncio.shield(_record_email_message(request, message))
+        else:
+            await asyncio.shield(_record_email_event(request, message))
+    return Response(status=204)
+
+
+async def _record_email_message(request, message: Dict):
+    """
+    Record the email, check email should be processed before starting the job.
+    """
+    # TODO check X-SES-Spam-Verdict, X-SES-Virus-Verdict from message['receipt']
+    headers = {h['name']: h['value'] for h in message['headers']}
+    if headers.get('EM2-ID'):
+        # this is an em2 message and should be received via the proper route too
+        return
+
+    message_id = headers['Message-ID'].strip('<> ')
+    to, cc = message['commonHeaders'].get('to', []), message['commonHeaders'].get('cc', [])
+    # make sure we don't process unnecessary messages, could also delete from S3
+    await get_email_recipients(to, cc, message_id, request['conn'])
+
+    s3_action = message['receipt']['action']
+    bucket, prefix, path = s3_action['bucketName'], s3_action['objectKeyPrefix'], s3_action['objectKey']
+    if prefix:
+        path = f'{prefix}/{path}'
+    await request.app['redis'].enqueue_job('record_ses_email', bucket, path, _defer_by=-5)
+
+
+async def record_ses_email(ctx, bucket, path):
+    async with create_s3_session(ctx['settings']) as s3:
+        r = await s3.get_object(Bucket=bucket, Key=path)
+        async with r['Body'] as stream:
+            body = await stream.read()
+
+    msg = email.message_from_string(body.decode())
+    del body, r
+    async with ctx['pg'].acquire() as conn:
+        await ProcessSMTP(ctx, conn).run(msg)
+
+
+async def _record_email_event(request, message: Dict):
     """
     record SES SMTP events, this could be run on the worker.
     """
@@ -113,42 +184,46 @@ async def record_email_event(request, message: Dict):
     return event_type
 
 
-async def ses_webhook(request):
-    pw = request.app['settings'].ses_webhook_auth
-    if not pw:
-        raise JsonErrors.HTTPBadRequest('ses webhooks not configured')
-
-    expected_auth_header = f'Basic {base64.b64encode(pw).decode()}'
-    actual_auth_header = request.headers.get('Authorization', '')
-    if not compare_digest(expected_auth_header, actual_auth_header):
-        raise HTTPUnauthorized(text='Invalid basic auth', headers={'WWW-Authenticate': 'Basic'})
-
-    return await asyncio.shield(_ses_webhook(request))
-
-
-async def _ses_webhook(request):
-    # content type is plain text for SNS, so we have to decode json manually
-    data = json.loads(await request.text())
-    # avoid keeping multiple copies of the request data in memory
-    request._read_byte = None
-    sns_type = data['Type']
-    if sns_type == 'SubscriptionConfirmation':
-        logger.info('confirming aws Subscription')
-        # TODO check we actually want this subscription
-        async with request.app['http_client'].head(data['SubscribeURL']) as r:
-            assert r.status == 200, r.status
+async def verify_sns(request, data: Dict):
+    if data.get('Type') == 'Notification':
+        fields = 'Message', 'MessageId', 'Subject', 'Timestamp', 'TopicArn', 'Type'
     else:
-        assert sns_type == 'Notification', sns_type
-        message = json.loads(data['Message'])
-        del data
-        if message.get('notificationType') == 'Received':
-            # TODO check X-SES-Spam-Verdict, X-SES-Virus-Verdict from message['headers']
-            content = message['content']
-            del message
-            msg = email.message_from_string(base64.b64decode(content).decode())
-            del content
-            process_smtp = ProcessSMTP(request['conn'], request.app)
-            await process_smtp.run(msg)
-        else:
-            await record_email_event(request, message)
-    return Response(status=204)
+        fields = 'Message', 'MessageId', 'SubscribeURL', 'Timestamp', 'Token', 'TopicArn', 'Type'
+
+    try:
+        canonical_msg = ''.join(f'{f}\n{data[f]}\n' for f in fields).encode()
+        sign_url = data['SigningCertURL']
+        signature = base64.b64decode(data['Signature'])
+    except (KeyError, ValueError) as e:
+        raise JsonErrors.HTTPForbidden(f'invalid request, error: {e}')
+
+    cache_key = 'sns-signing-url:' + hashlib.md5(sign_url.encode()).hexdigest()
+    sign_url = URL(sign_url)
+    settings: Settings = request.app['settings']
+    if sign_url.scheme != settings.aws_sns_signing_schema or not sign_url.host.endswith(settings.aws_sns_signing_host):
+        logger.warning('invalid signing url "%s"', sign_url)
+        raise JsonErrors.HTTPForbidden('invalid signing cert url')
+
+    pem_data = await request.app['redis'].get(cache_key, encoding=None)
+    if not pem_data:
+        async with request.app['http_client'].get(sign_url, raise_for_status=True) as r:
+            pem_data = await r.read()
+        await request.app['redis'].setex(cache_key, 86400, pem_data)
+
+    cert = x509.load_pem_x509_certificate(pem_data, default_backend())
+    pubkey: rsa.RSAPublicKey = cert.public_key()
+    try:
+        pubkey.verify(signature, canonical_msg, padding.PKCS1v15(), cert.signature_hash_algorithm)
+    except InvalidSignature:
+        raise JsonErrors.HTTPForbidden('invalid signature')
+
+
+def create_s3_session(settings: Settings):
+    session = aiobotocore.get_session()
+    return session.create_client(
+        's3',
+        region_name=settings.aws_region,
+        aws_access_key_id=settings.aws_access_key,
+        aws_secret_access_key=settings.aws_secret_key,
+        endpoint_url=settings.s3_endpoint_url,
+    )

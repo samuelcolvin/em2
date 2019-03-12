@@ -52,10 +52,10 @@ async def remove_participants(conn: BuildPgConnection, conv_id: int, ts: datetim
 class ProcessSMTP:
     __slots__ = 'conn', 'settings', 'redis'
 
-    def __init__(self, conn, app):
-        self.conn: BuildPgConnection = conn
-        self.settings: Settings = app['settings']
-        self.redis: ArqRedis = app['redis']
+    def __init__(self, ctx, conn):
+        self.settings: Settings = ctx['settings']
+        self.redis: ArqRedis = ctx['redis']
+        self.conn = conn
 
     async def run(self, msg: EmailMessage):
         # TODO deal with non multipart
@@ -126,19 +126,8 @@ class ProcessSMTP:
                 await push_all(self.conn, self.redis, conv_id, transmit=False)
 
     async def get_recipients(self, msg: EmailMessage, message_id: str):
-        recipients = email.utils.getaddresses(msg.get_all('To', []) + msg.get_all('Cc', []))
-        recipients = {a for n, a in recipients}
-        if not recipients:
-            logger.warning('email with no recipient, ignoring %s', message_id)
-            raise HTTPBadRequest(text='no recipient, ignoring')
-
-        loc_users = await self.conn.fetchval(
-            "select 1 from users where user_type='local' and email=any($1) limit 1", recipients
-        )
-        if not loc_users:
-            logger.warning('email with no local recipient (%r), ignoring %s', recipients, message_id)
-            raise HTTPBadRequest(text='no local recipient, ignoring')
-        return recipients
+        to, cc = msg.get_all('To', []), msg.get_all('Cc', [])
+        return await get_email_recipients(to, cc, message_id, self.conn)
 
     async def get_conv(self, msg: EmailMessage) -> str:
         conv_id = None
@@ -210,3 +199,17 @@ def get_smtp_body(msg: EmailMessage, message_id):
         # body = soup.prettify()
         body = str(soup)
     return body.strip('\n'), is_html
+
+
+async def get_email_recipients(to: List[str], cc: List[str], message_id: str, conn: BuildPgConnection):
+    recipients = email.utils.getaddresses(to + cc)
+    recipients = {a for n, a in recipients}
+    if not recipients:
+        logger.warning('email with no recipient, ignoring %s', message_id)
+        raise HTTPBadRequest(text='no recipient, ignoring')
+
+    loc_users = await conn.fetchval("select 1 from users where user_type='local' and email=any($1) limit 1", recipients)
+    if not loc_users:
+        logger.warning('email with no local recipient (%r), ignoring %s', recipients, message_id)
+        raise HTTPBadRequest(text='no local recipient, ignoring')
+    return recipients

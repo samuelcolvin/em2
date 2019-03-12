@@ -7,7 +7,7 @@ from em2.utils.web import build_index
 
 
 async def create_app_protocol(settings=None):
-    routes = [web.post('/webhook/ses/', ses_webhook, name='webhook-ses')]
+    routes = [web.post('/webhook/ses/{token}/', ses_webhook, name='webhook-ses')]
     middleware = [pg_middleware]
     app = web.Application(middlewares=middleware)
     app.update(name='auth', settings=settings or Settings())

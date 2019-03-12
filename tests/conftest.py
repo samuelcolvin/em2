@@ -33,9 +33,11 @@ settings_args = dict(
     REDISCLOUD_URL='redis://localhost:6379/6',
     bcrypt_work_factor=6,
     max_request_size=1024 ** 2,
-    ses_access_key='testing_access_key',
-    ses_secret_key='testing_secret_key',
-    ses_webhook_auth=b'testing',
+    aws_access_key='testing_access_key',
+    aws_secret_key='testing_secret_key',
+    ses_url_token='testing',
+    aws_sns_signing_host='localhost',
+    aws_sns_signing_schema='http',
 )
 
 
@@ -56,11 +58,11 @@ def _fix_clean_db(request, settings_session):
 
 @pytest.fixture(name='dummy_server')
 async def _fix_dummy_server(loop, aiohttp_server):
-    ctx = {'smtp': []}
+    ctx = {'smtp': [], 's3_emails': {}}
     return await create_dummy_server(aiohttp_server, extra_routes=dummy_server.routes, extra_context=ctx)
 
 
-replaced_url_fields = ('grecaptcha_url', 'ses_endpoint')
+replaced_url_fields = 'grecaptcha_url', 'ses_endpoint_url', 's3_endpoint_url'
 
 
 @pytest.fixture(name='settings')

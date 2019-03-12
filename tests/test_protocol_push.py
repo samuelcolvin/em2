@@ -13,7 +13,7 @@ async def test_publish_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
     await ses_worker.async_run()
     assert (ses_worker.jobs_complete, ses_worker.jobs_failed, ses_worker.jobs_retried) == (2, 0, 0)
 
-    assert dummy_server.log == ['POST ses_endpoint subject="Test Subject" to="whatever@remote.com"']
+    assert dummy_server.log == ['POST ses_endpoint_url subject="Test Subject" to="whatever@remote.com"']
     assert dummy_server.app['smtp'] == [
         {
             'Subject': 'Test Subject',
@@ -31,7 +31,7 @@ async def test_publish_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
     assert send == {
         'id': AnyInt(),
         'action': await db_conn.fetchval('select pk from actions where id=4'),
-        'ref': 'testing-msg-key@eu-west-1.amazonses.com',
+        'ref': 'testing-msg-key@us-east-1.amazonses.com',
         'node': None,
         'complete': None,
     }
@@ -51,8 +51,8 @@ async def test_add_msg_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
     assert (ses_worker.jobs_complete, ses_worker.jobs_failed, ses_worker.jobs_retried) == (4, 0, 0)
 
     assert dummy_server.log == [
-        'POST ses_endpoint subject="Test Subject" to="whatever@remote.com"',
-        'POST ses_endpoint subject="Test Subject" to="whatever@remote.com"',
+        'POST ses_endpoint_url subject="Test Subject" to="whatever@remote.com"',
+        'POST ses_endpoint_url subject="Test Subject" to="whatever@remote.com"',
     ]
     assert len(dummy_server.app['smtp']) == 2
     assert dummy_server.app['smtp'][0]['part:text/html'] == '<p>Test Message</p>\n'

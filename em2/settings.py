@@ -1,4 +1,5 @@
 from pathlib import Path
+from secrets import token_urlsafe
 from typing import Optional
 
 from atoolbox import BaseSettings
@@ -28,13 +29,17 @@ class Settings(BaseSettings):
     message_lock_duration: int = 3600  # how many seconds a lock holds for
 
     fallback_handler = 'em2.protocol.fallback.LogFallbackHandler'
-    ses_access_key: str = None
-    ses_secret_key: str = None
-    ses_region: str = 'eu-west-1'
+    aws_access_key: str = None
+    aws_secret_key: str = None
+    aws_region: str = 'us-east-1'
     # set here so they can be overridden during tests
     ses_host = 'email.{region}.amazonaws.com'
-    ses_endpoint = 'https://{host}/'
-    ses_webhook_auth: bytes = None
+    ses_endpoint_url = 'https://{host}/'
+    s3_endpoint_url: str = None  # only used when testing
+    # generate randomly to avoid leaking secrets:
+    ses_url_token: str = token_urlsafe()
+    aws_sns_signing_host = '.amazonaws.com'
+    aws_sns_signing_schema = 'https'
 
     class Config:
         env_prefix = 'em2_'
