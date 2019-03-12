@@ -44,7 +44,7 @@ export default class Websocket {
     }
 
     this._socket.onopen = () => {
-      console.log('websocket open')
+      console.debug('websocket open')
       set_conn_status(statuses.online)
       this._state = online
       setTimeout(() => {
@@ -59,11 +59,11 @@ export default class Websocket {
       const reconnect_in = Math.min(10000, (2 ** this._disconnects - 1) * 500)
       this._disconnects += 1
       if (e.code === 4403) {
-        console.log('websocket closed with 4403, not authorised')
+        console.debug('websocket closed with 4403, not authorised')
         set_conn_status(statuses.online)
         window_call('setState', {user: null})
       } else {
-        console.log(`websocket closed, reconnecting in ${reconnect_in}ms`, e)
+        console.debug(`websocket closed, reconnecting in ${reconnect_in}ms`, e)
         setTimeout(this.connect, reconnect_in)
         setTimeout(() => this._state === offline && set_conn_status(statuses.offline), 3000)
       }
@@ -78,7 +78,7 @@ export default class Websocket {
   _on_message = async event => {
     set_conn_status(statuses.online)
     const data = JSON.parse(event.data)
-    console.log('ws message:', data)
+    console.debug('ws message:', data)
 
     if (data.actions) {
       await apply_actions(data, this._session.email)

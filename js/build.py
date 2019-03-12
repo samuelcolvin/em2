@@ -21,10 +21,8 @@ CSP = {
     'script-src': [
         "'self'",
         'www.google-analytics.com',
-        'maps.googleapis.com',
         'storage.googleapis.com',  # workbox, TODO remove and change CDN
         '*.google.com',
-        '*.gstatic.com',
     ],
     'font-src': [
         "'self'",
@@ -34,12 +32,10 @@ CSP = {
     'style-src': [
         "'self'",
         "'unsafe-inline'",
-        '*.googleapis.com',
     ],
     'frame-src': [
         "'self'",
         'blob:',
-        '*.google.com',
     ],
     'img-src': [
         "'self'",

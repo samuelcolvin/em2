@@ -109,7 +109,6 @@ class ConvDetailsView extends React.Component {
   add_participants = async () => {
     if (!this.state.locked && this.state.extra_prts.length) {
       this.setState({locked: true})
-      console.log(this.state.extra_prts)
       const actions = this.state.extra_prts.map(p => (
         {act: 'participant:add', participant: p.email}
       ))

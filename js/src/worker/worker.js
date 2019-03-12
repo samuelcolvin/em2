@@ -31,15 +31,16 @@ add_listener('start', async () => {
     await ws.connect(session)
   } else {
     // no session, check the internet connection
+    const url = make_url('ui', '/online/')
     try {
-      const url = make_url('ui', '/online/')
-      console.log(`checking connection status at ${url}`)
       await fetch(url, {method: 'HEAD'})
     } catch (error) {
-      // generally TypeError: failed to fetch
+      // generally TypeError: failed to fetch, also CSP if rules are messed up
       set_conn_status(statuses.offline)
+      console.debug(`checking connection status at ${url}: offline`)
       return
     }
+    console.debug(`checking connection status at ${url}: online`)
     set_conn_status(statuses.online)
   }
 })
