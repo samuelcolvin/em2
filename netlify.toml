@@ -1,0 +1,15 @@
+[Settings]
+
+[build]
+  base = "js/"
+  publish = "js/build/"
+  command = "yarn build"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "deny"
+
+  for = "iframes/*"
+  [headers.values]
+    X-Frame-Options = "sameorigin"
