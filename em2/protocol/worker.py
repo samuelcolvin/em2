@@ -3,6 +3,7 @@ from typing import Type
 
 import aiodns
 from aiohttp import ClientSession, ClientTimeout
+from arq import Worker
 from buildpg import asyncpg
 from pydantic.utils import import_string
 
@@ -31,7 +32,13 @@ async def shutdown(ctx):
     await asyncio.gather(ctx['session'].close(), ctx['pg'].close(), ctx['fallback_handler'].shutdown())
 
 
-class WorkerSettings:
-    functions = [fallback_send, push_actions, record_ses_email]
-    on_startup = startup
-    on_shutdown = shutdown
+worker_settings = dict(
+    functions=[fallback_send, push_actions, record_ses_email],
+    on_startup=startup,
+    on_shutdown=shutdown,
+)
+
+
+def run_worker(settings: Settings):
+    worker = Worker(redis_settings=settings.redis_settings, **worker_settings)
+    worker.run()
