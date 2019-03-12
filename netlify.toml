@@ -4,8 +4,10 @@
   base = "js/"
   publish = "js/build/"
   command = "yarn build"
-  [environment]
-    NODE_VERSION = "10.15.3"
+
+[build.environment]
+  NODE_VERSION = "10.15.3"
+  YARN_VERSION = "1.13.0"
 
 [[headers]]
   for = "/*"
