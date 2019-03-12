@@ -77,9 +77,11 @@ export default class Navbar extends React.Component {
                 </NavItem>,
               ]}
             </Nav>
-            <form className="form-inline ml-auto">
-              <input className="form-control" type="text" placeholder="Search"/>
-            </form>
+            {this.props.app_state.user && (
+              <form className="form-inline ml-auto">
+                <input className="form-control" type="text" placeholder="Search"/>
+              </form>
+            )}
           </Collapse>
         </div>
       </NavbarBootstrap>,

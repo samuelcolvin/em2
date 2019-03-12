@@ -32,7 +32,9 @@ add_listener('start', async () => {
   } else {
     // no session, check the internet connection
     try {
-      await fetch(make_url('ui', '/online/'), {method: 'HEAD'})
+      const url = make_url('ui', '/online/')
+      console.log(`checking connection status at ${url}`)
+      await fetch(url, {method: 'HEAD'})
     } catch (error) {
       // generally TypeError: failed to fetch
       set_conn_status(statuses.offline)

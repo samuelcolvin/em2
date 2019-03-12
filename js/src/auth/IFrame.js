@@ -2,7 +2,8 @@ import React from 'react'
 
 const iframe_csp = [
   `default-src 'none'`,
-  `script-src 'sha256-f6NVIWP0rMwAsNc3XtxZkAnIWv2iH4ZWlJCvTFbZdFQ='`,
+  // `script-src 'unsafe-inline'`,  // (for testing)
+  `script-src 'sha256-UzszL574WJJHCPi8jLtzYlnM7q3wnj3ttF9kl+vowT4='`,
   `style-src ${window.location.origin} https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/`,
 ]
 
@@ -57,7 +58,7 @@ const iframe_src_base64 = btoa(`
         const error_details = {
           message,
           details: {
-            error, origin, status, xhr_response: xhr.responseText,
+            error: error.toString(), origin, status, xhr_response: xhr.responseText,
             method: form.method, action: form.action
           },
         }

@@ -22,6 +22,7 @@ CSP = {
         "'self'",
         'www.google-analytics.com',
         'maps.googleapis.com',
+        'storage.googleapis.com',  # workbox, TODO remove and change CDN
         '*.google.com',
         '*.gstatic.com',
     ],
@@ -37,6 +38,7 @@ CSP = {
     ],
     'frame-src': [
         "'self'",
+        'blob:',
         '*.google.com',
     ],
     'img-src': [
@@ -70,7 +72,14 @@ toml_template = """
 """
 
 
-def add_csp_headers():
+def before():
+    path = THIS_DIR / 'src' / 'index.js'
+    new_content = re.sub(r'^// *{{.+?^// *}}', '', path.read_text(), flags=re.S | re.M)
+    new_content = re.sub(r'\n+$', '\n', new_content)
+    path.write_text(new_content)
+
+
+def after():
     csp = dict(CSP)
 
     content = (THIS_DIR / 'build' / 'index.html').read_text()
@@ -97,5 +106,6 @@ def add_csp_headers():
 
 
 if __name__ == '__main__':
+    before()
     subprocess.run(['yarn', 'build'], cwd=str(THIS_DIR), check=True)
-    add_csp_headers()
+    after()

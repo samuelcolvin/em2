@@ -36,7 +36,6 @@ class Login extends React.Component {
     } else if (event.data.auth_token) {
       await this.authenticate(event.data)
     } else if (event.data.error) {
-      console.log(event.data.error)
       this.props.ctx.setError(DetailedError(event.data.error.message, event.data.error.details))
     } else {
       throw DetailedError('unknown message from iframe', event.data)

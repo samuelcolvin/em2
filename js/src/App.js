@@ -21,7 +21,7 @@ FaLibrary.add(far, fas, fab)
 const Main = ({app_state}) => {
   if (app_state.error) {
     return <Error error={app_state.error}/>
-  } else if (!app_state.conn_status) {
+  } else if (app_state.conn_status === statuses.connecting) {
     // this should happen very briefly, don't show loading to avoid FOUC
     return null
   } else if (app_state.conn_status === statuses.offline && !app_state.user) {
