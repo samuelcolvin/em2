@@ -17,7 +17,7 @@ from em2.background import push_multiple
 from em2.core import ActionModel, apply_actions
 from em2.main import create_app
 from em2.protocol.fallback import LogFallbackHandler, SesFallbackHandler
-from em2.protocol.worker import WorkerSettings
+from em2.protocol.worker import worker_settings
 from em2.settings import Settings
 from em2.utils.web import MakeUrl
 
@@ -241,7 +241,7 @@ async def _fix_worker(redis, settings, db_conn):
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
     ctx['fallback_handler'] = LogFallbackHandler(ctx)
-    worker = Worker(functions=WorkerSettings.functions, redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)
+    worker = Worker(functions=worker_settings['functions'], redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)
 
     yield worker
 
@@ -260,7 +260,7 @@ async def _fix_ses_worker(redis, settings, db_conn):
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
     ctx['fallback_handler'] = SesFallbackHandler(ctx)
-    worker = Worker(functions=WorkerSettings.functions, redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)
+    worker = Worker(functions=worker_settings['functions'], redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)
 
     yield worker
 

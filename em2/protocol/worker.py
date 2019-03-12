@@ -33,9 +33,7 @@ async def shutdown(ctx):
 
 
 worker_settings = dict(
-    functions=[fallback_send, push_actions, record_ses_email],
-    on_startup=startup,
-    on_shutdown=shutdown,
+    functions=[fallback_send, push_actions, record_ses_email], on_startup=startup, on_shutdown=shutdown
 )
 
 
