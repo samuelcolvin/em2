@@ -52,10 +52,10 @@ async def remove_participants(conn: BuildPgConnection, conv_id: int, ts: datetim
 class ProcessSMTP:
     __slots__ = 'conn', 'settings', 'redis'
 
-    def __init__(self, ctx, conn):
-        self.settings: Settings = ctx['settings']
-        self.redis: ArqRedis = ctx['redis']
+    def __init__(self, conn: BuildPgConnection, redis: ArqRedis, settings: Settings):
         self.conn = conn
+        self.redis = redis
+        self.settings = settings
 
     async def run(self, msg: EmailMessage):
         # TODO deal with non multipart

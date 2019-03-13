@@ -11,7 +11,6 @@ from em2.settings import Settings
 
 from .fallback import BaseFallbackHandler, fallback_send
 from .push import push_actions
-from .views.fallback_ses import record_ses_email
 
 
 async def startup(ctx):
@@ -32,9 +31,7 @@ async def shutdown(ctx):
     await asyncio.gather(ctx['session'].close(), ctx['pg'].close(), ctx['fallback_handler'].shutdown())
 
 
-worker_settings = dict(
-    functions=[fallback_send, push_actions, record_ses_email], on_startup=startup, on_shutdown=shutdown
-)
+worker_settings = dict(functions=[fallback_send, push_actions], on_startup=startup, on_shutdown=shutdown)
 
 
 def run_worker(settings: Settings):

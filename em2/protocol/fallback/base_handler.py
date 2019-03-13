@@ -73,8 +73,10 @@ class BaseFallbackHandler:
 
         if 'in_reply_to' in ctx:
             in_reply_to = ctx['in_reply_to']
-        else:
+        elif references:
             in_reply_to = references[-1]
+        else:
+            in_reply_to = None
 
         actor = actions[0]['actor']
         to = set(addresses)

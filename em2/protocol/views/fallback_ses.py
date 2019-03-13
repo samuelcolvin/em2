@@ -58,7 +58,7 @@ async def ses_webhook(request):
 
 async def _record_email_message(request, message: Dict):
     """
-    Record the email, check email should be processed before starting the job.
+    Record the email, check email should be processed before downloading from s3.
     """
     # TODO check X-SES-Spam-Verdict, X-SES-Virus-Verdict from message['receipt']
     headers = {h['name']: h['value'] for h in message['headers']}
@@ -75,19 +75,18 @@ async def _record_email_message(request, message: Dict):
     bucket, prefix, path = s3_action['bucketName'], s3_action['objectKeyPrefix'], s3_action['objectKey']
     if prefix:
         path = f'{prefix}/{path}'
-    await request.app['redis'].enqueue_job('record_ses_email', bucket, path, _defer_by=-5)
 
-
-async def record_ses_email(ctx, bucket, path):
-    async with create_s3_session(ctx['settings']) as s3:
+    # TODO we need to store the bucket and key the db, for future access
+    settings: Settings = request.app['settings']
+    async with create_s3_session(settings) as s3:
         r = await s3.get_object(Bucket=bucket, Key=path)
         async with r['Body'] as stream:
             body = await stream.read()
 
+    del r
     msg = email.message_from_string(body.decode())
-    del body, r
-    async with ctx['pg'].acquire() as conn:
-        await ProcessSMTP(ctx, conn).run(msg)
+    del body
+    await ProcessSMTP(request['conn'], request.app['redis'], settings).run(msg)
 
 
 async def _record_email_event(request, message: Dict):

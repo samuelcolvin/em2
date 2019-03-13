@@ -165,7 +165,7 @@ async def test_ses_invalid_sig(cli, url, sns_data):
     assert r.status == 403
 
 
-async def test_ses_new_email(factory: Factory, worker: Worker, db_conn, cli, url, create_email):
+async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_email):
     await factory.create_user()
     assert 0 == await db_conn.fetchval('select count(*) from sends')
     assert 0 == await db_conn.fetchval('select count(*) from conversations')
@@ -175,8 +175,6 @@ async def test_ses_new_email(factory: Factory, worker: Worker, db_conn, cli, url
     data = create_email()
     r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
     assert r.status == 204, await r.text()
-    assert 0 == await db_conn.fetchval('select count(*) from sends')
-    await worker.async_run()
 
     assert 1 == await db_conn.fetchval('select count(*) from sends')
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
@@ -220,7 +218,6 @@ async def test_ses_reply(factory: Factory, worker: Worker, db_conn, cli, url, cr
     data = create_email(**{'html_body': 'This is a <u>reply</u>.', 'In-Reply-To': message_id})
     r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
     assert r.status == 204, await r.text()
-    await worker.async_run()
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
     new_user_id = await db_conn.fetchval('select id from users where email=$1', 'whomever@remote.com')

@@ -49,11 +49,11 @@ class SesFallbackHandler(BaseFallbackHandler):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not (self.settings.aws_access_key and self.settings.aws_secret_key):
-            raise RuntimeError(
-                'both settings.aws_access_key and settings.aws_secret_key must be set to use SesFallbackHandler'
-            )
         self.session = ClientSession(timeout=ClientTimeout(total=5))
+        self._host = None
+        if not (self.settings.aws_access_key and self.settings.aws_secret_key):
+            logger.warning('settings.aws_access_key and settings.aws_secret_key must be set to use SesFallbackHandler')
+            return
         self._host = self.settings.ses_host.format(region=self.settings.aws_region)
         self._endpoint = self.settings.ses_endpoint_url.format(host=self._host)
 
@@ -106,6 +106,9 @@ class SesFallbackHandler(BaseFallbackHandler):
         data.update({f'Destination.ToAddresses.member.{i}': t.encode() for i, t in enumerate(to, start=1)})
         # data.update({f'Destination.BccAddresses.member.{i + 1}': t.encode() for i, t in enumerate(bcc)})
         data = urlencode(data).encode()
+        if self._host is None:
+            logger.warning('SES env not setup, not sending email')
+            return
 
         headers = self._aws_headers(data)
         async with self.session.post(self._endpoint, data=data, headers=headers, timeout=5) as r:
