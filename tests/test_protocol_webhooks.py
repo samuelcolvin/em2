@@ -72,8 +72,7 @@ def _fix_create_email(dummy_server, sns_data):
         return sns_data(
             message_id,
             notificationType='Received',
-            headers=h,
-            commonHeaders={'to': list(to)},
+            mail=dict(headers=h, commonHeaders={'to': list(to)}),
             receipt={'action': {'type': 'S3', 'bucketName': 'em2-testing', 'objectKeyPrefix': '', 'objectKey': key}},
         )
 

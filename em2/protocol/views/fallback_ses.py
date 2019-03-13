@@ -14,8 +14,8 @@ from buildpg import Values
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from pydantic.datetime_parse import parse_datetime
 from yarl import URL
 
@@ -63,13 +63,14 @@ async def _record_email_message(request, message: Dict):
     Record the email, check email should be processed before downloading from s3.
     """
     # TODO check X-SES-Spam-Verdict, X-SES-Virus-Verdict from message['receipt']
-    headers = {h['name']: h['value'] for h in message['headers']}
+    headers = {h['name']: h['value'] for h in message['mail']['headers']}
     if headers.get('EM2-ID'):
         # this is an em2 message and should be received via the proper route too
         return
 
     message_id = headers['Message-ID'].strip('<> ')
-    to, cc = message['commonHeaders'].get('to', []), message['commonHeaders'].get('cc', [])
+    common_headers = message['mail']['commonHeaders']
+    to, cc = common_headers.get('to', []), common_headers.get('cc', [])
     # make sure we don't process unnecessary messages, could also delete from S3
     await get_email_recipients(to, cc, message_id, request['conn'])
 
