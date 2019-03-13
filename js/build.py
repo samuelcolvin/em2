@@ -15,8 +15,10 @@ from pathlib import Path
 THIS_DIR = Path(__file__).parent
 
 main_domain = os.getenv('REACT_APP_DOMAIN')
-if not main_domain:
-    print('WARNING: "REACT_APP_DOMAIN" env var not set')
+if main_domain:
+    print('using REACT_APP_DOMAIN =', main_domain)
+else:
+    print('WARNING: "REACT_APP_DOMAIN" env var not set, using example.com')
     main_domain = 'example.com'
 
 main_csp = {
@@ -50,8 +52,8 @@ main_csp = {
     'connect-src': [
         "'self'",
         'https://sentry.io',
-        f'ui.{main_domain}',
-        f'auth.{main_domain}'
+        f'https://ui.{main_domain}',
+        f'https://auth.{main_domain}'
     ],
 }
 
@@ -60,10 +62,10 @@ auth_iframe_csp = {
         "'none'",
     ],
     'connect-src': [
-        f'auth.{main_domain}',
+        f'https://auth.{main_domain}',
     ],
     'style-src': [
-        f'app.{main_domain}',
+        f'https://app.{main_domain}',
     ],
 }
 
@@ -95,24 +97,21 @@ def before():
     path.write_text(
         content
         .replace('http://localhost:8000/auth', f'https://auth.{main_domain}')
-        .replace('http://localhost:3000', f'http://app.{main_domain}')
+        .replace('http://localhost:3000', f'https://app.{main_domain}')
     )
 
 
 def get_script(path: Path):
     content = path.read_text()
     m = re.search(r'<script>(.+?)</script>', content, flags=re.S)
-    if m:
-        js = m.group(1)
-        return f"'sha256-{base64.b64encode(hashlib.sha256(js.encode()).digest()).decode()}'"
-    else:
-        print('WARNING: script now found in', path)
+    if not m:
+        raise RuntimeError(f'script now found in {path!r}')
+    js = m.group(1)
+    return f"'sha256-{base64.b64encode(hashlib.sha256(js.encode()).digest()).decode()}'"
 
 
 def after():
-    index_script_src = get_script(THIS_DIR / 'build' / 'index.html')
-    if index_script_src:
-        main_csp['script-src'].append(index_script_src)
+    main_csp['script-src'].append(get_script(THIS_DIR / 'build' / 'index.html'))
 
     raven_dsn = os.getenv('RAVEN_DSN', None)
     if raven_dsn:
@@ -123,9 +122,7 @@ def after():
         else:
             print('WARNING: app and key not found in RAVEN_DSN', raven_dsn)
 
-    login_script_src = get_script(THIS_DIR / 'build' / 'auth-iframes' / 'login.html')
-    if login_script_src:
-        auth_iframe_csp['script-src'] = [login_script_src]
+    auth_iframe_csp['script-src'] = [get_script(THIS_DIR / 'build' / 'auth-iframes' / 'login.html')]
 
     replacements = {
         'main_csp': main_csp,
