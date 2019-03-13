@@ -53,6 +53,7 @@ main_csp = {
         "'self'",
         'https://sentry.io',
         f'https://ui.{main_domain}',
+        f'wss://ui.{main_domain}',
         f'https://auth.{main_domain}'
     ],
 }
@@ -74,7 +75,8 @@ def replace_css(m):
     url = m.group(1)
     r = urllib.request.urlopen(url)
     assert r.status == 200, r.status
-    return r.read().decode()
+    css = r.read().decode()
+    return re.sub(r'/\*#.+?\*/', '', css)
 
 
 def before():
