@@ -9,6 +9,7 @@ import hashlib
 import os
 import re
 import subprocess
+import urllib.request
 from pathlib import Path
 
 THIS_DIR = Path(__file__).parent
@@ -67,6 +68,13 @@ auth_iframe_csp = {
 }
 
 
+def replace_css(m):
+    url = m.group(1)
+    r = urllib.request.urlopen(url)
+    assert r.status == 200, r.status
+    return r.read().decode()
+
+
 def before():
     # remove the unused reload prompt stuff from index.html
     path = THIS_DIR / 'src' / 'index.js'
@@ -74,7 +82,13 @@ def before():
     new_content = re.sub(r'\n+$', '\n', new_content)
     path.write_text(new_content)
 
-    # TODO replace bootstrap with real thing
+    # replace bootstrap import with the real thing
+    path = THIS_DIR / 'public' / 'auth-iframes' / 'styles.css'
+    styles = path.read_text()
+    styles = re.sub(r'@import url\("(.+?)"\);', replace_css, styles)
+    path.write_text(styles)
+
+    # path = THIS_DIR / 'build' / 'auth-iframes' / 'login.html'
     # TODO replace urls in THIS_DIR / 'build' / 'auth-iframes' / 'login.html'
 
 
@@ -121,5 +135,5 @@ def after():
 
 if __name__ == '__main__':
     before()
-    subprocess.run(['yarn', 'build'], cwd=str(THIS_DIR), check=True)
-    after()
+    # subprocess.run(['yarn', 'build'], cwd=str(THIS_DIR), check=True)
+    # after()
