@@ -100,7 +100,9 @@ def after():
             csp['report-uri'] = [f'https://sentry.io/api/{app}/security/?sentry_key={key}']
         else:
             print('WARNING: app and key not found in RAVEN_DSN', raven_dsn)
-    extra = toml_template.format(' '.join(f'{k} {" ".join(v)};' for k, v in csp.items()))
+    csp = ' '.join(f'{k} {" ".join(v)};' for k, v in csp.items())
+    print('setting CSP header:', csp)
+    extra = toml_template.format(csp)
     path = THIS_DIR / '..' / 'netlify.toml'
     with path.open('a') as f:
         f.write(extra)
