@@ -53,7 +53,7 @@ async def create_app(settings: Settings = None):
     if settings.domain == 'localhost':
         # development mode, route apps via path
         app.add_subapp('/ui/', app['ui_app'])
-        app.add_subapp('/protocol/', app['protocol_app'])
+        app.add_subapp('/em2/', app['protocol_app'])
         app.add_subapp('/auth/', app['auth_app'])
         routes_description = (
             '  http://localhost:8000/ui/ - user interface routes\n'

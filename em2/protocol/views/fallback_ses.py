@@ -15,6 +15,7 @@ from cryptography import x509
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives import hashes
 from pydantic.datetime_parse import parse_datetime
 from yarl import URL
 
@@ -35,6 +36,7 @@ async def ses_webhook(request):
         data = json.loads(await request.text())
     except ValueError:
         raise JsonErrors.HTTPBadRequest('invalid json')
+
     await verify_sns(request, data)
 
     # avoid keeping multiple copies of the request data in memory
@@ -184,13 +186,16 @@ async def _record_email_event(request, message: Dict):
 
 
 async def verify_sns(request, data: Dict):
-    if data.get('Type') == 'Notification':
+    msg_type = data.get('Type')
+    if msg_type == 'Notification':
         fields = 'Message', 'MessageId', 'Subject', 'Timestamp', 'TopicArn', 'Type'
-    else:
+    elif msg_type in ('SubscriptionConfirmation', 'UnsubscribeConfirmation'):
         fields = 'Message', 'MessageId', 'SubscribeURL', 'Timestamp', 'Token', 'TopicArn', 'Type'
+    else:
+        raise JsonErrors.HTTPForbidden(f'invalid request, unexpected Type {msg_type!r}')
 
     try:
-        canonical_msg = ''.join(f'{f}\n{data[f]}\n' for f in fields).encode()
+        canonical_msg = ''.join(f'{f}\n{data[f]}\n' for f in fields if f in data).encode()
         sign_url = data['SigningCertURL']
         signature = base64.b64decode(data['Signature'])
     except (KeyError, ValueError) as e:
@@ -212,7 +217,7 @@ async def verify_sns(request, data: Dict):
     cert = x509.load_pem_x509_certificate(pem_data, default_backend())
     pubkey: rsa.RSAPublicKey = cert.public_key()
     try:
-        pubkey.verify(signature, canonical_msg, padding.PKCS1v15(), cert.signature_hash_algorithm)
+        pubkey.verify(signature, canonical_msg, padding.PKCS1v15(), hashes.SHA1())
     except InvalidSignature:
         raise JsonErrors.HTTPForbidden('invalid signature')
 
