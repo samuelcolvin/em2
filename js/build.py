@@ -83,13 +83,20 @@ def before():
     path.write_text(new_content)
 
     # replace bootstrap import with the real thing
+    # (this could be replaced by using the main css bundles)
     path = THIS_DIR / 'public' / 'auth-iframes' / 'styles.css'
     styles = path.read_text()
     styles = re.sub(r'@import url\("(.+?)"\);', replace_css, styles)
     path.write_text(styles)
 
-    # path = THIS_DIR / 'build' / 'auth-iframes' / 'login.html'
-    # TODO replace urls in THIS_DIR / 'build' / 'auth-iframes' / 'login.html'
+    # replace urls in login iframe
+    path = THIS_DIR / 'public' / 'auth-iframes' / 'login.html'
+    content = path.read_text()
+    path.write_text(
+        content
+        .replace('http://localhost:8000/auth', f'https://auth.{main_domain}')
+        .replace('http://localhost:3000', f'http://app.{main_domain}')
+    )
 
 
 def get_script(path: Path):
@@ -135,5 +142,5 @@ def after():
 
 if __name__ == '__main__':
     before()
-    # subprocess.run(['yarn', 'build'], cwd=str(THIS_DIR), check=True)
-    # after()
+    subprocess.run(['yarn', 'build'], cwd=str(THIS_DIR), check=True)
+    after()
