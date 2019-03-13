@@ -1,6 +1,7 @@
 .DEFAULT_GOAL:=all
 isort = isort -rc -w 120 em2 tests
 black = black -S -l 120 --py36 em2 tests
+heroku ?= em2-demo
 
 .PHONY: install
 install:
@@ -80,25 +81,17 @@ docker-dev: build
 docker-dev-stop:
 	docker-compose -f docker/docker-compose.yml stop
 
-.PHONY: release-js
-release-js: js
-	echo "js currently released directly by netlify"
-
-.PHONY: push-py
-push-py: build
+.PHONY: push
+push: build
 	@if [ "`git status --porcelain | wc -l`" -ne "0" ]; then \
 	    echo "REPO NOT CLEAN"; \
 	    # exit 1; \
 	fi
-	docker tag steamdonkey-web registry.heroku.com/$(HEROKU_APP)/web
-	docker push registry.heroku.com/$(HEROKU_APP)/web
-	docker tag steamdonkey-worker registry.heroku.com/$(HEROKU_APP)/worker
-	docker push registry.heroku.com/$(HEROKU_APP)/worker
-
-.PHONY: release-py
-release-py: push-py
-	heroku container:release web worker -a $(HEROKU_APP)
+	docker tag em2-web registry.heroku.com/$(heroku)/web
+	docker push registry.heroku.com/$(heroku)/web
+	docker tag em2-worker registry.heroku.com/$(heroku)/worker
+	docker push registry.heroku.com/$(heroku)/worker
 
 .PHONY: release
-release: push-py release-js
-	heroku container:release web worker -a $(HEROKU_APP)
+release: push
+	heroku container:release web worker -a $(heroku)
