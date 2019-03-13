@@ -9,103 +9,132 @@ import hashlib
 import os
 import re
 import subprocess
+import urllib.request
 from pathlib import Path
 
 THIS_DIR = Path(__file__).parent
 
+main_domain = os.getenv('REACT_APP_DOMAIN')
+if main_domain:
+    print('using REACT_APP_DOMAIN =', main_domain)
+else:
+    print('WARNING: "REACT_APP_DOMAIN" env var not set, using example.com')
+    main_domain = 'example.com'
 
-CSP = {
+main_csp = {
     'default-src': [
         "'self'",
     ],
     'script-src': [
         "'self'",
-        'www.google-analytics.com',
         'storage.googleapis.com',  # workbox, TODO remove and change CDN
-        '*.google.com',
     ],
     'font-src': [
         "'self'",
         'data:',
-        'fonts.gstatic.com',
     ],
     'style-src': [
         "'self'",
-        "'unsafe-inline'",
+        "'unsafe-inline'",  # TODO remove
     ],
     'frame-src': [
+        "'self'",
         'data:',
     ],
     'img-src': [
         "'self'",
         'blob:',
         'data:',
-        'www.google-analytics.com',
-        '*.googleapis.com',
-        '*.gstatic.com',
-        '*.google.com',
-        '*.google.co.uk',
-        '*.google.de',
-        '*.google.pt',
     ],
     'media-src': [
         "'self'",
     ],
     'connect-src': [
         "'self'",
-        '*.google-analytics.com',
         'https://sentry.io',
+        f'https://ui.{main_domain}',
+        f'https://auth.{main_domain}'
+    ],
+}
+
+auth_iframe_csp = {
+    'default-src': [
+        "'none'",
+    ],
+    'connect-src': [
+        f'https://auth.{main_domain}',
+    ],
+    'style-src': [
+        f'https://app.{main_domain}',
     ],
 }
 
 
-toml_template = """
-[[headers]]
-  for = "/*"
-  [headers.values]
-    Content-Security-Policy = "{}"
-"""
+def replace_css(m):
+    url = m.group(1)
+    r = urllib.request.urlopen(url)
+    assert r.status == 200, r.status
+    return r.read().decode()
 
 
 def before():
+    # remove the unused reload prompt stuff from index.html
     path = THIS_DIR / 'src' / 'index.js'
     new_content = re.sub(r'^// *{{.+?^// *}}', '', path.read_text(), flags=re.S | re.M)
     new_content = re.sub(r'\n+$', '\n', new_content)
     path.write_text(new_content)
 
+    # replace bootstrap import with the real thing
+    # (this could be replaced by using the main css bundles)
+    path = THIS_DIR / 'public' / 'auth-iframes' / 'styles.css'
+    styles = path.read_text()
+    styles = re.sub(r'@import url\("(.+?)"\);', replace_css, styles)
+    path.write_text(styles)
+
+    # replace urls in login iframe
+    path = THIS_DIR / 'public' / 'auth-iframes' / 'login.html'
+    content = path.read_text()
+    path.write_text(
+        content
+        .replace('http://localhost:8000/auth', f'https://auth.{main_domain}')
+        .replace('http://localhost:3000', f'https://app.{main_domain}')
+    )
+
+
+def get_script(path: Path):
+    content = path.read_text()
+    m = re.search(r'<script>(.+?)</script>', content, flags=re.S)
+    if not m:
+        raise RuntimeError(f'script now found in {path!r}')
+    js = m.group(1)
+    return f"'sha256-{base64.b64encode(hashlib.sha256(js.encode()).digest()).decode()}'"
+
 
 def after():
-    csp = dict(CSP)
-
-    main_domain = os.getenv('REACT_APP_DOMAIN')
-    if main_domain:
-        csp['connect-src'] += [f'ui.{main_domain}', f'auth.{main_domain}']
-    else:
-        print('WARNING: "REACT_APP_DOMAIN" env var not set')
-
-    content = (THIS_DIR / 'build' / 'index.html').read_text()
-    m = re.search(r'<script>(.+?)</script>', content, flags=re.S)
-    if m:
-        js = m.group(1)
-        s = f"'sha256-{base64.b64encode(hashlib.sha256(js.encode()).digest()).decode()}'"
-        csp['script-src'].append(s)
-    else:
-        print('WARNING: runtime script now found in index.html')
+    main_csp['script-src'].append(get_script(THIS_DIR / 'build' / 'index.html'))
 
     raven_dsn = os.getenv('RAVEN_DSN', None)
     if raven_dsn:
         m = re.search(r'^https://(.+)@sentry\.io/(.+)', raven_dsn)
         if m:
             key, app = m.groups()
-            csp['report-uri'] = [f'https://sentry.io/api/{app}/security/?sentry_key={key}']
+            main_csp['report-uri'] = [f'https://sentry.io/api/{app}/security/?sentry_key={key}']
         else:
             print('WARNING: app and key not found in RAVEN_DSN', raven_dsn)
-    csp = ' '.join(f'{k} {" ".join(v)};' for k, v in csp.items())
-    print('setting CSP header:', csp)
-    extra = toml_template.format(csp)
+
+    auth_iframe_csp['script-src'] = [get_script(THIS_DIR / 'build' / 'auth-iframes' / 'login.html')]
+
+    replacements = {
+        'main_csp': main_csp,
+        'auth_iframe_csp': auth_iframe_csp,
+    }
     path = THIS_DIR / '..' / 'netlify.toml'
-    with path.open('a') as f:
-        f.write(extra)
+    content = path.read_text()
+    for k, v in replacements.items():
+        csp = ' '.join(f'{k} {" ".join(v)};' for k, v in v.items())
+        print(f'setting {k} CSP header to: {csp}')
+        content = content.replace('{%s}' % k, csp)
+    path.write_text(content)
 
 
 if __name__ == '__main__':

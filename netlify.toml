@@ -18,3 +18,13 @@
   for = "/*"
   [headers.values]
     X-Frame-Options = "deny"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "{main_csp}"
+
+[[headers]]
+  for = "/auth-iframes/*"
+  [headers.values]
+    Content-Security-Policy = "{auth_iframe_csp}"
