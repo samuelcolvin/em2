@@ -59,13 +59,10 @@ clean:
 .PHONY: build
 build: C=$(shell git rev-parse HEAD)
 build: BT="$(shell date)"
-build: BUILD_ARGS=--build-arg COMMIT=$(C) --build-arg BUILD_TIME=$(BT)
 build:
 	@find em2 -name '*.py[co]' -delete
 	@find em2 -name '__pycache__' -delete
-	docker build em2 -f docker/Dockerfile.base -t em2-python-build
-	docker build em2 -f docker/Dockerfile.web -t em2-web $(BUILD_ARGS)
-	docker build em2 -f docker/Dockerfile.worker -t em2-worker --quiet $(BUILD_ARGS)
+	docker build em2 -f docker/Dockerfile -t em2 --build-arg COMMIT=$(C) --build-arg BUILD_TIME=$(BT)
 
 .PHONY: docker-dev
 docker-dev: build
@@ -87,9 +84,9 @@ push: build
 	    echo "REPO NOT CLEAN"; \
 	    # exit 1; \
 	fi
-	docker tag em2-web registry.heroku.com/$(heroku)/web
+	docker tag em2 registry.heroku.com/$(heroku)/web
 	docker push registry.heroku.com/$(heroku)/web
-	docker tag em2-worker registry.heroku.com/$(heroku)/worker
+	docker tag em2 registry.heroku.com/$(heroku)/worker
 	docker push registry.heroku.com/$(heroku)/worker
 
 .PHONY: release

@@ -39,7 +39,7 @@ services:
     - logs
 
   web:
-    image: em2-web
+    image: em2
     environment:
       DATABASE_URL: 'postgres://postgres:docker@postgres:5432/em2'
       REDISCLOUD_URL: 'redis://redis:6379'
@@ -56,7 +56,7 @@ services:
   # TODO js container just for testing
 
   worker:
-    image: em2-worker
+    image: em2
     environment:
       DATABASE_URL: 'postgres://postgres:docker@postgres:5432/em2'
       REDISCLOUD_URL: 'redis://redis:6379'
