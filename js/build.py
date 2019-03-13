@@ -34,8 +34,7 @@ CSP = {
         "'unsafe-inline'",
     ],
     'frame-src': [
-        "'self'",
-        'blob:',
+        'data:',
     ],
     'img-src': [
         "'self'",

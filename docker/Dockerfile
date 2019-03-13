@@ -37,7 +37,7 @@ WORKDIR /home/root/
 ADD ./ /home/root/em2/
 ARG COMMIT
 ARG BUILD_TIME
-ENV COMMIT=$COMMIT \
-    BUILD_TIME=$BUILD_TIME
+ENV EM2_COMMIT=$COMMIT \
+    EM2_BUILD_TIME=$BUILD_TIME
 
 CMD ["atoolbox", "auto"]
