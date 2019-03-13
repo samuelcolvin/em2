@@ -3,6 +3,7 @@
 -r em2/requirements2.txt
 ipython
 devtools
+docker-compose
 pgcli
 aiohttp-devtools
 lorem

@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     cookie_name = 'em2'
     sql_path = SRC_DIR / 'models.sql'
     create_app = 'em2.main.create_app'
+    worker_func = 'em2.protocol.worker.run_worker'
 
     domain: str = 'localhost'  # currently used as a proxy for development mode, should probably be changed
     local_port: Optional[int] = 8000
