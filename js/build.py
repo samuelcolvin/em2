@@ -58,7 +58,7 @@ main_csp = {
     ],
 }
 
-auth_iframe_csp = {
+iframe_auth_csp = {
     'default-src': [
         "'none'",
     ],
@@ -68,6 +68,13 @@ auth_iframe_csp = {
     'style-src': [
         f'https://app.{main_domain}',
     ],
+}
+
+iframe_message_csp = {
+    'default-src': ["'none'"],
+    'style-src': ["'unsafe-inline'"],
+    'font-src': ["'unsafe-inline'"],
+    'img-src': ["'unsafe-inline'"],
 }
 
 
@@ -88,13 +95,13 @@ def before():
 
     # replace bootstrap import with the real thing
     # (this could be replaced by using the main css bundles)
-    path = THIS_DIR / 'public' / 'auth-iframes' / 'styles.css'
+    path = THIS_DIR / 'public' / 'iframes' / 'auth' / 'styles.css'
     styles = path.read_text()
     styles = re.sub(r'@import url\("(.+?)"\);', replace_css, styles)
     path.write_text(styles)
 
     # replace urls in login iframe
-    path = THIS_DIR / 'public' / 'auth-iframes' / 'login.html'
+    path = THIS_DIR / 'public' / 'iframes' / 'auth' / 'login.html'
     content = path.read_text()
     path.write_text(
         content
@@ -124,11 +131,13 @@ def after():
         else:
             print('WARNING: app and key not found in RAVEN_DSN', raven_dsn)
 
-    auth_iframe_csp['script-src'] = [get_script(THIS_DIR / 'build' / 'auth-iframes' / 'login.html')]
+    iframe_auth_csp['script-src'] = [get_script(THIS_DIR / 'build' / 'iframes' / 'auth' / 'login.html')]
+    iframe_message_csp['script-src'] = [get_script(THIS_DIR / 'build' / 'iframes' / 'message' / 'message.html')]
 
     replacements = {
         'main_csp': main_csp,
-        'auth_iframe_csp': auth_iframe_csp,
+        'iframe_auth_csp': iframe_auth_csp,
+        'iframe_message_csp': iframe_message_csp,
     }
     path = THIS_DIR / '..' / 'netlify.toml'
     content = path.read_text()
