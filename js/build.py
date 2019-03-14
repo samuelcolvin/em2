@@ -86,30 +86,6 @@ def replace_css(m):
     return re.sub(r'/\*#.+?\*/', '', css)
 
 
-def before():
-    # remove the unused reload prompt stuff from index.html
-    path = THIS_DIR / 'src' / 'index.js'
-    new_content = re.sub(r'^// *{{.+?^// *}}', '', path.read_text(), flags=re.S | re.M)
-    new_content = re.sub(r'\n+$', '\n', new_content)
-    path.write_text(new_content)
-
-    # replace bootstrap import with the real thing
-    # (this could be replaced by using the main css bundles)
-    path = THIS_DIR / 'public' / 'iframes' / 'auth' / 'styles.css'
-    styles = path.read_text()
-    styles = re.sub(r'@import url\("(.+?)"\);', replace_css, styles)
-    path.write_text(styles)
-
-    # replace urls in login iframe
-    path = THIS_DIR / 'public' / 'iframes' / 'auth' / 'login.html'
-    content = path.read_text()
-    path.write_text(
-        content
-        .replace('http://localhost:8000/auth', f'https://auth.{main_domain}')
-        .replace('http://localhost:3000', f'https://app.{main_domain}')
-    )
-
-
 def get_script(path: Path):
     content = path.read_text()
     m = re.search(r'<script>(.+?)</script>', content, flags=re.S)
@@ -119,7 +95,24 @@ def get_script(path: Path):
     return f"'sha256-{base64.b64encode(hashlib.sha256(js.encode()).digest()).decode()}'"
 
 
-def after():
+def mod():
+    # replace bootstrap import with the real thing
+    # (this could be replaced by using the main css bundles)
+    path = THIS_DIR / 'build' / 'iframes' / 'auth' / 'styles.css'
+    styles = path.read_text()
+    styles = re.sub(r'@import url\("(.+?)"\);', replace_css, styles)
+    path.write_text(styles)
+
+    # replace urls in iframes
+    for path in (THIS_DIR / 'build' / 'iframes').glob('**/*.html'):
+        print('changing urls in', path)
+        content = path.read_text()
+        path.write_text(
+            content
+            .replace('http://localhost:8000/auth', f'https://auth.{main_domain}')
+            .replace('http://localhost:3000', f'https://app.{main_domain}')
+        )
+
     main_csp['script-src'].append(get_script(THIS_DIR / 'build' / 'index.html'))
 
     raven_dsn = os.getenv('RAVEN_DSN', None)
@@ -143,12 +136,11 @@ def after():
     content = path.read_text()
     for k, v in replacements.items():
         csp = ' '.join(f'{k} {" ".join(v)};' for k, v in v.items())
-        print(f'setting {k} CSP header to: {csp}')
+        print(f'setting {k} CSP header')
         content = content.replace('{%s}' % k, csp)
     path.write_text(content)
 
 
 if __name__ == '__main__':
-    before()
     subprocess.run(['yarn', 'build'], cwd=str(THIS_DIR), check=True)
-    after()
+    mod()
