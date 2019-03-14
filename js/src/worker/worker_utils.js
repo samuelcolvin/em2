@@ -1,5 +1,5 @@
 import {request as basic_request} from '../lib/requests'
-import {sleep} from '../lib'
+import {sleep, statuses} from '../lib'
 import db from './worker_db'
 
 export function window_call (method, call_args) {
@@ -76,11 +76,11 @@ export const set_conn_status = conn_status => {
 }
 
 export async function get_conn_status () {
-  for (let i = 0; i < 20; i ++) {
-    if (CONN_STATUS !== null) {
+  for (let i = 0; i < 20; i++) {
+    if (![null, statuses.connecting].includes(CONN_STATUS)) {
       return CONN_STATUS
     }
-    await sleep(25)
+    await sleep(50)
   }
   return CONN_STATUS
 }

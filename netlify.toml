@@ -18,16 +18,16 @@
   for = "/*"
   [headers.values]
     X-Frame-Options = "deny"
-    Content-Security-Policy = "{main_csp}"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' storage.googleapis.com 'sha256-BwkH2Abr1Rms1uukTxvakUG9JTsGkR1THyTAcbWxCiU='; font-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self' data:; img-src 'self' blob: data:; media-src 'self'; connect-src 'self' https://sentry.io https://ui.example.com wss://ui.example.com https://auth.example.com;"
 
 [[headers]]
   for = "/iframes/auth/*"
   [headers.values]
     X-Frame-Options = "sameorigin"
-    Content-Security-Policy = "{iframe_auth_csp}"
+    Content-Security-Policy = "default-src 'none'; connect-src https://auth.example.com; style-src https://app.example.com; script-src 'sha256-L7ij4HRSxYZMw6pXqhtLd4jsW+XoN6+mugIsNwZ/vAo=';"
 
 [[headers]]
   for = "/iframes/message/*"
   [headers.values]
     X-Frame-Options = "sameorigin"
-    Content-Security-Policy = "{iframe_message_csp}"
+    Content-Security-Policy = "default-src 'none'; style-src 'unsafe-inline'; font-src 'unsafe-inline'; img-src 'unsafe-inline'; script-src 'sha256-LWk7QFLZ4FiVLBRI/BG+J9VgArz4JyCrt7tB5BuYhwc=';"

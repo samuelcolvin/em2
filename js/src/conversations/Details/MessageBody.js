@@ -2,15 +2,6 @@ import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import {sleep} from '../../lib'
 
-// TODO, need to and cache all fonts and image when the message is received. Anything else?
-// const iframe_csp = [
-//   `default-src 'none'`,
-//   `script-src 'sha256-9/tp0gG/02uaXhcWrCrvIbnLd/X1O+W8mGAk6amY/ho='`,
-//   `style-src 'unsafe-inline'`,
-//   `font-src 'unsafe-inline'`,
-//   `img-src 'unsafe-inline' *`,
-// ].join(';')
-
 
 class Html extends React.Component {
   iframe_ref = React.createRef()
@@ -32,20 +23,20 @@ class Html extends React.Component {
     }
   }
 
-  update_iframe = msg => {
+  update_iframe = async msg => {
+    await sleep(50)
     this.iframe_ref.current.contentWindow.postMessage({
       body: msg.body,
       iframe_id: msg.first_action,
     }, '*')
   }
 
-  componentDidUpdate() {
+  componentDidUpdate () {
     this.update_iframe(this.props.msg)
   }
 
-  async componentDidMount () {
+  componentDidMount () {
     window.addEventListener('message', this.on_message)
-    await sleep(50)
     this.update_iframe(this.props.msg)
   }
 

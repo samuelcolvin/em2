@@ -2,6 +2,7 @@
 isort = isort -rc -w 120 em2 tests
 black = black -S -l 120 --py36 em2 tests
 heroku ?= em2-demo
+em2_domain ?= example.com
 
 .PHONY: install
 install:
@@ -77,6 +78,21 @@ docker-dev: build
 .PHONY: docker-dev-stop
 docker-dev-stop:
 	docker-compose -f docker/docker-compose.yml stop
+
+.PHONY: js
+js:
+	REACT_APP_DOMAIN=$(em2_domain) ./js/build.py
+
+.PHONY: release-js
+release-js: js
+	cp -r js/build site
+	zip -r site.zip site
+	@rm -r site
+	@curl --fail -s \
+	-H "Content-Type: application/zip" -H "Authorization: Bearer ${NETLIFY}" --data-binary "@site.zip" \
+	https://api.netlify.com/api/v1/sites/em2.netlify.com/deploys 1>/dev/null
+	@echo 'js uploaded to netlify successfully'
+	@rm site.zip
 
 .PHONY: push
 push: build
