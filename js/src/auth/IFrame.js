@@ -17,7 +17,7 @@ export default class IFrame extends React.Component {
             frameBorder="0"
             scrolling="no"
             sandbox="allow-forms allow-scripts"
-            src="/auth-iframes/login.html"
+            src="/iframes/auth/login.html"
         />
       </div>
     )
