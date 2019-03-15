@@ -162,9 +162,8 @@ def mod():
 
 
 if __name__ == '__main__':
-    env = {
-        'REACT_APP_IFRAME_MESSAGE': f'/{iframe_msg_new_path}',
-        'REACT_APP_DOMAIN': main_domain,
-    }
+    env = dict(os.environ)
+    env['REACT_APP_IFRAME_MESSAGE'] = f'/{iframe_msg_new_path}'
+
     subprocess.run(['yarn', 'build'], cwd=str(this_dir), env=env, check=True)
     mod()
