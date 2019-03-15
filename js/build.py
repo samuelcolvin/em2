@@ -14,7 +14,8 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-THIS_DIR = Path(__file__).parent
+this_dir = Path(__file__).parent
+build_dir = this_dir / 'build'
 
 main_domain = os.getenv('REACT_APP_DOMAIN')
 if main_domain:
@@ -25,8 +26,8 @@ else:
 
 
 iframe_message_path = Path('iframes') / 'message' / 'message.html'
-iframe_message_hash = hashlib.md5((THIS_DIR / 'public' / iframe_message_path).read_bytes()).hexdigest()
-iframe_message_name = f'iframes/message/message.{iframe_message_hash}.html'
+iframe_message_hash = hashlib.md5((this_dir / 'public' / iframe_message_path).read_bytes()).hexdigest()[:12]
+iframe_message_new_name = f'iframes/message/message.{iframe_message_hash}.html'
 
 main_csp = {
     'default-src': [
@@ -104,13 +105,13 @@ def get_script(path: Path):
 def mod():
     # replace bootstrap import with the real thing
     # (this could be replaced by using the main css bundles)
-    path = THIS_DIR / 'build' / 'iframes' / 'auth' / 'styles.css'
+    path = build_dir / 'iframes' / 'auth' / 'styles.css'
     styles = path.read_text()
     styles = re.sub(r'@import url\("(.+?)"\);', replace_css, styles)
     path.write_text(styles)
 
     # replace urls in iframes
-    for path in (THIS_DIR / 'build' / 'iframes').glob('**/*.html'):
+    for path in (build_dir / 'iframes').glob('**/*.html'):
         print('changing urls in', path)
         content = path.read_text()
         path.write_text(
@@ -119,7 +120,7 @@ def mod():
             .replace('http://localhost:3000', f'https://app.{main_domain}')
         )
 
-    main_csp['script-src'].append(get_script(THIS_DIR / 'build' / 'index.html'))
+    main_csp['script-src'].append(get_script(build_dir / 'index.html'))
 
     raven_dsn = os.getenv('RAVEN_DSN', None)
     if raven_dsn:
@@ -130,15 +131,15 @@ def mod():
         else:
             print('WARNING: app and key not found in RAVEN_DSN', raven_dsn)
 
-    iframe_auth_csp['script-src'] = [get_script(THIS_DIR / 'build' / 'iframes' / 'auth' / 'login.html')]
-    iframe_message_csp['script-src'] = [get_script(THIS_DIR / 'build' / iframe_message_path)]
+    iframe_auth_csp['script-src'] = [get_script(build_dir / 'iframes' / 'auth' / 'login.html')]
+    iframe_message_csp['script-src'] = [get_script(build_dir / iframe_message_path)]
 
     replacements = {
         'main_csp': main_csp,
         'iframe_auth_csp': iframe_auth_csp,
         'iframe_message_csp': iframe_message_csp,
     }
-    path = THIS_DIR / '..' / 'netlify.toml'
+    path = this_dir / '..' / 'netlify.toml'
     content = path.read_text()
     for k, v in replacements.items():
         csp = ' '.join(f'{k} {" ".join(v)};' for k, v in v.items())
@@ -148,15 +149,20 @@ def mod():
 
     build_details = {k: os.getenv(k) for k in details_env}
     build_details['time'] = str(datetime.utcnow())
-    (THIS_DIR / 'build' / 'build_details.txt').write_text(json.dumps(build_details, indent=2))
+    (build_dir / 'build_details.txt').write_text(json.dumps(build_details, indent=2))
 
-    (THIS_DIR / 'build' / iframe_message_path).rename(THIS_DIR / 'build' / iframe_message_name)
+    (build_dir / iframe_message_path).rename(build_dir / iframe_message_new_name)
+    manifest_path = next(p for p in build_dir.iterdir() if p.name.startswith('precache-manifest'))
+    manifest = manifest_path.read_text()
+    extra = ',\n  {"revision": "%s", "url": "%s"}\n];' % (iframe_message_hash, iframe_message_new_name)
+    manifest = re.sub(r'\n\];\n*$', extra, manifest, re.M)
+    manifest_path.write_text(manifest)
 
 
 if __name__ == '__main__':
     env = {
-        'REACT_APP_IFRAME_MESSAGE': '/' + iframe_message_name,
+        'REACT_APP_IFRAME_MESSAGE': '/' + iframe_message_new_name,
         'REACT_APP_DOMAIN': main_domain,
     }
-    subprocess.run(['yarn', 'build'], cwd=str(THIS_DIR), env=env, check=True)
+    subprocess.run(['yarn', 'build'], cwd=str(this_dir), env=env, check=True)
     mod()
