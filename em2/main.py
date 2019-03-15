@@ -34,6 +34,10 @@ async def restart_react_dev_server(app: Application):
             logger.warning('update.js directory "%s" does not exist', path.resolve())
 
 
+def should_warn(r):
+    return r.status > 310
+
+
 async def create_app(settings: Settings = None):
     settings = settings or Settings()
     middleware = () if settings.domain == 'localhost' else (error_middleware,)
@@ -41,6 +45,7 @@ async def create_app(settings: Settings = None):
 
     app.update(
         settings=settings,
+        middleware_should_warn=should_warn,
         ui_app=await create_app_ui(settings),
         protocol_app=await create_app_protocol(settings),
         auth_app=await create_app_auth(settings),

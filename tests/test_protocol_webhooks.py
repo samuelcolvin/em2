@@ -236,3 +236,36 @@ async def test_ses_reply(factory: Factory, worker: Worker, db_conn, cli, url, cr
         ],
         'participants': {'testing-1@example.com': {'id': 1}, 'whomever@remote.com': {'id': 2}},
     }
+
+
+async def test_ses_reply_different_email(factory: Factory, worker: Worker, db_conn, cli, url, create_email):
+    send_id, message_id = await create_send(factory, worker, db_conn)
+    assert 1 == await db_conn.fetchval('select count(*) from conversations')
+
+    kwargs = {'e_from': 'different@remote.com', 'html_body': 'This is a <u>reply</u>.', 'In-Reply-To': message_id}
+    data = create_email(**kwargs)
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
+    assert r.status == 204, await r.text()
+    assert 1 == await db_conn.fetchval('select count(*) from conversations')
+
+    new_user_id = await db_conn.fetchval('select id from users where email=$1', 'whomever@remote.com')
+    obj = await construct_conv(db_conn, new_user_id, factory.conv.id)
+    assert obj == {
+        'subject': 'Test Subject',
+        'created': CloseToNow(),
+        'messages': [
+            {'ref': 3, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True},
+            {
+                'ref': 6,
+                'body': 'This is a <u>reply</u>.',
+                'created': '2032-01-01T12:00:00+00:00',
+                'format': 'html',
+                'active': True,
+            },
+        ],
+        'participants': {
+            'testing-1@example.com': {'id': 1},
+            'whomever@remote.com': {'id': 2},
+            'different@remote.com': {'id': 5},
+        },
+    }

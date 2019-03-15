@@ -3,7 +3,7 @@ import logging
 import quopri
 from datetime import datetime
 from email.message import EmailMessage
-from typing import List
+from typing import List, Tuple
 
 from aiohttp.web_exceptions import HTTPBadRequest
 from arq import ArqRedis
@@ -71,7 +71,7 @@ class ProcessSMTP:
         recipients = await self.get_recipients(msg, message_id)
         timestamp = email.utils.parsedate_to_datetime(msg['Date'])
 
-        conv_id = await self.get_conv(msg)
+        conv_id, original_actor_id = await self.get_conv(msg)
         actor_id = await get_create_user(self.conn, actor_email, UserTypes.remote_other)
 
         body, is_html = get_smtp_body(msg, message_id)
@@ -81,6 +81,14 @@ class ProcessSMTP:
                     'select email from participants p join users u on p.user_id = u.id where conv=$1', conv_id
                 )
                 existing_prts = {r[0] for r in existing_prts}
+                if actor_email not in existing_prts:
+                    # reply from different address, we need to add the new address to the conversation
+                    a = ActionModel(act=ActionTypes.prt_add, participant=actor_email)
+                    _, all_action_ids = await apply_actions(self.conn, self.settings, original_actor_id, conv_id, [a])
+                    assert all_action_ids
+                else:
+                    all_action_ids = []
+
                 new_prts = recipients - existing_prts
                 actions = [ActionModel(act=ActionTypes.prt_add, participant=addr) for addr in new_prts]
 
@@ -88,11 +96,12 @@ class ProcessSMTP:
                     msg_format = MsgFormat.html if is_html else MsgFormat.plain
                     actions.append(ActionModel(act=ActionTypes.msg_add, body=body, msg_format=msg_format))
 
-                conv_id, action_ids = await apply_actions(self.conn, self.settings, actor_id, conv_id, actions)
+                _, action_ids = await apply_actions(self.conn, self.settings, actor_id, conv_id, actions)
                 assert action_ids
 
+                all_action_ids += action_ids
                 await self.conn.execute(
-                    'update actions set ts=$1 where conv=$2 and id=any($3)', timestamp, conv_id, action_ids
+                    'update actions set ts=$1 where conv=$2 and id=any($3)', timestamp, conv_id, all_action_ids
                 )
                 await self.conn.execute(
                     """
@@ -129,15 +138,14 @@ class ProcessSMTP:
         to, cc = msg.get_all('To', []), msg.get_all('Cc', [])
         return await get_email_recipients(to, cc, message_id, self.conn)
 
-    async def get_conv(self, msg: EmailMessage) -> str:
-        conv_id = None
-
+    async def get_conv(self, msg: EmailMessage) -> Tuple[int, int]:
+        conv_actor = None
         # find which conversation this relates to
         in_reply_to = msg['In-Reply-To']
         if in_reply_to:
-            conv_id = await self.conn.fetchval(
+            conv_actor = await self.conn.fetchrow(
                 """
-                select a.conv from sends
+                select a.conv, a.actor from sends
                 join actions a on sends.action = a.pk
                 where sends.node is null and sends.ref = $1
                 order by a.id desc
@@ -147,13 +155,13 @@ class ProcessSMTP:
             )
 
         references = msg['References']
-        if not conv_id and references:
+        if not conv_actor and references:
             # try references instead to try and get conv_id
             ref_msg_ids = {msg_id.strip('<>\r\n') for msg_id in references.split(' ') if msg_id}
             if ref_msg_ids:
-                conv_id = await self.conn.fetchval(
+                conv_actor = await self.conn.fetchrow(
                     """
-                    select a.conv from sends
+                    select a.conv, a.actor from sends
                     join actions a on sends.action = a.pk
                     where sends.node is null and sends.ref = any($1)
                     order by a.id desc
@@ -162,7 +170,7 @@ class ProcessSMTP:
                     ref_msg_ids,
                 )
 
-        return conv_id
+        return conv_actor or (None, None)
 
 
 def get_email_body(msg: EmailMessage):

@@ -79,7 +79,7 @@ async def _record_email_message(request, message: Dict):
     if prefix:
         path = f'{prefix}/{path}'
 
-    # TODO we need to store the bucket and key the db, for future access
+    # TODO we need to store the bucket and key in the db for future access
     settings: Settings = request.app['settings']
     async with create_s3_session(settings) as s3:
         r = await s3.get_object(Bucket=bucket, Key=path)

@@ -26,7 +26,7 @@ async def websocket(request):
             pass
         return ws
 
-    logger.info('ws connection user=%s', session.user_id)
+    logger.debug('ws connection user=%s', session.user_id)
     await ws.prepare(request)
 
     pg = request.app['pg']
@@ -48,6 +48,6 @@ async def websocket(request):
         # happens, regularly, not a problem
         pass
     finally:
-        logger.info('ws disconnection user=%s', session.user_id)
+        logger.debug('ws disconnection user=%s', session.user_id)
         background.remove_ws(session.user_id, ws)
     return ws
