@@ -189,6 +189,9 @@ def get_email_body(msg: EmailMessage):
     return body, False
 
 
+to_remove = 'div.gmail_quote', 'div.gmail_extra', 'div.gmail_signature'
+
+
 def get_smtp_body(msg: EmailMessage, message_id):
     # text/html is generally the best representation of the email
     body, is_html = get_email_body(msg)
@@ -199,10 +202,9 @@ def get_smtp_body(msg: EmailMessage, message_id):
     if is_html:
         soup = BeautifulSoup(body, 'html.parser')
 
-        # if this is a gmail email, remove the extra content
-        gmail_extra = soup.select_one('div.gmail_extra') or soup.select_one('div.gmail_signature')
-        if gmail_extra:
-            gmail_extra.decompose()
+        for el_selector in to_remove:
+            for el in soup.select(el_selector):
+                el.decompose()
 
         # body = soup.prettify()
         body = str(soup)

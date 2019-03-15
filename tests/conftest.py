@@ -1,6 +1,10 @@
 import asyncio
+import base64
+import email
 import json
 from dataclasses import dataclass
+from datetime import datetime
+from email.message import EmailMessage
 from typing import List
 
 import aiodns
@@ -268,3 +272,70 @@ async def _fix_ses_worker(redis, settings, db_conn):
     worker.pool = None
     await worker.close()
     await session.close()
+
+
+@pytest.fixture(name='send_to_remote')
+async def _fix_send_to_remote(factory: Factory, worker: Worker, db_conn):
+    await factory.create_user()
+    await factory.create_conv(participants=[{'email': 'whomever@remote.com'}], publish=True)
+    assert 4 == await db_conn.fetchval('select count(*) from actions')
+    await worker.async_run()
+    assert (worker.jobs_complete, worker.jobs_failed, worker.jobs_retried) == (2, 0, 0)
+    assert 1 == await db_conn.fetchval('select count(*) from sends')
+    return await db_conn.fetchrow('select id, ref from sends')
+
+
+@pytest.fixture(name='sns_data')
+def _fix_sns_data(dummy_server, mocker):
+    def run(message_id, *, mock_verify=True, **message):
+        if mock_verify:
+            mocker.patch('em2.protocol.views.fallback_ses.x509.load_pem_x509_certificate')
+        return {
+            'Type': 'Notification',
+            'MessageId': message_id,
+            'Subject': 'Amazon SES Email Receipt Notification',
+            'Timestamp': '2032-03-11T18:00:00.000Z',
+            'TopicArn': 'arn:aws:sns:us-east-1:123:em2-webhook',
+            'Message': json.dumps(message),
+            'SigningCertURL': dummy_server.server_name + '/sns_signing_url.pem',
+            'Signature': base64.b64encode(b'the signature').decode(),
+        }
+
+    return run
+
+
+@pytest.fixture(name='create_email')
+def _fix_create_email(dummy_server, sns_data):
+    def run(
+        subject='Test Subject',
+        e_from='whomever@remote.com',
+        to=('testing-1@example.com',),
+        text_body='this is a message.',
+        html_body='this is an html <b>message</b>.',
+        message_id='message-id@remote.com',
+        key='foobar',
+        **headers,
+    ):
+        email_msg = EmailMessage()
+        email_msg['Message-ID'] = message_id
+        email_msg['Subject'] = subject
+        email_msg['From'] = e_from
+        email_msg['To'] = ','.join(to)
+        email_msg['Date'] = email.utils.format_datetime(datetime(2032, 1, 1, 12, 0))
+
+        for k, v in headers.items():
+            email_msg[k] = v
+
+        text_body and email_msg.set_content(text_body)
+        html_body and email_msg.add_alternative(html_body, subtype='html')
+        dummy_server.app['s3_emails'][key] = email_msg.as_string()
+
+        h = [{'name': 'Message-ID', 'value': message_id}] + [{'name': k, 'value': v} for k, v in headers.items()]
+        return sns_data(
+            message_id,
+            notificationType='Received',
+            mail=dict(headers=h, commonHeaders={'to': list(to)}),
+            receipt={'action': {'type': 'S3', 'bucketName': 'em2-testing', 'objectKeyPrefix': '', 'objectKey': key}},
+        )
+
+    return run

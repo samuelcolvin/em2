@@ -1,11 +1,6 @@
-import base64
-import email
 import json
 from datetime import datetime, timezone
-from email.message import EmailMessage
 
-import pytest
-from arq import Worker
 from pytest_toolbox.comparison import AnyInt, CloseToNow
 
 from em2.core import construct_conv
@@ -13,74 +8,8 @@ from em2.core import construct_conv
 from .conftest import Factory
 
 
-async def create_send(factory: Factory, worker: Worker, db_conn):
-    await factory.create_user()
-    await factory.create_conv(participants=[{'email': 'whomever@remote.com'}], publish=True)
-    assert 4 == await db_conn.fetchval('select count(*) from actions')
-    await worker.async_run()
-    assert (worker.jobs_complete, worker.jobs_failed, worker.jobs_retried) == (2, 0, 0)
-    assert 1 == await db_conn.fetchval('select count(*) from sends')
-    return await db_conn.fetchrow('select id, ref from sends')
-
-
-@pytest.fixture(name='sns_data')
-def _fix_sns_data(dummy_server, mocker):
-    def run(message_id, *, mock_verify=True, **message):
-        if mock_verify:
-            mocker.patch('em2.protocol.views.fallback_ses.x509.load_pem_x509_certificate')
-        return {
-            'Type': 'Notification',
-            'MessageId': message_id,
-            'Subject': 'Amazon SES Email Receipt Notification',
-            'Timestamp': '2032-03-11T18:00:00.000Z',
-            'TopicArn': 'arn:aws:sns:us-east-1:123:em2-webhook',
-            'Message': json.dumps(message),
-            'SigningCertURL': dummy_server.server_name + '/sns_signing_url.pem',
-            'Signature': base64.b64encode(b'the signature').decode(),
-        }
-
-    return run
-
-
-@pytest.fixture(name='create_email')
-def _fix_create_email(dummy_server, sns_data):
-    def run(
-        subject='Test Subject',
-        e_from='whomever@remote.com',
-        to=('testing-1@example.com',),
-        text_body='this is a message.',
-        html_body='this is an html <b>message</b>.',
-        message_id='message-id@remote.com',
-        key='foobar',
-        **headers,
-    ):
-        email_msg = EmailMessage()
-        email_msg['Message-ID'] = message_id
-        email_msg['Subject'] = subject
-        email_msg['From'] = e_from
-        email_msg['To'] = ','.join(to)
-        email_msg['Date'] = email.utils.format_datetime(datetime(2032, 1, 1, 12, 0))
-
-        for k, v in headers.items():
-            email_msg[k] = v
-
-        text_body and email_msg.set_content(text_body)
-        html_body and email_msg.add_alternative(html_body, subtype='html')
-        dummy_server.app['s3_emails'][key] = email_msg.as_string()
-
-        h = [{'name': 'Message-ID', 'value': message_id}] + [{'name': k, 'value': v} for k, v in headers.items()]
-        return sns_data(
-            message_id,
-            notificationType='Received',
-            mail=dict(headers=h, commonHeaders={'to': list(to)}),
-            receipt={'action': {'type': 'S3', 'bucketName': 'em2-testing', 'objectKeyPrefix': '', 'objectKey': key}},
-        )
-
-    return run
-
-
-async def test_ses_send_webhook(factory: Factory, worker: Worker, db_conn, cli, url, sns_data):
-    send_id, message_id = await create_send(factory, worker, db_conn)
+async def test_ses_send_webhook(db_conn, cli, url, sns_data, send_to_remote):
+    send_id, message_id = send_to_remote
 
     data = sns_data(
         message_id, eventType='Send', mail={'messageId': message_id, 'timestamp': '2032-10-16T12:00:00.000Z'}
@@ -100,8 +29,8 @@ async def test_ses_send_webhook(factory: Factory, worker: Worker, db_conn, cli, 
     }
 
 
-async def test_ses_bounce_webhook(factory: Factory, worker: Worker, db_conn, cli, url, sns_data):
-    send_id, message_id = await create_send(factory, worker, db_conn)
+async def test_ses_bounce_webhook(factory: Factory, db_conn, cli, url, sns_data, send_to_remote):
+    send_id, message_id = send_to_remote
     data = sns_data(
         message_id,
         eventType='Bounce',
@@ -132,8 +61,8 @@ async def test_ses_bounce_webhook(factory: Factory, worker: Worker, db_conn, cli
     }
 
 
-async def test_ses_complaint_webhook(factory: Factory, worker: Worker, db_conn, cli, url, sns_data):
-    send_id, message_id = await create_send(factory, worker, db_conn)
+async def test_ses_complaint_webhook(factory: Factory, db_conn, cli, url, sns_data, send_to_remote):
+    send_id, message_id = send_to_remote
     assert 2 == await db_conn.fetchval('select count(*) from participants where conv=$1', factory.conv.id)
     data = sns_data(
         message_id,
@@ -210,8 +139,8 @@ async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_email):
     assert dict(action) == {'id': 1, 'conv': conv_id, 'actor': new_user_id, 'act': 'participant:add'}
 
 
-async def test_ses_reply(factory: Factory, worker: Worker, db_conn, cli, url, create_email):
-    send_id, message_id = await create_send(factory, worker, db_conn)
+async def test_ses_reply(factory: Factory, db_conn, cli, url, create_email, send_to_remote):
+    send_id, message_id = send_to_remote
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
     data = create_email(**{'html_body': 'This is a <u>reply</u>.', 'In-Reply-To': message_id})
@@ -238,8 +167,8 @@ async def test_ses_reply(factory: Factory, worker: Worker, db_conn, cli, url, cr
     }
 
 
-async def test_ses_reply_different_email(factory: Factory, worker: Worker, db_conn, cli, url, create_email):
-    send_id, message_id = await create_send(factory, worker, db_conn)
+async def test_ses_reply_different_email(factory: Factory, db_conn, cli, url, create_email, send_to_remote):
+    send_id, message_id = send_to_remote
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
     kwargs = {'e_from': 'different@remote.com', 'html_body': 'This is a <u>reply</u>.', 'In-Reply-To': message_id}
@@ -269,3 +198,25 @@ async def test_ses_reply_different_email(factory: Factory, worker: Worker, db_co
             'different@remote.com': {'id': 5},
         },
     }
+
+
+async def test_clean_email(factory: Factory, db_conn, cli, url, create_email):
+    await factory.create_user()
+
+    data = create_email(
+        html_body="""
+        <div dir="ltr">this is a reply<br clear="all"/>
+        <div class="gmail_quote">
+          <div class="gmail_attr" dir="ltr">On Fri, 15 Mar 2019 at 17:00, &lt;<a
+                  href="mailto:testing@imber.io">testing@imber.io</a>&gt; wrote:<br/></div>
+          <blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;padding-left:1ex">
+            <p>whatever</p>
+          </blockquote>
+        </div>
+        """
+    )
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
+    assert r.status == 204, await r.text()
+    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+    body = await db_conn.fetchval("select body from actions where act='message:add'")
+    assert body == '<div dir="ltr">this is a reply<br clear="all"/>\n\n</div>'
