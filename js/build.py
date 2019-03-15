@@ -25,9 +25,10 @@ else:
     main_domain = 'example.com'
 
 
-iframe_message_path = Path('iframes') / 'message' / 'message.html'
-iframe_message_hash = hashlib.md5((this_dir / 'public' / iframe_message_path).read_bytes()).hexdigest()[:12]
-iframe_message_new_name = f'iframes/message/message.{iframe_message_hash}.html'
+iframe_msg_path = Path('iframes') / 'message' / 'message.html'
+iframe_msg_hash = hashlib.md5((this_dir / 'public' / iframe_msg_path).read_bytes()).hexdigest()
+iframe_msg_new_name = f'message.{iframe_msg_hash[:8]}.html'
+iframe_msg_new_url = f'/{iframe_msg_path.with_name(iframe_msg_new_name)}'
 
 main_csp = {
     'default-src': [
@@ -76,7 +77,7 @@ iframe_auth_csp = {
         f'https://app.{main_domain}',
     ],
 }
-iframe_message_csp = {
+iframe_msg_csp = {
     'default-src': ["'none'"],
     'style-src': ["'unsafe-inline'"],
     'font-src': ["'unsafe-inline'"],
@@ -132,36 +133,36 @@ def mod():
             print('WARNING: app and key not found in RAVEN_DSN', raven_dsn)
 
     iframe_auth_csp['script-src'] = [get_script(build_dir / 'iframes' / 'auth' / 'login.html')]
-    iframe_message_csp['script-src'] = [get_script(build_dir / iframe_message_path)]
+    iframe_msg_csp['script-src'] = [get_script(build_dir / iframe_msg_path)]
 
     replacements = {
         'main_csp': main_csp,
         'iframe_auth_csp': iframe_auth_csp,
-        'iframe_message_csp': iframe_message_csp,
+        'iframe_msg_csp': iframe_msg_csp,
     }
-    path = this_dir / '..' / 'netlify.toml'
-    content = path.read_text()
+    headers_path = build_dir / '_headers'
+    content = headers_path.read_text()
     for k, v in replacements.items():
         csp = ' '.join(f'{k} {" ".join(v)};' for k, v in v.items())
         print(f'setting {k} CSP header')
         content = content.replace('{%s}' % k, csp)
-    path.write_text(content)
+    headers_path.write_text(content)
 
     build_details = {k: os.getenv(k) for k in details_env}
     build_details['time'] = str(datetime.utcnow())
     (build_dir / 'build_details.txt').write_text(json.dumps(build_details, indent=2))
 
-    (build_dir / iframe_message_path).rename(build_dir / iframe_message_new_name)
-    manifest_path = next(p for p in build_dir.iterdir() if p.name.startswith('precache-manifest'))
-    manifest = manifest_path.read_text()
-    extra = ',\n  {"revision": "%s", "url": "%s"}\n];' % (iframe_message_hash, iframe_message_new_name)
-    manifest = re.sub(r'\n\];\n*$', extra, manifest, re.M)
-    manifest_path.write_text(manifest)
+    (build_dir / iframe_msg_path).rename(build_dir / iframe_msg_path.with_name(iframe_msg_new_name))
+    man_path = next(p for p in build_dir.iterdir() if p.name.startswith('precache-manifest'))
+    man_data = json.loads(re.search(r'\[.+\]', man_path.read_text(), flags=re.S).group(0))
+    man_data.append({'revision': iframe_msg_hash, 'url': iframe_msg_new_url})
+
+    man_path.write_text(f'self.__precacheManifest = {json.dumps(man_data, indent=2)};')
 
 
 if __name__ == '__main__':
     env = {
-        'REACT_APP_IFRAME_MESSAGE': '/' + iframe_message_new_name,
+        'REACT_APP_IFRAME_MESSAGE': f'/{iframe_msg_path.with_name(iframe_msg_new_name)}',
         'REACT_APP_DOMAIN': main_domain,
     }
     subprocess.run(['yarn', 'build'], cwd=str(this_dir), env=env, check=True)

@@ -31,7 +31,6 @@
       const origin = 'http://localhost:3000'
       window.addEventListener('message', event => {
         if (event.origin === origin && event.data.body) {
-          console.log('iframe', window.location.hash)
           const existing = document.getElementById('main')
           existing && document.removeChild(existing)
           const main = document.createElement('div')
