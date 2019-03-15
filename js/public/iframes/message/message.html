@@ -13,8 +13,9 @@
   </head>
   <body id="body">
     <script>
-      let iframe_id = null
+      const iframe_id = parseInt(window.location.hash.replace('#', ''))
       const msg = data => window.parent.postMessage(Object.assign(data, {iframe_id: iframe_id}), '*')
+      setTimeout(() => msg({loaded: true}), 50)
 
       const observer = new MutationObserver(() => {
         msg({height: Math.min(500, Math.max(50, document.documentElement.offsetHeight))})
@@ -30,9 +31,9 @@
       const origin = 'http://localhost:3000'
       window.addEventListener('message', event => {
         if (event.origin === origin && event.data.body) {
+          console.log('iframe', window.location.hash)
           const existing = document.getElementById('main')
-          existing && document.removeChild(document.getElementById('main'))
-          iframe_id = event.data.iframe_id.toString()
+          existing && document.removeChild(existing)
           const main = document.createElement('div')
           main.id = 'main'
           main.innerHTML = event.data.body

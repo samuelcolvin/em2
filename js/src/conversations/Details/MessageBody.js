@@ -5,10 +5,13 @@ import {sleep} from '../../lib'
 
 class Html extends React.Component {
   iframe_ref = React.createRef()
+  loaded = false
 
   on_message = event => {
-    if (event.origin === 'null' && event.data.iframe_id === this.props.msg.first_action.toString()) {
-      if (event.data.height) {
+    if (event.origin === 'null' && this.props.msg.first_action === event.data.iframe_id) {
+      if (event.data.loaded) {
+        this.iframe_ref.current.contentWindow.postMessage({body: this.props.msg.body}, '*')
+      } else if (event.data.height) {
         // do this rather than keeping height in state to avoid rendering the iframe multiple times
         this.iframe_ref.current.style.height = event.data.height + 'px'
       } else if (event.data.href) {
@@ -23,21 +26,9 @@ class Html extends React.Component {
     }
   }
 
-  update_iframe = async msg => {
+  async componentDidMount () {
     await sleep(50)
-    this.iframe_ref.current.contentWindow.postMessage({
-      body: msg.body,
-      iframe_id: msg.first_action,
-    }, '*')
-  }
-
-  componentDidUpdate () {
-    this.update_iframe(this.props.msg)
-  }
-
-  componentDidMount () {
     window.addEventListener('message', this.on_message)
-    this.update_iframe(this.props.msg)
   }
 
   componentWillUnmount () {
@@ -57,7 +48,7 @@ class Html extends React.Component {
         frameBorder="0"
         scrolling="no"
         sandbox="allow-scripts"
-        src="/iframes/message/message.html"
+        src={`${process.env.REACT_APP_IFRAME_MESSAGE}#${this.props.msg.first_action}`}
       />
     )
   }

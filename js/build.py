@@ -6,10 +6,12 @@ Designed primarily for netlify.
 """
 import base64
 import hashlib
+import json
 import os
 import re
 import subprocess
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 THIS_DIR = Path(__file__).parent
@@ -20,6 +22,11 @@ if main_domain:
 else:
     print('WARNING: "REACT_APP_DOMAIN" env var not set, using example.com')
     main_domain = 'example.com'
+
+
+iframe_message_path = Path('iframes') / 'message' / 'message.html'
+iframe_message_hash = hashlib.md5((THIS_DIR / 'public' / iframe_message_path).read_bytes()).hexdigest()
+iframe_message_name = f'iframes/message/message.{iframe_message_hash}.html'
 
 main_csp = {
     'default-src': [
@@ -57,7 +64,6 @@ main_csp = {
         f'https://auth.{main_domain}'
     ],
 }
-
 iframe_auth_csp = {
     'default-src': [
         "'none'",
@@ -69,13 +75,13 @@ iframe_auth_csp = {
         f'https://app.{main_domain}',
     ],
 }
-
 iframe_message_csp = {
     'default-src': ["'none'"],
     'style-src': ["'unsafe-inline'"],
     'font-src': ["'unsafe-inline'"],
     'img-src': ["'unsafe-inline'"],
 }
+details_env = 'REPOSITORY_URL', 'BRANCH', 'PULL_REQUEST', 'HEAD', 'COMMIT_REF', 'CONTEXT', 'REVIEW_ID'
 
 
 def replace_css(m):
@@ -125,7 +131,7 @@ def mod():
             print('WARNING: app and key not found in RAVEN_DSN', raven_dsn)
 
     iframe_auth_csp['script-src'] = [get_script(THIS_DIR / 'build' / 'iframes' / 'auth' / 'login.html')]
-    iframe_message_csp['script-src'] = [get_script(THIS_DIR / 'build' / 'iframes' / 'message' / 'message.html')]
+    iframe_message_csp['script-src'] = [get_script(THIS_DIR / 'build' / iframe_message_path)]
 
     replacements = {
         'main_csp': main_csp,
@@ -140,7 +146,17 @@ def mod():
         content = content.replace('{%s}' % k, csp)
     path.write_text(content)
 
+    build_details = {k: os.getenv(k) for k in details_env}
+    build_details['time'] = str(datetime.utcnow())
+    (THIS_DIR / 'build' / 'build_details.txt').write_text(json.dumps(build_details, indent=2))
+
+    (THIS_DIR / 'build' / iframe_message_path).rename(THIS_DIR / 'build' / iframe_message_name)
+
 
 if __name__ == '__main__':
-    subprocess.run(['yarn', 'build'], cwd=str(THIS_DIR), check=True)
+    env = {
+        'REACT_APP_IFRAME_MESSAGE': '/' + iframe_message_name,
+        'REACT_APP_DOMAIN': main_domain,
+    }
+    subprocess.run(['yarn', 'build'], cwd=str(THIS_DIR), env=env, check=True)
     mod()

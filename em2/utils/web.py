@@ -3,7 +3,7 @@ from aiohttp.abc import Application
 from aiohttp.web_fileresponse import FileResponse
 from atoolbox.utils import slugify
 
-from em2.settings import SRC_DIR
+from em2.settings import SRC_DIR, Settings
 
 index_text = """\
 em2 {name}
@@ -35,14 +35,17 @@ index_route = web.get('/', index_view, name='index')
 
 
 def add_access_control(app: web.Application):
+    settings: Settings = app['settings']
+
     async def _run(request, response):
         if 'Access-Control-Allow-Origin' not in response.headers:
-            response.headers.update(
-                {
-                    'Access-Control-Allow-Origin': request.app['expected_origin'],
-                    'Access-Control-Allow-Credentials': 'true',
-                }
-            )
+            if settings.any_origin:
+                # from chrome: The value of the 'Access-Control-Allow-Origin' header in the response must not be
+                # the wildcard '*' when the request's credentials mode is 'include'.
+                origin = request.headers.get('Origin') or '*'
+            else:
+                origin = app['expected_origin']
+            response.headers.update({'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Credentials': 'true'})
 
     app.on_response_prepare.append(_run)
 
