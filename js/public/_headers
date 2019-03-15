@@ -2,12 +2,10 @@
   X-Frame-Options: deny
   Content-Security-Policy: {main_csp}
 
-[[headers]]
 /iframes/auth/*
   X-Frame-Options: sameorigin
   Content-Security-Policy: {iframe_auth_csp}
 
-[[headers]]
 /iframes/message/*
   X-Frame-Options: sameorigin
   Content-Security-Policy: {iframe_msg_csp}
