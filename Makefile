@@ -80,7 +80,7 @@ docker-dev-stop:
 
 .PHONY: js
 js:
-	./js/build.py
+	COMMIT_REF=$(shell git rev-parse HEAD) ./js/build.py
 
 .PHONY: release-js
 release-js: js

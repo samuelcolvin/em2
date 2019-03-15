@@ -25,10 +25,9 @@ else:
     main_domain = 'example.com'
 
 
-iframe_msg_path = Path('iframes') / 'message' / 'message.html'
-iframe_msg_hash = hashlib.md5((this_dir / 'public' / iframe_msg_path).read_bytes()).hexdigest()
-iframe_msg_new_name = f'message.{iframe_msg_hash[:8]}.html'
-iframe_msg_new_url = f'/{iframe_msg_path.with_name(iframe_msg_new_name)}'
+iframe_msg_old_path = Path('iframes') / 'message' / 'message.html'
+iframe_msg_hash = hashlib.md5((this_dir / 'public' / iframe_msg_old_path).read_bytes()).hexdigest()
+iframe_msg_new_path = iframe_msg_old_path.with_name(f'message.{iframe_msg_hash[:8]}.html')
 
 main_csp = {
     'default-src': [
@@ -133,7 +132,7 @@ def mod():
             print('WARNING: app and key not found in RAVEN_DSN', raven_dsn)
 
     iframe_auth_csp['script-src'] = [get_script(build_dir / 'iframes' / 'auth' / 'login.html')]
-    iframe_msg_csp['script-src'] = [get_script(build_dir / iframe_msg_path)]
+    iframe_msg_csp['script-src'] = [get_script(build_dir / iframe_msg_old_path)]
 
     replacements = {
         'main_csp': main_csp,
@@ -148,21 +147,23 @@ def mod():
         content = content.replace('{%s}' % k, csp)
     headers_path.write_text(content)
 
+    # create build_details.txt with details about the build
     build_details = {k: os.getenv(k) for k in details_env}
     build_details['time'] = str(datetime.utcnow())
     (build_dir / 'build_details.txt').write_text(json.dumps(build_details, indent=2))
 
-    (build_dir / iframe_msg_path).rename(build_dir / iframe_msg_path.with_name(iframe_msg_new_name))
-    man_path = next(p for p in build_dir.iterdir() if p.name.startswith('precache-manifest'))
+    # rename iframes/message/message.html and add to precache-manifest.js
+    (build_dir / iframe_msg_old_path).rename(build_dir / iframe_msg_new_path)
+    man_path = next(build_dir.glob('precache-manifest.*'))
     man_data = json.loads(re.search(r'\[.+\]', man_path.read_text(), flags=re.S).group(0))
-    man_data.append({'revision': iframe_msg_hash, 'url': iframe_msg_new_url})
+    man_data.append({'revision': iframe_msg_hash, 'url': f'/{iframe_msg_new_path}'})
 
     man_path.write_text(f'self.__precacheManifest = {json.dumps(man_data, indent=2)};')
 
 
 if __name__ == '__main__':
     env = {
-        'REACT_APP_IFRAME_MESSAGE': f'/{iframe_msg_path.with_name(iframe_msg_new_name)}',
+        'REACT_APP_IFRAME_MESSAGE': f'/{iframe_msg_new_path}',
         'REACT_APP_DOMAIN': main_domain,
     }
     subprocess.run(['yarn', 'build'], cwd=str(this_dir), env=env, check=True)
