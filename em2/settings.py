@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     patch_paths = ['em2.auth.patches']
 
     domain: str = 'localhost'  # currently used as a proxy for development mode, should probably be changed
+    any_origin: bool = False  # WARNING: this is dangerous, only use when testing
     local_port: Optional[int] = 8000
     commit: str = 'unknown'
     build_time: str = 'unknown'

@@ -12,7 +12,7 @@ export function make_url (app_name, path) {
       throw Error('app_name must be "ui" or "auth"')
     }
 
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.REACT_APP_DOMAIN === 'localhost') {
       return `http://localhost:8000/${app_name}${path}`
     } else {
       return `https://${app_name}.${process.env.REACT_APP_DOMAIN}${path}`

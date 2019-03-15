@@ -37,6 +37,9 @@ def csrf_checks(request):
         # being strict here and requiring Origin to be present, are there any cases where this breaks?
         return 'Origin missing'
 
+    if request.app['settings'].any_origin:
+        return
+
     if view_name in NULL_ORIGIN_VIEWS:
         expected_origin = 'null'
         expected_referrer = None  # iframes without same-origin send no referrer
@@ -58,7 +61,12 @@ def preflight_check(request, acrm):
     if acrm != METH_POST or request.headers.get('Access-Control-Request-Headers').lower() != 'content-type':
         raise JsonErrors.HTTPForbidden('Access-Control checks failed', headers=CROSS_ORIGIN_ANY)
 
-    origin = 'null' if request['view_name'] in NULL_ORIGIN_VIEWS else request.app['expected_origin']
+    if request['view_name'] in NULL_ORIGIN_VIEWS:
+        origin = 'null'
+    elif request.app['settings'].any_origin:
+        origin = request.headers.get('Origin', '*')
+    else:
+        origin = request.app['expected_origin']
 
     if request.headers['origin'] != origin:
         raise JsonErrors.HTTPForbidden('Access-Control checks failed, wrong origin', headers=CROSS_ORIGIN_ANY)
