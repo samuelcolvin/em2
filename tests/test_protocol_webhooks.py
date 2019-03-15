@@ -134,6 +134,8 @@ async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_email):
         'ref': 'message-id@remote.com',
         'node': None,
         'complete': True,
+        'outbound': None,
+        'storage': None,
     }
     action = await db_conn.fetchrow('select id, conv, actor, act from actions where pk=$1', r['action'])
     assert dict(action) == {'id': 1, 'conv': conv_id, 'actor': new_user_id, 'act': 'participant:add'}

@@ -2,10 +2,15 @@
   X-Frame-Options: deny
   Content-Security-Policy: {main_csp}
 
+/static/*
+  Cache-Control: public, max-age=31536000
+
 /iframes/auth/*
   X-Frame-Options: sameorigin
   Content-Security-Policy: {iframe_auth_csp}
+  Cache-Control: public, max-age=31536000
 
 /iframes/message/*
   X-Frame-Options: sameorigin
   Content-Security-Policy: {iframe_msg_csp}
+  Cache-Control: public, max-age=31536000

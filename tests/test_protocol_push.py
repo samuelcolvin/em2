@@ -35,6 +35,8 @@ async def test_publish_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
         'ref': 'testing-msg-key',
         'node': None,
         'complete': None,
+        'outbound': None,
+        'storage': None,
     }
 
 
