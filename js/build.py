@@ -88,7 +88,7 @@ iframe_msg_csp = {
     'font-src': ["'unsafe-inline'"],
     'img-src': ["'unsafe-inline'"],
 }
-details_env = 'REPOSITORY_URL', 'BRANCH', 'PULL_REQUEST', 'HEAD', 'COMMIT_REF', 'CONTEXT', 'REVIEW_ID'
+details_env = 'BRANCH', 'PULL_REQUEST', 'HEAD', 'COMMIT_REF', 'CONTEXT', 'REVIEW_ID'
 
 
 def replace_css(m):

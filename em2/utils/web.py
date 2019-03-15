@@ -42,7 +42,7 @@ def add_access_control(app: web.Application):
             if settings.any_origin:
                 # from chrome: The value of the 'Access-Control-Allow-Origin' header in the response must not be
                 # the wildcard '*' when the request's credentials mode is 'include'.
-                origin = request.headers.get('Origin') or '*'
+                origin = request.headers.get('Origin', '*')
             else:
                 origin = app['expected_origin']
             response.headers.update({'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Credentials': 'true'})
