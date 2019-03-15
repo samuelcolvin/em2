@@ -12,7 +12,7 @@ logger = logging.getLogger('em2.fallback')
 
 class LogFallbackHandler(BaseFallbackHandler):
     async def send_message(self, *, e_from: str, to: Set[str], email_msg: EmailMessage) -> str:
-        logger.info('%s > %s\n%s', e_from, to, indent(email_msg.as_string(), '  '))
+        logger.info('%s > %s\n%s', e_from, ','.join(sorted(to)), indent(email_msg.as_string(), '  '))
         return 'log-fallback-' + secrets.token_hex(20)
 
 

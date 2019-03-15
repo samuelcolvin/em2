@@ -503,4 +503,4 @@ async def test_publish_remote(factory: Factory, redis, db_conn, worker: Worker, 
     assert push_job['result'] == 'retry=0 fallback=1 em2=0'
 
     log = '\n'.join(r.message for r in caplog.records)
-    assert "testing-1@example.com > {'whatever@remote.com'}\n  Subject: Test Subject" in log
+    assert "testing-1@example.com > whatever@remote.com\n  Subject: Test Subject" in log

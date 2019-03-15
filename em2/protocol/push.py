@@ -14,7 +14,7 @@ from atoolbox.json_tools import lenient_json
 from cryptography.fernet import Fernet
 from pydantic import BaseModel, UrlStr
 
-from em2.core import UserTypes
+from em2.core import ActionTypes, UserTypes
 from em2.settings import Settings
 
 logger = logging.getLogger('em2.push')
@@ -80,7 +80,10 @@ class Pusher:
         actions = json.loads(actions_data)['actions']
         if fallback:
             logger.info('%d fallback emails to send', len(fallback))
-            await self.redis.enqueue_job('fallback_send', actions)
+            # "seen" actions don't get sent via SMTP
+            # TODO anything else to skip here?
+            if not all(a['act'] == ActionTypes.seen for a in actions):
+                await self.redis.enqueue_job('fallback_send', actions)
         else:
             logger.info('%d em2 nodes to push action to', len(em2))
             raise NotImplementedError('pushing to other em2 platforms not yet supported')

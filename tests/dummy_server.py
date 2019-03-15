@@ -16,7 +16,8 @@ async def ses_endpoint_url(request):
         if payload:
             d[f'part:{part.get_content_type()}'] = payload.decode().replace('\r\n', '\n')
 
-    request.app['log'][-1] += ' subject="{Subject}" to="{To}"'.format(**email)
+    to_sorted = ','.join(sorted(email['To'].split(',')))
+    request.app['log'][-1] += ' subject="{Subject}" to="{to_sorted}"'.format(to_sorted=to_sorted, **email)
     request.app['smtp'].append(d)
     return Response(text='<MessageId>testing-msg-key</MessageId>')
 
