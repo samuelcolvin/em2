@@ -29,6 +29,12 @@ iframe_msg_old_path = Path('iframes') / 'message' / 'message.html'
 iframe_msg_hash = hashlib.md5((this_dir / 'public' / iframe_msg_old_path).read_bytes()).hexdigest()
 iframe_msg_new_path = iframe_msg_old_path.with_name(f'message.{iframe_msg_hash[:8]}.html')
 
+review_id = os.getenv('REVIEW_ID')
+if review_id and os.getenv('CONTEXT') == 'deploy-preview':
+    origin = f'https://deploy-preview-{review_id}--em2.netlify.com'
+else:
+    origin = f'https://app.{main_domain}'
+
 main_csp = {
     'default-src': [
         "'self'",
@@ -73,7 +79,7 @@ iframe_auth_csp = {
         f'https://auth.{main_domain}',
     ],
     'style-src': [
-        f'https://app.{main_domain}',
+        origin,
     ],
 }
 iframe_msg_csp = {
@@ -117,7 +123,7 @@ def mod():
         path.write_text(
             content
             .replace('http://localhost:8000/auth', f'https://auth.{main_domain}')
-            .replace('http://localhost:3000', f'https://app.{main_domain}')
+            .replace('http://localhost:3000', origin)
         )
 
     main_csp['script-src'].append(get_script(build_dir / 'index.html'))
