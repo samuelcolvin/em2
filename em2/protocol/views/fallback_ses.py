@@ -49,12 +49,15 @@ async def ses_webhook(request):
             assert r.status == 200, r.status
     else:
         assert sns_type == 'Notification', sns_type
-        message = json.loads(data['Message'])
-        del data
-        if message.get('notificationType') == 'Received':
-            await asyncio.shield(_record_email_message(request, message))
-        else:
-            await asyncio.shield(_record_email_event(request, message))
+        raw_msg = data['Message']
+        # TODO any other messages to ignore?
+        if raw_msg != 'Successfully validated SNS topic for Amazon SES event publishing.':
+            message = json.loads(raw_msg)
+            del data
+            if message.get('notificationType') == 'Received':
+                await asyncio.shield(_record_email_message(request, message))
+            else:
+                await asyncio.shield(_record_email_event(request, message))
     return Response(status=204)
 
 
@@ -71,7 +74,7 @@ async def _record_email_message(request, message: Dict):
     message_id = headers['Message-ID'].strip('<> ')
     common_headers = message['mail']['commonHeaders']
     to, cc = common_headers.get('to', []), common_headers.get('cc', [])
-    # make sure we don't process unnecessary messages, could also delete from S3
+    # make sure we don't process unnecessary messages, should also delete from S3
     await get_email_recipients(to, cc, message_id, request['conn'])
 
     s3_action = message['receipt']['action']
@@ -86,7 +89,7 @@ async def _record_email_message(request, message: Dict):
         async with r['Body'] as stream:
             body = await stream.read()
 
-    del r
+    del r, s3
     msg = email.message_from_string(body.decode())
     del body
     await ProcessSMTP(request['conn'], request.app['redis'], settings).run(msg)
@@ -107,7 +110,7 @@ async def _record_email_event(request, message: Dict):
         msg_id,
     )
     if not r:
-        return
+        raise JsonErrors.HTTPNotFound(f'message "{msg_id}" not found')
     send_id, send_complete, conv_id = r
 
     event_type = message.get('eventType')
@@ -119,7 +122,9 @@ async def _record_email_event(request, message: Dict):
     if event_type == 'Send':
         data = message['mail']
     elif event_type == 'Delivery':
-        extra['processingTimeMillis'] = data.get('processingTimeMillis')
+        pass
+        # processingTimeMillis not required as it's exactly equal to Delivery time - send time
+        # extra['processingTimeMillis'] = data.get('processingTimeMillis')
     elif event_type == 'Open':
         # can't use this to mark seen=True since we don't know who opened the email
         extra.update(ipAddress=data.get('ipAddress'), userAgent=data.get('userAgent'))

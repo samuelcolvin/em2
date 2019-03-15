@@ -125,13 +125,15 @@ create trigger action_insert before insert on actions for each row execute proce
 create table sends (
   id bigserial primary key,
   action bigint references actions not null,
-  ref varchar(100),
+  outbound boolean,
   node varchar(255),  -- null for fallback
+  ref varchar(100),
   complete boolean,
+  storage varchar(100),
   unique (action, node),
   unique (action, ref)
 );
-create index sends_ref ON sends USING btree (node, ref);
+create index sends_ref ON sends USING btree (outbound, node, ref);
 
 create table send_events (
   id bigserial primary key,

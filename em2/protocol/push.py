@@ -141,11 +141,12 @@ class Pusher:
         null = '-'
         if ans:
             return None if ans == null else ans
+
         try:
             with timeout(5):
                 v = await self.resolver.query(domain, 'CNAME')
         except (aiodns.error.DNSError, ValueError, asyncio.TimeoutError) as e:
-            logger.info('cname query error on %s, %s %s', domain, e.__class__.__name__, e)
+            logger.debug('cname query error on %s, %s %s', domain, e.__class__.__name__, e)
             await self.redis.setex(domain_key, 3600, null)
         else:
             await self.redis.setex(domain_key, 3600, v.cname)

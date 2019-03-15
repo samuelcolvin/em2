@@ -22,6 +22,7 @@ async def test_publish_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
             'EM2-ID': f'{conv.key}-4',
             'MIME-Version': '1.0',
             'Content-Type': RegexStr('multipart/alternative.*'),
+            'X-SES-CONFIGURATION-SET': 'em2',
             'part:text/plain': 'Test Message\n',
             'part:text/html': '<p>Test Message</p>\n',
         }
@@ -31,7 +32,7 @@ async def test_publish_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
     assert send == {
         'id': AnyInt(),
         'action': await db_conn.fetchval('select pk from actions where id=4'),
-        'ref': 'testing-msg-key@us-east-1.amazonses.com',
+        'ref': 'testing-msg-key',
         'node': None,
         'complete': None,
     }

@@ -90,9 +90,9 @@ class BaseFallbackHandler:
         e_msg['EM2-ID'] = f'{conv_key}-{last_action_id}'
 
         if in_reply_to:
-            e_msg['In-Reply-To'] = f'<{in_reply_to}>'
+            e_msg['In-Reply-To'] = self.build_message_id(in_reply_to)
         if references:
-            e_msg['References'] = ' '.join(f'<{msg_id}>' for msg_id in references)
+            e_msg['References'] = ' '.join(self.build_message_id(msg_id) for msg_id in references)
 
         body, msg_format = ctx['body'], ctx['msg_format']
         e_msg.set_content(body)
@@ -146,3 +146,8 @@ class BaseFallbackHandler:
             msg_format=MsgFormat.markdown,
             body=safe_markdown(f'The following people have been added to the conversation: {new_participants}'),
         )
+
+    def build_message_id(self, msg_id: str) -> str:
+        if '@' not in msg_id:
+            msg_id = msg_id + '@' + self.settings.smtp_message_id_domain
+        return f'<{msg_id}>'

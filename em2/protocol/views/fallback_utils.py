@@ -1,6 +1,7 @@
 import email
 import logging
 import quopri
+import re
 from datetime import datetime
 from email.message import EmailMessage
 from typing import List, Tuple
@@ -151,13 +152,13 @@ class ProcessSMTP:
                 order by a.id desc
                 limit 1
                 """,
-                in_reply_to.strip('<>\r\n'),
+                self.clean_msg_id(in_reply_to),
             )
 
         references = msg['References']
         if not conv_actor and references:
             # try references instead to try and get conv_id
-            ref_msg_ids = {msg_id.strip('<>\r\n') for msg_id in references.split(' ') if msg_id}
+            ref_msg_ids = {self.clean_msg_id(msg_id) for msg_id in references.split(' ') if msg_id}
             if ref_msg_ids:
                 conv_actor = await self.conn.fetchrow(
                     """
@@ -171,6 +172,12 @@ class ProcessSMTP:
                 )
 
         return conv_actor or (None, None)
+
+    def clean_msg_id(self, msg_id):
+        msg_id = msg_id.strip('<>\r\n')
+        if msg_id.endswith(self.settings.smtp_message_id_domain):
+            msg_id = msg_id.split('@', 1)[0]
+        return msg_id
 
 
 def get_email_body(msg: EmailMessage):
@@ -189,7 +196,8 @@ def get_email_body(msg: EmailMessage):
     return body, False
 
 
-to_remove = 'div.gmail_quote', 'div.gmail_extra', 'div.gmail_signature'
+to_remove = 'div.gmail_quote', 'div.gmail_extra'  # 'div.gmail_signature'
+html_regexes = [[re.compile('<br/></div><br/>$', re.M), ''], [re.compile('<br/>$', re.M), '']]
 
 
 def get_smtp_body(msg: EmailMessage, message_id):
@@ -208,6 +216,8 @@ def get_smtp_body(msg: EmailMessage, message_id):
 
         # body = soup.prettify()
         body = str(soup)
+        for regex, rep in html_regexes:
+            body = regex.sub(rep, body)
     return body.strip('\n'), is_html
 
 

@@ -98,6 +98,8 @@ class SesFallbackHandler(BaseFallbackHandler):
         return {'Content-Type': _CONTENT_TYPE, 'X-Amz-Date': x_amz_date, 'Authorization': authorization_header}
 
     async def send_message(self, *, e_from: str, to: Set[str], email_msg: EmailMessage):
+        if self.settings.ses_configuration_set:
+            email_msg['X-SES-CONFIGURATION-SET'] = self.settings.ses_configuration_set
         data = {
             'Action': 'SendRawEmail',
             'Source': e_from,
@@ -115,5 +117,4 @@ class SesFallbackHandler(BaseFallbackHandler):
             text = await r.text()
         if r.status != 200:
             raise RequestError(r.status, self._endpoint, text=text)
-        msg_id = re.search('<MessageId>(.+?)</MessageId>', text).groups()[0]
-        return msg_id + f'@{self.settings.aws_region}.amazonses.com'
+        return re.search('<MessageId>(.+?)</MessageId>', text).group(1)

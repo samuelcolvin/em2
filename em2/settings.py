@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     # set here so they can be overridden during tests
     ses_host = 'email.{region}.amazonaws.com'
     ses_endpoint_url = 'https://{host}/'
+    ses_configuration_set = 'em2'
+    smtp_message_id_domain = 'email.amazonses.com'
     s3_endpoint_url: str = None  # only used when testing
     # generate randomly to avoid leaking secrets:
     ses_url_token: str = token_urlsafe()
