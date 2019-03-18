@@ -100,8 +100,7 @@ async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_email):
     assert 0 == await db_conn.fetchval('select count(*) from actions')
     assert 1 == await db_conn.fetchval('select count(*) from users')
 
-    data = create_email()
-    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=create_email())
     assert r.status == 204, await r.text()
 
     assert 1 == await db_conn.fetchval('select count(*) from sends')
@@ -134,8 +133,8 @@ async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_email):
         'ref': 'message-id@remote.com',
         'node': None,
         'complete': True,
-        'outbound': None,
-        'storage': None,
+        'outbound': False,
+        'storage': 's3://em2-testing/foobar',
     }
     action = await db_conn.fetchrow('select id, conv, actor, act from actions where pk=$1', r['action'])
     assert dict(action) == {'id': 1, 'conv': conv_id, 'actor': new_user_id, 'act': 'participant:add'}
@@ -174,8 +173,7 @@ async def test_ses_reply_different_email(factory: Factory, db_conn, cli, url, cr
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
     kwargs = {'e_from': 'different@remote.com', 'html_body': 'This is a <u>reply</u>.', 'In-Reply-To': message_id}
-    data = create_email(**kwargs)
-    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=create_email(**kwargs))
     assert r.status == 204, await r.text()
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 

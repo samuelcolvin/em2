@@ -125,10 +125,10 @@ create trigger action_insert before insert on actions for each row execute proce
 create table sends (
   id bigserial primary key,
   action bigint references actions not null,
-  outbound boolean,
+  outbound boolean not null default false,
   node varchar(255),  -- null for fallback
   ref varchar(100),
-  complete boolean,
+  complete boolean not null default false,
   storage varchar(100),
   unique (action, node),
   unique (action, ref)

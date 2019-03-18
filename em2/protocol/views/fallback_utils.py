@@ -4,7 +4,7 @@ import quopri
 import re
 from datetime import datetime
 from email.message import EmailMessage
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from aiohttp.web_exceptions import HTTPBadRequest
 from arq import ArqRedis
@@ -58,7 +58,7 @@ class ProcessSMTP:
         self.redis = redis
         self.settings = settings
 
-    async def run(self, msg: EmailMessage):
+    async def run(self, msg: EmailMessage, storage: Optional[str]):
         # TODO deal with non multipart
         if msg['EM2-ID']:
             # this is an em2 message and should be received via the proper route too
@@ -106,10 +106,11 @@ class ProcessSMTP:
                 )
                 await self.conn.execute(
                     """
-                    insert into sends (action, ref, complete)
-                    (select pk, $1, true from actions where conv=$2 and id=$3)
+                    insert into sends (action, ref, complete, storage)
+                    (select pk, $1, true, $2 from actions where conv=$3 and id=$4)
                     """,
                     message_id,
+                    storage,
                     conv_id,
                     action_ids[0],
                 )
@@ -127,10 +128,11 @@ class ProcessSMTP:
                 )
                 await self.conn.execute(
                     """
-                    insert into sends (action, ref, complete)
-                    (select pk, $1, true from actions where conv=$2 order by id limit 1)
+                    insert into sends (action, ref, complete, storage)
+                    (select pk, $1, true, $2 from actions where conv=$3 order by id limit 1)
                     """,
                     message_id,
+                    storage,
                     conv_id,
                 )
                 await push_all(self.conn, self.redis, conv_id, transmit=False)

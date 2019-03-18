@@ -82,7 +82,6 @@ async def _record_email_message(request, message: Dict):
     if prefix:
         path = f'{prefix}/{path}'
 
-    # TODO we need to store the bucket and key in the db for future access
     settings: Settings = request.app['settings']
     async with create_s3_session(settings) as s3:
         r = await s3.get_object(Bucket=bucket, Key=path)
@@ -92,7 +91,7 @@ async def _record_email_message(request, message: Dict):
     del r, s3
     msg = email.message_from_string(body.decode())
     del body
-    await ProcessSMTP(request['conn'], request.app['redis'], settings).run(msg)
+    await ProcessSMTP(request['conn'], request.app['redis'], settings).run(msg, f's3://{bucket}/{path}')
 
 
 async def _record_email_event(request, message: Dict):
@@ -105,7 +104,7 @@ async def _record_email_event(request, message: Dict):
         """
         select s.id, s.complete, a.conv from sends s
         join actions a on s.action = a.pk
-        where s.node is null and s.ref=$1
+        where s.outbound is true and s.node is null and s.ref=$1
         """,
         msg_id,
     )

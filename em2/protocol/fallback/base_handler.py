@@ -106,8 +106,8 @@ class BaseFallbackHandler:
         logger.info('message sent conv %.6s, smtp message id %0.12s...', conv_key, msg_id)
         await self.pg.fetchval(
             """
-            insert into sends (action, ref)
-            (select pk, $1 from actions where conv=$2 and id=$3)
+            insert into sends (action, ref, outbound)
+            (select pk, $1, true from actions where conv=$2 and id=$3)
             """,
             msg_id,
             conv_id,
