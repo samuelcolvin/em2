@@ -514,6 +514,8 @@ async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_ref: Str
         await or404(conn.fetchval('select 1 from actions where conv=$1 and id=$2', conv_id, since_id))
         where_logic &= V('a.id') > since_id
 
+    where_logic &= V('a.act') != ActionTypes.seen
+
     return await or404(
         conn.fetchval_b(
             """

@@ -347,9 +347,9 @@ async def test_object_children(factory: Factory, db_conn):
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.msg_add, body='child2', parent=5))
 
     assert [7] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.msg_lock, follows=5))
-    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.msg_modify, follows=7, body='mod1'))
+    assert [8] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.msg_modify, follows=7, body='mod1'))
 
-    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.msg_delete, follows=2))
+    assert [9] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.msg_delete, follows=2))
 
     obj = await construct_conv(db_conn, user.id, conv.id)
     assert obj == {
@@ -504,3 +504,21 @@ async def test_publish_remote(factory: Factory, redis, db_conn, worker: Worker, 
 
     log = '\n'.join(r.message for r in caplog.records)
     assert "testing-1@example.com > whatever@remote.com\n  Subject: Test Subject" in log
+
+
+async def test_publish_seen(factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+    assert 3 == await db_conn.fetchval('select count(*) from actions')
+
+    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.seen))
+    assert 4 == await db_conn.fetchval('select count(*) from actions')
+
+    obj = await construct_conv(db_conn, user.id, conv.id)
+
+    assert obj == {
+        'subject': 'Test Subject',
+        'created': CloseToNow(),
+        'messages': [{'ref': 2, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True}],
+        'participants': {'testing-1@example.com': {'id': 1}},
+    }
