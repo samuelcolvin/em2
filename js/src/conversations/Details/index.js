@@ -73,8 +73,6 @@ class ConvDetailsView extends React.Component {
         this.add_comment()
       } else if (this.state.extra_prts) {
         this.add_participants()
-      } else {
-        console.warn('unknown Ctrl + Enter event', e)
       }
     }
   }
@@ -88,7 +86,7 @@ class ConvDetailsView extends React.Component {
       const conv = await this.props.ctx.worker.call('get-conversation', this.props.match.params)
       this.props.ctx.setTitle(conv.subject)
       this.setState({conv})
-      if (this.action_ids && this.state.locked && this.action_ids.filter(id => this.state.conv.action_ids.has(id))) {
+      if (this.action_ids && this.state.locked && this.action_ids.filter(id => conv.action_ids.has(id))) {
         this.action_ids = null
         this.setState({locked: false})
       }
