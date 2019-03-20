@@ -9,22 +9,25 @@ import {
   Nav,
   NavItem,
   NavLink,
+  Tooltip,
 } from 'reactstrap'
 import {statuses} from '../lib'
 
-const StatusBar = ({title, message, conn_status, user}) => {
+const StatusBar = ({title, message, conn_status, user, show_tooltip, toggle_tooltip}) => {
   const class_name = ['extra-menu', 'fixed-top']
-  // TODO replace connection_status_text with a symbol, eg. circle of different colour
-  let connection_status_text
+  let connection_status_text, connection_status_icon
   if (!conn_status || conn_status === statuses.connecting) {
     // no connection status yet
     connection_status_text = 'connecting...'
-    class_name.push('offline')
+    connection_status_icon = 'spinner'
+    class_name.push('connecting')
   } else if (conn_status === statuses.offline) {
     class_name.push('offline')
     connection_status_text = 'offline'
+    connection_status_icon = 'times'
   } else {
     connection_status_text = 'online'
+    connection_status_icon = 'circle'
   }
   return (
     <div className={class_name.join(' ')}>
@@ -39,7 +42,14 @@ const StatusBar = ({title, message, conn_status, user}) => {
           )}
         </span>
         <span>
-          {connection_status_text}
+          <FontAwesomeIcon id="status-icon" icon={connection_status_icon}/>
+          <Tooltip placement="top" isOpen={show_tooltip}
+                   trigger="hover"
+                   target="status-icon"
+                   delay={0}
+                   toggle={toggle_tooltip}>
+            {connection_status_text}
+          </Tooltip>
           {user && <span className="ml-2">{user.name}</span>}
         </span>
       </div>
@@ -50,14 +60,12 @@ const StatusBar = ({title, message, conn_status, user}) => {
 export default class Navbar extends React.Component {
   constructor (props) {
     super(props)
-
-    this.close = this.close.bind(this)
     this.state = {is_open: false}
   }
 
-  close () {
-    this.state.is_open && this.setState({is_open: false})
-  }
+  close = () => this.state.is_open && this.setState({is_open: false})
+
+  toggle_tooltip = () => this.setState(s => ({show_tooltip: !s.show_tooltip}))
 
   render () {
     return [
@@ -85,7 +93,12 @@ export default class Navbar extends React.Component {
           </Collapse>
         </div>
       </NavbarBootstrap>,
-      <StatusBar key="2" {...this.props.app_state}/>,
+      <StatusBar
+        key="2"
+        {...this.props.app_state}
+        show_tooltip={this.state.show_tooltip}
+        toggle_tooltip={this.toggle_tooltip}
+      />,
     ]
   }
 }

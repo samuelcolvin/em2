@@ -23,7 +23,7 @@ class Notify extends React.Component {
     } else {
       const n = new Notification(msg.title, {
         body: msg.body,
-        icon: '/images/notification.png'
+        icon: '/images/notification.png',
       })
       n.onclick = () => {
         n.close()

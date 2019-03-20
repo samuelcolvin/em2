@@ -44,7 +44,7 @@ class FormButtons extends React.Component {
     document.addEventListener('keydown', this.on_keydown)
   }
 
-  componentWillUnmount(){
+  componentWillUnmount (){
     document.removeEventListener('keydown', this.on_keydown)
   }
 

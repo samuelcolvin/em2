@@ -21,7 +21,7 @@ const CommentButton = ({msg, state, setState, comment_ref, children}) => {
                trigger="hover"
                target={btn_id}
                delay={0}
-               toggle={() => setState({[btn_id]: !state[btn_id]})}>
+               toggle={() => setState(s => ({[btn_id]: !s[btn_id]}))}>
         {children}
       </Tooltip>
     </div>

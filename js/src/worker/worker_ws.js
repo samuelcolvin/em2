@@ -152,7 +152,7 @@ async function apply_actions (data, session_email) {
     window_call('notify', {
       title: action.actor,
       body: notify_details.sub,
-      link: `/${action.conv.substr(0, 10)}/`
+      link: `/${action.conv.substr(0, 10)}/`,
     })
   }
 }

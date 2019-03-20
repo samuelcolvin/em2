@@ -67,11 +67,35 @@ $stripe-width: 10px;
     filter: brightness(70%);
   }
   &.offline {
-    filter: grayscale(100%) brightness(120%);
+    filter: brightness(85%);
+  }
+  &.connecting {
+    filter: brightness(95%);
   }
   .message {
     position: relative;
     animation: hide_msg 8s;
+  }
+}
+
+@keyframes spin {
+    from {transform:rotate(0deg);}
+    to {transform:rotate(360deg);}
+}
+
+#status-icon {
+  transition: all 500ms ease;
+  &.fa-spinner {
+    font-size: 0.8rem;
+    animation: spin 2000ms infinite linear;
+  }
+  &.fa-circle {
+    color: lightgreen;
+    font-size: 0.8rem;
+  }
+  &.fa-times {
+    color: red;
+    padding-right: 2px;
   }
 }
 
