@@ -108,6 +108,7 @@ async function apply_actions (data, session_email) {
 
   const other_actor = Boolean(actions.find(a => a.actor !== session_email))
   const real_act = Boolean(actions.find(a => !meta_action_types.has(a.act)))
+  let notify_details = null
   if (conv) {
     const update = {
       last_action_id: action.id,
@@ -121,8 +122,7 @@ async function apply_actions (data, session_email) {
     }
     if (other_actor && real_act) {
       update.seen = false
-      // TODO better summary of action
-      window_call('notify', {title: action.actor, body: conv.details.sub})
+      notify_details = conv.details
     }
     await db.conversations.update(action.conv, update)
   } else {
@@ -137,7 +137,7 @@ async function apply_actions (data, session_email) {
       seen: !unseen,
     })
     if (unseen) {
-      window_call('notify', {title: action.actor, body: data.conv_details.sub})
+      notify_details = data.conv_details
     }
     const old_conv = await db.conversations.get({new_key: action.conv})
     if (old_conv) {
@@ -146,5 +146,13 @@ async function apply_actions (data, session_email) {
     }
   }
   window_call('change', {conv: action.conv})
-}
 
+  if (notify_details) {
+    // TODO better summary of action
+    window_call('notify', {
+      title: action.actor,
+      body: notify_details.sub,
+      link: `/${action.conv.substr(0, 10)}/`
+    })
+  }
+}

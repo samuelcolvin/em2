@@ -2,14 +2,14 @@ import React from 'react'
 import {withRouter} from 'react-router-dom'
 import WithContext from '../lib/context'
 
+const now = () => new Date()
+
 class Notify extends React.Component {
   last_event = new Date()
 
   on_event = () => {
-    this.last_event = new Date()
+    this.last_event = now()
   }
-
-  since_event = () => (new Date()) - this.last_event
 
   componentDidMount () {
     this.props.ctx.worker.add_listener('notify', this.notify)
@@ -17,13 +17,8 @@ class Notify extends React.Component {
     document.addEventListener('mousemove', this.on_event)
   }
 
-  componentWillUnmount() {
-    document.removeEventListener('keydown', this.on_event)
-    document.removeEventListener('mousemove', this.on_event)
-  }
-
   show_notification = msg => {
-    if (!document.hidden && this.since_event() < 5000) {
+    if (!document.hidden && now() - this.last_event < 5000) {
       this.props.ctx.setMessage(`${msg.title}: ${msg.body}`)
     } else {
       const n = new Notification(msg.title, {
@@ -31,9 +26,9 @@ class Notify extends React.Component {
         icon: '/images/notification.png'
       })
       n.onclick = () => {
-        // TODO go to the conversation
-        window.focus()
         n.close()
+        window.focus()
+        this.props.history.push(msg.link)
       }
     }
   }

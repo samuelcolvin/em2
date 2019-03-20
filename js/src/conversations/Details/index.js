@@ -39,6 +39,7 @@ class ConvDetailsView extends React.Component {
     if (this.mounted) {
       await this.props.ctx.worker.call('seen', {conv: this.state.conv.key})
     }
+    document.addEventListener('keydown', this.on_keydown)
   }
 
   componentDidUpdate (prevProps, prevState, snapshot) {
@@ -57,10 +58,25 @@ class ConvDetailsView extends React.Component {
   componentWillUnmount () {
     this.mounted = false
     this.remove_listener()
+    document.removeEventListener('keydown', this.on_keydown)
   }
 
   setState (state, callback) {
     this.mounted && super.setState(state, callback)
+  }
+
+  on_keydown = e => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      if (this.state.new_message) {
+        this.add_msg()
+      } else if (this.state.comment) {
+        this.add_comment()
+      } else if (this.state.extra_prts) {
+        this.add_participants()
+      } else {
+        console.warn('unknown Ctrl + Enter event', e)
+      }
+    }
   }
 
   update = async data => {

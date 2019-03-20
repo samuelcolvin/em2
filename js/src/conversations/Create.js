@@ -28,31 +28,50 @@ const RenderFields = ({fields, RenderField}) => (
   </Row>
 )
 
-const FormButtons = ({state, form_props, setField, submit}) => {
-  const submit_ = async publish => {
-    await setField('publish', publish)
-    submit()
+class FormButtons extends React.Component {
+  submit = async publish => {
+    await this.props.setField('publish', publish)
+    this.props.submit()
   }
-  return (
-    <Row>
-      <Col md="8" className="text-right">
-        <ButtonGroup className="flex-row-reverse">
 
-          <Button color="primary" disabled={state.disabled} onClick={() => submit_(true)}>
-            Send
-          </Button>
+  on_keydown = e => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      this.submit(false)
+    }
+  }
 
-          <Button color="primary" disabled={state.disabled} onClick={() => submit_(false)}>
-            Save Draft
-          </Button>
+  componentDidMount () {
+    document.addEventListener('keydown', this.on_keydown)
+  }
 
-          <Button type="button" color="secondary" disabled={state.disabled} onClick={form_props.cancel}>
-            Cancel
-          </Button>
-        </ButtonGroup>
-      </Col>
-    </Row>
-  )
+  componentWillUnmount(){
+    document.removeEventListener('keydown', this.on_keydown)
+  }
+
+  render () {
+    return (
+      <Row>
+        <Col md="8" className="text-right">
+          <ButtonGroup className="flex-row-reverse">
+
+            <Button color="primary" disabled={this.props.state.disabled} onClick={() => this.submit(true)}>
+              Send
+            </Button>
+
+            <Button color="primary" disabled={this.props.state.disabled} onClick={() => this.submit(false)}>
+              Save Draft
+            </Button>
+
+            <Button type="button" color="secondary"
+                    disabled={this.props.state.disabled}
+                    onClick={this.props.form_props.cancel}>
+              Cancel
+            </Button>
+          </ButtonGroup>
+        </Col>
+      </Row>
+    )
+  }
 }
 
 
