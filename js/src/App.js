@@ -10,6 +10,7 @@ import {GlobalContext} from './lib/context'
 import {Error, NotFound} from './lib/Errors'
 import Worker from './run_worker'
 import Navbar from './common/Navbar'
+import Notify from './common/Notify'
 import Login from './auth/Login'
 import ListConversations from './conversations/List'
 import ConversationDetails from './conversations/Details'
@@ -117,6 +118,7 @@ class App extends Component {
         <main className="container">
           <Main app_state={this.state}/>
         </main>
+        <Notify/>
       </GlobalContext.Provider>
     )
   }

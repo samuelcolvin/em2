@@ -29,8 +29,8 @@ const RenderFields = ({fields, RenderField}) => (
 )
 
 const FormButtons = ({state, form_props, setField, submit}) => {
-  const submit_ = publish => {
-    setField('publish', publish)
+  const submit_ = async publish => {
+    await setField('publish', publish)
     submit()
   }
   return (

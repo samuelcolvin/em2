@@ -98,7 +98,9 @@ class _Form extends React.Component {
 
   setField = (name, value) => {
     const form_data = Object.assign({}, this.props.form_data, {[name]: value})
-    this.props.onChange && this.props.onChange(form_data)
+    if (this.props.onChange) {
+      return this.props.onChange(form_data)
+    }
   }
 
   render_field = ({field}) => {
@@ -141,10 +143,16 @@ export class StandaloneForm extends React.Component {
     this.state = {form_data: {}}
   }
 
+  setFormData = form_data => {
+    return new Promise(resolve => {
+      this.setState({form_data}, resolve)
+    })
+  }
+
   render () {
     return <Form {...this.props}
                  form_data={this.state.form_data}
-                 onChange={form_data => this.setState({form_data})}/>
+                 onChange={this.setFormData}/>
   }
 }
 export const ModalForm = AsModal(StandaloneForm)

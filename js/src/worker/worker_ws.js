@@ -50,6 +50,7 @@ export default class Websocket {
       setTimeout(() => {
         if (this._state === online) {
           this._disconnects = 0
+          window_call('notify', 'request')
         }
       }, 500)
     }
@@ -120,9 +121,12 @@ async function apply_actions (data, session_email) {
     }
     if (other_actor && real_act) {
       update.seen = false
+      // TODO better summary of action
+      window_call('notify', {title: action.actor, body: conv.details.sub})
     }
     await db.conversations.update(action.conv, update)
   } else {
+    const unseen = other_actor && real_act
     await db.conversations.add({
       key: action.conv,
       created_ts: actions[0].ts,
@@ -130,8 +134,11 @@ async function apply_actions (data, session_email) {
       publish_ts: publish_action ? publish_action.ts : null,
       last_action_id: action.id,
       details: data.conv_details,
-      seen: !(other_actor && real_act),
+      seen: !unseen,
     })
+    if (unseen) {
+      window_call('notify', {title: action.actor, body: data.conv_details.sub})
+    }
     const old_conv = await db.conversations.get({new_key: action.conv})
     if (old_conv) {
       await db.conversations.delete(old_conv.key)

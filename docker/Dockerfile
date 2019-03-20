@@ -28,16 +28,16 @@ COPY --from=build /usr/local/bin/atoolbox /usr/local/bin/
 COPY --from=build /usr/lib/* /usr/lib/
 COPY --from=build /usr/local/lib/python3.7/site-packages /usr/local/lib/python3.7/site-packages
 
-ENV PYTHONUNBUFFERED=1 \
-    APP_ON_DOCKER=1 \
-    ATOOLBOX_SETTINGS=em2.settings.Settings
 WORKDIR /home/root/
 
 # could exclude some files, but would it actually save any space in the image?
 ADD ./ /home/root/em2/
 ARG COMMIT
 ARG BUILD_TIME
-ENV EM2_COMMIT=$COMMIT \
+ENV PYTHONUNBUFFERED=1 \
+    ON_DOCKER=1 \
+    ATOOLBOX_SETTINGS=em2.settings.Settings \
+    EM2_COMMIT=$COMMIT \
     EM2_BUILD_TIME=$BUILD_TIME
 
 CMD ["atoolbox", "auto"]
