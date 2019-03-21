@@ -37,16 +37,17 @@ async def ses_webhook(request):
     except ValueError:
         raise JsonErrors.HTTPBadRequest('invalid json')
 
-    await verify_sns(request, data)
-
     # avoid keeping multiple copies of the request data in memory
     request._read_byte = None
+
+    await verify_sns(request.app, data)
+
     sns_type = data['Type']
     if sns_type == 'SubscriptionConfirmation':
         logger.info('confirming aws Subscription')
         # TODO check we actually want this subscription
-        async with request.app['http_client'].head(data['SubscribeURL']) as r:
-            assert r.status == 200, r.status
+        async with request.app['http_client'].head(data['SubscribeURL'], raise_for_status=True):
+            pass
     else:
         assert sns_type == 'Notification', sns_type
         raw_msg = data['Message']
@@ -65,14 +66,19 @@ async def _record_email_message(request, message: Dict):
     """
     Record the email, check email should be processed before downloading from s3.
     """
+    mail = message['mail']
+    if mail.get('messageId') == 'AMAZON_SES_SETUP_NOTIFICATION':
+        logger.info('SES setup notification, ignoring')
+        return
+
     # TODO check X-SES-Spam-Verdict, X-SES-Virus-Verdict from message['receipt']
-    headers = {h['name']: h['value'] for h in message['mail']['headers']}
+    headers = {h['name']: h['value'] for h in mail['headers']}
     if headers.get('EM2-ID'):
         # this is an em2 message and should be received via the proper route too
         return
 
     message_id = headers['Message-ID'].strip('<> ')
-    common_headers = message['mail']['commonHeaders']
+    common_headers = mail['commonHeaders']
     to, cc = common_headers.get('to', []), common_headers.get('cc', [])
     # make sure we don't process unnecessary messages, should also delete from S3
     await get_email_recipients(to, cc, message_id, request['conn'])
@@ -190,7 +196,7 @@ async def _record_email_event(request, message: Dict):
     return event_type
 
 
-async def verify_sns(request, data: Dict):
+async def verify_sns(app, data: Dict):
     msg_type = data.get('Type')
     if msg_type == 'Notification':
         fields = 'Message', 'MessageId', 'Subject', 'Timestamp', 'TopicArn', 'Type'
@@ -208,16 +214,16 @@ async def verify_sns(request, data: Dict):
 
     cache_key = 'sns-signing-url:' + hashlib.md5(sign_url.encode()).hexdigest()
     sign_url = URL(sign_url)
-    settings: Settings = request.app['settings']
+    settings: Settings = app['settings']
     if sign_url.scheme != settings.aws_sns_signing_schema or not sign_url.host.endswith(settings.aws_sns_signing_host):
         logger.warning('invalid signing url "%s"', sign_url)
         raise JsonErrors.HTTPForbidden('invalid signing cert url')
 
-    pem_data = await request.app['redis'].get(cache_key, encoding=None)
+    pem_data = await app['redis'].get(cache_key, encoding=None)
     if not pem_data:
-        async with request.app['http_client'].get(sign_url, raise_for_status=True) as r:
+        async with app['http_client'].get(sign_url, raise_for_status=True) as r:
             pem_data = await r.read()
-        await request.app['redis'].setex(cache_key, 86400, pem_data)
+        await app['redis'].setex(cache_key, 86400, pem_data)
 
     cert = x509.load_pem_x509_certificate(pem_data, default_backend())
     pubkey: rsa.RSAPublicKey = cert.public_key()
