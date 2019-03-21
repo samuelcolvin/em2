@@ -27,7 +27,8 @@ async def test_logout(cli, url, db_conn, factory: Factory):
     session_id = await db_conn.fetchval('select id from auth_sessions')
 
     h = {'Authentication': 'testing' * 6}
-    r = await cli.post(url('auth:logout'), json={'session_id': session_id, 'event': '{"foo": 4}'}, headers=h)
+    data = {'session_id': session_id, 'ip': '123.456.789.123', 'user_agent': 'whatever'}
+    r = await cli.post(url('auth:logout'), json=data, headers=h)
     assert r.status == 200, await r.text()
 
     active, events = await db_conn.fetchrow('select active, events from auth_sessions')
@@ -35,7 +36,7 @@ async def test_logout(cli, url, db_conn, factory: Factory):
     events = [json.loads(e) for e in events]
     assert events == [
         {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': 'Python/3.7 aiohttp/3.5.4', 'ac': 'login-pw'},
-        {'foo': 4},
+        {'ip': '123.456.789.123', 'ts': AnyInt(), 'ua': 'whatever', 'ac': 'logout'},
     ]
 
 

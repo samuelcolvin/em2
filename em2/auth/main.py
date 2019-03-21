@@ -7,7 +7,7 @@ from em2.utils.middleware import csrf_middleware
 from em2.utils.web import add_access_control, build_index
 
 from .utils import mk_password
-from .views.main import Login, Logout, check_address
+from .views.main import Login, Logout, UpdateSession, check_address
 
 
 async def create_app_auth(settings=None):
@@ -15,6 +15,7 @@ async def create_app_auth(settings=None):
     routes = [
         web.route('*', '/login/', Login.view(), name='login'),
         web.post('/logout/', Logout.view(), name='logout'),
+        web.post('/update-session/', UpdateSession.view(), name='update-session'),
         web.get('/check/', check_address, name='check-address'),
     ]
     middleware = (csrf_middleware, pg_middleware)

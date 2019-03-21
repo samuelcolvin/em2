@@ -1,13 +1,10 @@
-import json
 import secrets
-from time import time
-from typing import Tuple
 
 from aiohttp import web
 from aiohttp.abc import Application
 from aiohttp.web_exceptions import HTTPForbidden
 from aiohttp.web_fileresponse import FileResponse
-from atoolbox.utils import get_ip, slugify
+from atoolbox.utils import slugify
 
 from em2.settings import SRC_DIR, Settings
 
@@ -100,20 +97,6 @@ def full_url(settings: Settings, app: str, path: str):
         root = f'https://{app}.{settings.domain}'
 
     return root + path
-
-
-def session_event(request, action_type) -> Tuple[str, int]:
-    ts = int(time())
-    event = json.dumps(
-        {
-            'ip': get_ip(request),
-            'ts': ts,
-            'ua': request.headers.get('User-Agent'),
-            'ac': action_type,
-            # TODO include info about which session this is when multiple sessions are active
-        }
-    )
-    return event, ts
 
 
 def internal_request_check(request):

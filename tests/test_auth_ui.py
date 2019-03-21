@@ -51,3 +51,45 @@ async def test_logout(cli, url, db_conn, factory: Factory):
         {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'login-pw'},
         {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'logout'},
     ]
+
+
+async def test_renew_session(cli, url, db_conn, settings, factory: Factory):
+    await factory.create_user(login=True)
+
+    for i in range(3):
+        r = await cli.get(url('ui:list'))
+        assert r.status == 200, await r.text()
+
+    assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
+    events = await db_conn.fetchval('select events from auth_sessions')
+    assert len(events) == 1
+
+    settings.micro_session_duration = -1
+
+    r = await cli.get(url('ui:list'))
+    assert r.status == 200, await r.text()
+
+    assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
+    events = await db_conn.fetchval('select events from auth_sessions')
+    assert len(events) == 2
+
+
+async def test_no_auth(cli, url):
+    r = await cli.get(url('ui:list'))
+    assert r.status == 401, await r.text()
+    assert await r.json() == {'message': 'Authorisation required'}
+
+
+async def test_session_dead(cli, db_conn, url, redis, factory: Factory):
+    await factory.create_user(login=True)
+
+    r = await cli.get(url('ui:list'))
+    assert r.status == 200, await r.text()
+
+    assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
+    session_id = await db_conn.fetchval('select id from auth_sessions')
+    redis.set(f'dead-session:{session_id}', b'1')
+
+    r = await cli.get(url('ui:list'))
+    assert r.status == 403, await r.text()
+    assert await r.json() == {'message': 'Session dead'}

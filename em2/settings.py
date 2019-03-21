@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     easy_login_attempts = 3
     # max. login attempts allowed per minute
     max_login_attempts = 20
+    # how long micro session can last before they need to be checked with auth
+    micro_session_duration = 60 * 15
 
     internal_auth_key: constr(min_length=40, max_length=100) = secrets.token_urlsafe()
 

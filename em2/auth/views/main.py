@@ -1,4 +1,7 @@
+import json
 import logging
+from time import time
+from typing import Tuple
 
 import bcrypt
 from aiohttp.web_response import Response
@@ -7,16 +10,30 @@ from atoolbox.auth import check_grecaptcha
 from atoolbox.utils import JsonErrors
 from pydantic import BaseModel, EmailStr, constr
 
-from em2.utils.web import internal_request_check, session_event
+from em2.utils.web import internal_request_check
 
 logger = logging.getLogger('em2.auth')
+
+
+def session_event(action_type, *, request=None, ip=None, user_agent=None) -> Tuple[str, int]:
+    ts = int(time())
+    event = json.dumps(
+        {
+            'ip': ip or get_ip(request),
+            'ts': ts,
+            'ua': user_agent or request.headers.get('User-Agent'),
+            'ac': action_type,
+            # TODO include info about which session this is when multiple sessions are active
+        }
+    )
+    return event, ts
 
 
 create_session_sql = 'insert into auth_sessions (user_id, events) values ($1, array[$2::json]) returning id'
 
 
 async def login_successful(request, user):
-    event, ts = session_event(request, 'login-pw')
+    event, ts = session_event('login-pw', request=request)
     session_id = await request['conn'].fetchval(create_session_sql, user['id'], event)
     session = {
         'ts': ts,
@@ -83,10 +100,36 @@ class Login(ExecView):
         return f'login-attempt:{ip}', ip
 
 
+class UpdateSession(ExecView):
+    class Model(BaseModel):
+        session_id: int
+        ip: str
+        user_agent: str
+
+    async def check_permissions(self):
+        internal_request_check(self.request)
+
+    async def execute(self, m: Model):
+        event, ts = session_event('update', ip=m.ip, user_agent=m.user_agent)
+        v = await self.conn.execute(
+            """
+            update auth_sessions
+            set last_active=now(), events=events || $1::json
+            where id=$2 and active=true
+            """,
+            event,
+            m.session_id,
+        )
+        if v != 'UPDATE 1':
+            raise JsonErrors.HTTPBadRequest(f'wrong session id: {v!r}')
+        return {'ts': ts}
+
+
 class Logout(ExecView):
     class Model(BaseModel):
         session_id: int
-        event: str
+        ip: str
+        user_agent: str
 
     async def check_permissions(self):
         internal_request_check(self.request)
@@ -98,7 +141,7 @@ class Logout(ExecView):
             set active=false, last_active=now(), events=events || $1::json
             where id=$2 and active=true
             """,
-            m.event,
+            session_event('logout', ip=m.ip, user_agent=m.user_agent)[0],
             m.session_id,
         )
         if v != 'UPDATE 1':
