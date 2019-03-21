@@ -16,7 +16,7 @@ from pydantic import BaseModel, UrlStr
 
 from em2.core import ActionTypes, UserTypes
 from em2.settings import Settings
-from em2.utils.web import full_url
+from em2.utils.web import full_url, internal_request_headers
 
 logger = logging.getLogger('em2.push')
 # could try another subdomain with a random part incase people are using em2-platform
@@ -47,17 +47,17 @@ async def push_actions(ctx, actions_data: str, users: List[Tuple[str, UserTypes]
 
 
 class Pusher:
-    __slots__ = 'job_try', 'auth_fernet', 'session', 'pg', 'resolver', 'redis', 'pg', 'local_check_url'
+    __slots__ = 'settings', 'job_try', 'auth_fernet', 'session', 'pg', 'resolver', 'redis', 'pg', 'local_check_url'
 
     def __init__(self, ctx):
-        settings: Settings = ctx['settings']
+        self.settings: Settings = ctx['settings']
         self.job_try = ctx['job_try']
-        self.auth_fernet = Fernet(settings.auth_key)
+        self.auth_fernet = Fernet(self.settings.auth_key)
         self.session: ClientSession = ctx['session']
         self.pg: Pool = ctx['pg']
         self.resolver: aiodns.DNSResolver = ctx['resolver']
         self.redis: ArqRedis = ctx['redis']
-        self.local_check_url = full_url(settings, 'auth', '/check/')
+        self.local_check_url = full_url(self.settings, 'auth', '/check/')
 
     async def split_destinations(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
         results = await asyncio.gather(*[self.resolve_user(*u) for u in users])
@@ -89,9 +89,10 @@ class Pusher:
     async def resolve_user(self, email: str, current_user_type: UserTypes):
         if current_user_type == UserTypes.new:
             # only new users are checked to see if they're local
-            body = self.auth_fernet.encrypt(json.dumps({'email': email}).encode())
-            async with self.session.get(self.local_check_url, raise_for_status=True, data=body) as r:
+            h = internal_request_headers(self.settings)
+            async with self.session.get(self.local_check_url, data=email, raise_for_status=True, headers=h) as r:
                 content = await r.read()
+
             if content == b'1':
                 # local user
                 await self.pg.execute("update users set user_type='local' where email=$1", email)

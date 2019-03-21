@@ -1,9 +1,11 @@
 import json
+import secrets
 from time import time
 from typing import Tuple
 
 from aiohttp import web
 from aiohttp.abc import Application
+from aiohttp.web_exceptions import HTTPForbidden
 from aiohttp.web_fileresponse import FileResponse
 from atoolbox.utils import get_ip, slugify
 
@@ -112,3 +114,13 @@ def session_event(request, action_type) -> Tuple[str, int]:
         }
     )
     return event, ts
+
+
+def internal_request_check(request):
+    auth_header = request.headers.get('Authentication', '-')
+    if not secrets.compare_digest(auth_header, request.app['settings'].internal_auth_key):
+        raise HTTPForbidden(text='invalid Authentication header')
+
+
+def internal_request_headers(settings):
+    return {'Authentication': settings.internal_auth_key}

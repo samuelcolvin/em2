@@ -1,8 +1,10 @@
+import secrets
 from pathlib import Path
 from secrets import token_urlsafe
 from typing import Optional
 
 from atoolbox import BaseSettings
+from pydantic import constr
 
 SRC_DIR = Path(__file__).parent
 
@@ -27,6 +29,8 @@ class Settings(BaseSettings):
     easy_login_attempts = 3
     # max. login attempts allowed per minute
     max_login_attempts = 20
+
+    internal_auth_key: constr(min_length=40, max_length=100) = secrets.token_urlsafe()
 
     # em2 feature settings:
     message_lock_duration: int = 3600  # how many seconds a lock holds for

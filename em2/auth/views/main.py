@@ -4,10 +4,10 @@ import bcrypt
 from aiohttp.web_response import Response
 from atoolbox import ExecView, encrypt_json, get_ip, json_response
 from atoolbox.auth import check_grecaptcha
-from atoolbox.utils import JsonErrors, decrypt_json
+from atoolbox.utils import JsonErrors
 from pydantic import BaseModel, EmailStr, constr
 
-from em2.utils.web import session_event
+from em2.utils.web import internal_request_check, session_event
 
 logger = logging.getLogger('em2.auth')
 
@@ -88,6 +88,9 @@ class Logout(ExecView):
         session_id: int
         event: str
 
+    async def check_permissions(self):
+        internal_request_check(self.request)
+
     async def execute(self, m: Model):
         v = await self.conn.execute(
             """
@@ -103,6 +106,7 @@ class Logout(ExecView):
 
 
 async def check_address(request):
-    data = decrypt_json(request.app, await request.read(), ttl=10)
-    found = await request['conn'].fetchval('select 1 from auth_users where email=$1', data['email'])
+    internal_request_check(request)
+    email = await request.text()
+    found = await request['conn'].fetchval('select 1 from auth_users where email=$1', email)
     return Response(body=b'1' if found else b'0')

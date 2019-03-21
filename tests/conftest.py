@@ -42,6 +42,7 @@ settings_args = dict(
     ses_url_token='testing',
     aws_sns_signing_host='localhost',
     aws_sns_signing_schema='http',
+    internal_auth_key='testing' * 6,
 )
 
 

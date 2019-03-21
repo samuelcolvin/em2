@@ -3,7 +3,7 @@ from atoolbox import ExecView, JsonErrors, decrypt_json, json_response
 from pydantic import BaseModel
 
 from em2.core import UserTypes, get_create_user
-from em2.utils.web import full_url, session_event
+from em2.utils.web import full_url, internal_request_headers, session_event
 
 
 class AuthExchangeToken(ExecView):
@@ -33,7 +33,8 @@ async def logout(request):
     event, _ = session_event(request, 'logout')
     url = full_url(request.app['settings'], 'auth', '/logout/')
     data = {'session_id': request['session'].session_id, 'event': event}
-    async with request.app['http_client'].post(url, json=data) as r:
+    h = internal_request_headers(request.app['settings'])
+    async with request.app['http_client'].post(url, json=data, headers=h) as r:
         pass
 
     if r.status == 400:
