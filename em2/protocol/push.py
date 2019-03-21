@@ -16,6 +16,7 @@ from pydantic import BaseModel, UrlStr
 
 from em2.core import ActionTypes, UserTypes
 from em2.settings import Settings
+from em2.utils.web import full_url
 
 logger = logging.getLogger('em2.push')
 # could try another subdomain with a random part incase people are using em2-platform
@@ -56,11 +57,7 @@ class Pusher:
         self.pg: Pool = ctx['pg']
         self.resolver: aiodns.DNSResolver = ctx['resolver']
         self.redis: ArqRedis = ctx['redis']
-
-        if settings.domain == 'localhost':
-            self.local_check_url = f'http://localhost:{settings.local_port}/auth/check/'
-        else:
-            self.local_check_url = f'https://auth.{settings.domain}/check/'
+        self.local_check_url = full_url(settings, 'auth', '/check/')
 
     async def split_destinations(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
         results = await asyncio.gather(*[self.resolve_user(*u) for u in users])
@@ -93,9 +90,7 @@ class Pusher:
         if current_user_type == UserTypes.new:
             # only new users are checked to see if they're local
             body = self.auth_fernet.encrypt(json.dumps({'email': email}).encode())
-            async with self.session.get(self.local_check_url, data=body) as r:
-                if r.status != 200:
-                    raise RuntimeError(f'unexpected response from "{self.local_check_url}": {r.status}')
+            async with self.session.get(self.local_check_url, raise_for_status=True, data=body) as r:
                 content = await r.read()
             if content == b'1':
                 # local user

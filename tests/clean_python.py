@@ -4,9 +4,11 @@ Custom python file cleaning:
 * remove trailing white space to satisfy flake8
 """
 import re
+import sys
 from pathlib import Path
 
 trailing_white = re.compile(b' +\n')
+root_dir = Path(__file__).parent.parent
 
 
 def clean_file(p: Path):
@@ -21,7 +23,6 @@ def clean_file(p: Path):
 def main():
     files = 0
     files_changed = 0
-    root_dir = Path(__file__).parent.parent
     for path in (root_dir / 'em2', root_dir / 'tests'):
         for file in path.glob('**/*.py'):
             files += 1
@@ -39,4 +40,9 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    if len(sys.argv) == 2:
+        path = root_dir / sys.argv[1]
+        assert path.exists(), f'path {path} does not exist'
+        clean_file(path)
+    else:
+        main()

@@ -1,8 +1,9 @@
-from aiohttp_session import new_session
-from atoolbox import ExecView, decrypt_json
+from aiohttp_session import get_session, new_session
+from atoolbox import ExecView, JsonErrors, decrypt_json, json_response
 from pydantic import BaseModel
 
 from em2.core import UserTypes, get_create_user
+from em2.utils.web import full_url, session_event
 
 
 class AuthExchangeToken(ExecView):
@@ -23,3 +24,21 @@ class AuthExchangeToken(ExecView):
         }
         session = await new_session(self.request)
         session.update(s)
+
+
+async def logout(request):
+    """
+    Finish the session with auth, clear the cookie and stop the session being used again
+    """
+    event, _ = session_event(request, 'logout')
+    url = full_url(request.app['settings'], 'auth', '/logout/')
+    data = {'session_id': request['session'].session_id, 'event': event}
+    async with request.app['http_client'].post(url, json=data) as r:
+        pass
+
+    if r.status == 400:
+        raise JsonErrors.HTTPBadRequest('wrong session id')
+
+    session = await get_session(request)
+    session.invalidate()
+    return json_response(status='ok')

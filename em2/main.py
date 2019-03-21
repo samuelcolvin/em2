@@ -62,7 +62,7 @@ async def create_app(settings: Settings = None):
         app.add_subapp('/auth/', app['auth_app'])
         routes_description = (
             '  http://localhost:8000/ui/ - user interface routes\n'
-            '  http://localhost:8000/protocol/ - em2 protocol routes\n'
+            '  http://localhost:8000/em2/ - em2 protocol routes\n'
             '  http://localhost:8000/auth/ - auth routes\n'
         )
         app['expected_origin'] = 'http://localhost:3000'

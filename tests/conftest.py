@@ -114,13 +114,13 @@ async def _fix_cli(settings, db_conn, aiohttp_client, redis, loop):
     cli = await aiohttp_client(app)
     settings.local_port = cli.server.port
 
-    async def post_json(url, data, *, origin=None):
+    async def post_json(url, data=None, *, origin=None):
         if isinstance(data, (dict, list)):
             data = json.dumps(data)
 
         return await cli.post(
             url,
-            data=data,
+            data=data or '{}',
             headers={
                 'Content-Type': 'application/json',
                 'Referer': 'http://localhost:3000/dummy-referer/',

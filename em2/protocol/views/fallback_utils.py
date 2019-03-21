@@ -79,7 +79,7 @@ class ProcessSMTP:
         async with self.conn.transaction():
             if conv_id:
                 existing_prts = await self.conn.fetch(
-                    'select email from participants p join users u on p.user_id = u.id where conv=$1', conv_id
+                    'select email from participants p join users u on p.user_id=u.id where conv=$1', conv_id
                 )
                 existing_prts = {r[0] for r in existing_prts}
                 if actor_email not in existing_prts:

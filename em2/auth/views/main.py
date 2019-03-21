@@ -1,6 +1,4 @@
-import json
 import logging
-from time import time
 
 import bcrypt
 from aiohttp.web_response import Response
@@ -9,44 +7,29 @@ from atoolbox.auth import check_grecaptcha
 from atoolbox.utils import JsonErrors, decrypt_json
 from pydantic import BaseModel, EmailStr, constr
 
+from em2.utils.web import session_event
+
 logger = logging.getLogger('em2.auth')
 
 
-def session_event(request, ts, action_type):
-    return json.dumps(
-        {
-            'ip': get_ip(request),
-            'ts': ts,
-            'ua': request.headers.get('User-Agent'),
-            'ac': action_type,
-            # TODO include info about which session this is when multiple sessions are active
-        }
-    )
-
-
-create_session_sql = 'INSERT INTO auth_sessions (auth_user, events) VALUES ($1, ARRAY[$2::JSONB]) RETURNING id'
+create_session_sql = 'insert into auth_sessions (user_id, events) values ($1, array[$2::json]) returning id'
 
 
 async def login_successful(request, user):
-    ts = int(time())
-    event = session_event(request, ts, 'login-pw')
+    event, ts = session_event(request, 'login-pw')
     session_id = await request['conn'].fetchval(create_session_sql, user['id'], event)
     session = {
+        'ts': ts,
         'session_id': session_id,
         'name': '{first_name} {last_name}'.format(**user).strip(' '),
         'email': user['email'],
     }
-    auth_token = encrypt_json(request.app, {'ts': ts, **session})
-    return dict(auth_token=auth_token, session=session)
+    # TODO include information about which ui node to connect to when we support multiple
+    return dict(auth_token=encrypt_json(request.app, session), session=session)
 
 
 class Login(ExecView):
     headers = {'Access-Control-Allow-Origin': 'null'}
-    get_user_sql = """
-    SELECT id, first_name, last_name, email, password_hash
-    FROM auth_users
-    WHERE email=$1 AND account_status='active'
-    """
 
     class Model(BaseModel):
         email: EmailStr
@@ -75,7 +58,14 @@ class Login(ExecView):
         if m.password == self.settings.dummy_password:
             return JsonErrors.HTTPBadRequest(message='password not allowed')
 
-        user = await self.conn.fetchrow(self.get_user_sql, m.email)
+        user = await self.conn.fetchrow(
+            """
+            select id, first_name, last_name, email, password_hash
+            from auth_users
+            where email=$1 and account_status='active'
+            """,
+            m.email,
+        )
         # always try hashing regardless of whether the user exists or has a password set to avoid timing attack
         user = user or dict(password_hash=None)
         password_hash = user['password_hash'] or self.app['dummy_password_hash']
@@ -91,6 +81,25 @@ class Login(ExecView):
     def _get_repeat_cache_key(self):
         ip = get_ip(self.request)
         return f'login-attempt:{ip}', ip
+
+
+class Logout(ExecView):
+    class Model(BaseModel):
+        session_id: int
+        event: str
+
+    async def execute(self, m: Model):
+        v = await self.conn.execute(
+            """
+            update auth_sessions
+            set active=false, last_active=now(), events=events || $1::json
+            where id=$2 and active=true
+            """,
+            m.event,
+            m.session_id,
+        )
+        if v != 'UPDATE 1':
+            raise JsonErrors.HTTPBadRequest(f'wrong session id: {v!r}')
 
 
 async def check_address(request):

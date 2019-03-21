@@ -1,7 +1,11 @@
+import json
+from time import time
+from typing import Tuple
+
 from aiohttp import web
 from aiohttp.abc import Application
 from aiohttp.web_fileresponse import FileResponse
-from atoolbox.utils import slugify
+from atoolbox.utils import get_ip, slugify
 
 from em2.settings import SRC_DIR, Settings
 
@@ -79,3 +83,32 @@ class MakeUrl:
         if query:
             url = url.with_query(**query)
         return url
+
+
+def full_url(settings: Settings, app: str, path: str):
+    if app == 'protocol':
+        app = 'em2'
+
+    assert app in {'em2', 'auth', 'ui'}, f'unknown app {app!r}, should be "em2", "auth", or "ui"'
+    assert path.startswith('/'), f'part should start with /, not {path!r}'
+
+    if settings.domain == 'localhost':
+        root = f'http://localhost:{settings.local_port}/{app}'
+    else:
+        root = f'https://{app}.{settings.domain}'
+
+    return root + path
+
+
+def session_event(request, action_type) -> Tuple[str, int]:
+    ts = int(time())
+    event = json.dumps(
+        {
+            'ip': get_ip(request),
+            'ts': ts,
+            'ua': request.headers.get('User-Agent'),
+            'ac': action_type,
+            # TODO include info about which session this is when multiple sessions are active
+        }
+    )
+    return event, ts

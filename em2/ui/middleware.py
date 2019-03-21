@@ -1,4 +1,5 @@
 from aiohttp.web_middlewares import middleware
+from aiohttp.web_urldispatcher import MatchInfoError
 from aiohttp_session import get_session
 from atoolbox import JsonErrors
 from pydantic.dataclasses import dataclass
@@ -26,7 +27,6 @@ async def load_session(request) -> Session:
 
 @middleware
 async def user_middleware(request, handler):
-    if request['view_name'] in AUTH_WHITELIST:
-        return await handler(request)
-    request['session'] = await load_session(request)
+    if request['view_name'] not in AUTH_WHITELIST and not isinstance(request.match_info, MatchInfoError):
+        request['session'] = await load_session(request)
     return await handler(request)

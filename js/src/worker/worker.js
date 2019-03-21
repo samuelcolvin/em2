@@ -15,7 +15,7 @@ worker_conversations()
 worker_contacts()
 
 add_listener('auth-token', async data => {
-  await requests.post('ui', '/auth-token/', {auth_token: data.auth_token})
+  await requests.post('ui', '/auth/token/', {auth_token: data.auth_token})
   delete data.session.ts
   data.session.cache = new Set()
   await db.sessions.add(data.session)

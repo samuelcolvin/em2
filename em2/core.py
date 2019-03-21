@@ -63,7 +63,7 @@ async def get_create_user(conn: BuildPgConnection, email: str, user_type: UserTy
 
     user_type is only set if the user is created.
     """
-    user_id = await conn.fetchval('select id from users where email = $1', email)
+    user_id = await conn.fetchval('select id from users where email=$1', email)
     if user_id is None:
         # update here should happen very rarely
         user_id = await conn.fetchval(
@@ -82,7 +82,7 @@ async def get_create_multiple_users(conn: BuildPgConnection, emails: Set[str]) -
     """
     like get_create_user but for multiple users.
     """
-    users = dict(await conn.fetch('select email, id from users where email = any($1)', emails))
+    users = dict(await conn.fetch('select email, id from users where email=any($1)', emails))
     remaining = emails - users.keys()
 
     if remaining:

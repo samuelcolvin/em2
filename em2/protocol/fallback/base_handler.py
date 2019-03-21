@@ -59,7 +59,7 @@ class BaseFallbackHandler:
             addresses = ctx['addresses']
         else:
             prts = await self.pg.fetch(
-                'select u.email from participants p join users u on p.user_id = u.id where p.conv = $1', conv_id
+                'select u.email from participants p join users u on p.user_id=u.id where p.conv=$1', conv_id
             )
             addresses = [r[0] for r in prts]
 
@@ -67,7 +67,7 @@ class BaseFallbackHandler:
             references = ctx['references']
         else:
             msg_ids = await self.pg.fetch(
-                'select ref from sends s join actions a on s.action = a.pk where conv = $1 order by a.id desc', conv_id
+                'select ref from sends s join actions a on s.action=a.pk where conv=$1 order by a.id desc', conv_id
             )
             references = [r[0] for r in msg_ids]
 

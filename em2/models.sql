@@ -168,17 +168,18 @@ create table auth_users (
   account_status AccountStatuses not null default 'pending'
   -- todo: node that the user is registered to
 );
-create unique index auth_users_email on auth_users using btree (email);
 -- could be a composite index with email:
 create index auth_users_account_status on auth_users using btree (account_status);
 
 create table auth_sessions (
   id bigserial primary key,
-  auth_user bigint not null references auth_users on delete cascade,
+  user_id bigint not null references auth_users on delete cascade,
   started timestamptz not null default current_timestamp,
   last_active timestamptz not null default current_timestamp,
   active boolean default true,  -- todo need a cron job to close expired sessions just so they look sensible
-  events jsonb[]
+  events json[]
 );
+create index auth_sessions_user_id on auth_sessions using btree (user_id);
+create index auth_sessions_active on auth_sessions using btree (active, last_active);
 
 -- todo add address book, domains, organisations and teams, perhaps new db/app.
