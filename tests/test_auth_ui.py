@@ -71,7 +71,10 @@ async def test_renew_session(cli, url, db_conn, settings, factory: Factory):
 
     assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
     events = await db_conn.fetchval('select events from auth_sessions')
-    assert len(events) == 2
+    assert [json.loads(e) for e in events] == [
+        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'login-pw'},
+        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'update'},
+    ]
 
 
 async def test_no_auth(cli, url):
@@ -91,5 +94,26 @@ async def test_session_dead(cli, db_conn, url, redis, factory: Factory):
     redis.set(f'dead-session:{session_id}', b'1')
 
     r = await cli.get(url('ui:list'))
-    assert r.status == 403, await r.text()
+    assert r.status == 401, await r.text()
     assert await r.json() == {'message': 'Session dead'}
+
+
+async def test_session_expired(cli, url, db_conn, settings, factory: Factory):
+    await factory.create_user(login=True)
+
+    r = await cli.get(url('ui:list'))
+    assert r.status == 200, await r.text()
+
+    events = await db_conn.fetchval('select events from auth_sessions')
+    assert len(events) == 1
+
+    settings.session_expiry = -1
+
+    r = await cli.get(url('ui:list'))
+    assert r.status == 401, await r.text()
+
+    events = await db_conn.fetchval('select events from auth_sessions')
+    assert [json.loads(e) for e in events] == [
+        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'login-pw'},
+        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'expired'},
+    ]

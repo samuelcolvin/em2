@@ -1,5 +1,6 @@
 import json
 import logging
+from enum import Enum
 from time import time
 from typing import Tuple
 
@@ -8,7 +9,8 @@ from aiohttp.web_response import Response
 from atoolbox import ExecView, encrypt_json, get_ip, json_response
 from atoolbox.auth import check_grecaptcha
 from atoolbox.utils import JsonErrors
-from pydantic import BaseModel, EmailStr, constr
+from buildpg import V
+from pydantic import BaseModel, EmailStr, IPvAnyAddress, constr
 
 from em2.utils.web import internal_request_check
 
@@ -19,7 +21,7 @@ def session_event(action_type, *, request=None, ip=None, user_agent=None) -> Tup
     ts = int(time())
     event = json.dumps(
         {
-            'ip': ip or get_ip(request),
+            'ip': str(ip) if ip else get_ip(request),
             'ts': ts,
             'ua': user_agent or request.headers.get('User-Agent'),
             'ac': action_type,
@@ -125,24 +127,33 @@ class UpdateSession(ExecView):
         return {'ts': ts}
 
 
-class Logout(ExecView):
+class FinishActions(str, Enum):
+    logout = 'logout'
+    expired = 'expired'
+
+
+class FinishSession(ExecView):
     class Model(BaseModel):
         session_id: int
-        ip: str
+        ip: IPvAnyAddress
         user_agent: str
+        action: FinishActions
 
     async def check_permissions(self):
         internal_request_check(self.request)
 
     async def execute(self, m: Model):
-        v = await self.conn.execute(
+        where = V('id') == m.session_id
+        if m.action == FinishActions.logout:
+            where &= V('active') == V('true')
+        v = await self.conn.execute_b(
             """
             update auth_sessions
-            set active=false, last_active=now(), events=events || $1::json
-            where id=$2 and active=true
+            set active=false, last_active=now(), events=events || :event::json
+            where :where
             """,
-            session_event('logout', ip=m.ip, user_agent=m.user_agent)[0],
-            m.session_id,
+            event=session_event(m.action, ip=m.ip, user_agent=m.user_agent)[0],
+            where=where,
         )
         if v != 'UPDATE 1':
             raise JsonErrors.HTTPBadRequest(f'wrong session id: {v!r}')

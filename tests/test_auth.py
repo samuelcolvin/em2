@@ -27,8 +27,8 @@ async def test_logout(cli, url, db_conn, factory: Factory):
     session_id = await db_conn.fetchval('select id from auth_sessions')
 
     h = {'Authentication': 'testing' * 6}
-    data = {'session_id': session_id, 'ip': '123.456.789.123', 'user_agent': 'whatever'}
-    r = await cli.post(url('auth:logout'), json=data, headers=h)
+    data = {'session_id': session_id, 'ip': '255.255.255.1', 'user_agent': 'whatever', 'action': 'logout'}
+    r = await cli.post(url('auth:finish-session'), json=data, headers=h)
     assert r.status == 200, await r.text()
 
     active, events = await db_conn.fetchrow('select active, events from auth_sessions')
@@ -36,7 +36,7 @@ async def test_logout(cli, url, db_conn, factory: Factory):
     events = [json.loads(e) for e in events]
     assert events == [
         {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': 'Python/3.7 aiohttp/3.5.4', 'ac': 'login-pw'},
-        {'ip': '123.456.789.123', 'ts': AnyInt(), 'ua': 'whatever', 'ac': 'logout'},
+        {'ip': '255.255.255.1', 'ts': AnyInt(), 'ua': 'whatever', 'ac': 'logout'},
     ]
 
 
@@ -46,6 +46,6 @@ async def test_logout_invalid_auth(cli, url, db_conn, factory: Factory):
     session_id = await db_conn.fetchval('select id from auth_sessions')
 
     h = {'Authentication': 'testing' * 5}
-    r = await cli.post(url('auth:logout'), json={'session_id': session_id, 'event': '{"foo": 4}'}, headers=h)
+    r = await cli.post(url('auth:finish-session'), json={'session_id': session_id, 'event': '{"foo": 4}'}, headers=h)
     assert r.status == 403, await r.text()
     assert await r.text() == 'invalid Authentication header'

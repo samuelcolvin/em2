@@ -7,7 +7,7 @@ from atoolbox.middleware import CROSS_ORIGIN_ANY
 from atoolbox.utils import JSON_CONTENT_TYPE
 from yarl import URL
 
-CSRF_IGNORE_VIEWS = {'auth.logout', 'auth.update-session'}
+CSRF_IGNORE_VIEWS = {'auth.update-session', 'auth.finish-session'}
 CSRF_UPLOAD_VIEW = set()
 NULL_ORIGIN_VIEWS = {'auth.login'}
 

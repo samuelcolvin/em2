@@ -25,27 +25,44 @@ def dead_session_key(session_id: int) -> str:
     return f'dead-session:{session_id}'
 
 
+def session_event(request, session_id, **extra):
+    return dict(session_id=session_id, ip=get_ip(request), user_agent=request.headers.get('User-Agent'), **extra)
+
+
+async def finish_session(request, session_id, action):
+    settings = request.app['settings']
+    url = full_url(settings, 'auth', '/session/finish/')
+    data = session_event(request, session_id, action=action)
+    async with request.app['http_client'].post(url, json=data, headers=internal_request_headers(settings)) as r:
+        pass
+
+    if r.status == 400:
+        raise JsonErrors.HTTPBadRequest('wrong session id')
+    assert r.status == 200, r.status
+
+
 async def load_session(request) -> Session:
     session = await get_session(request)
     if not session.get('user_id'):
         raise JsonErrors.HTTPUnauthorized('Authorisation required')
 
     if await request.app['redis'].exists(dead_session_key(session['session_id'])):
-        raise JsonErrors.HTTPForbidden('Session dead')
+        raise JsonErrors.HTTPUnauthorized('Session dead')
 
     settings: Settings = request.app['settings']
-    if session['ts'] > int(time()) + settings.micro_session_duration:
-        url = full_url(settings, 'auth', '/update-session/')
-        data = {
-            'session_id': session['session_id'],
-            'ip': get_ip(request),
-            'user_agent': request.headers.get('User-Agent'),
-        }
+    now = int(time())
+    if session['ts'] >= now + settings.session_expiry:
+        await finish_session(request, session['session_id'], 'expired')
+        raise JsonErrors.HTTPUnauthorized('Session expired, authorisation required')
+    elif session['ts'] >= now + settings.micro_session_duration:
+        url = full_url(settings, 'auth', '/session/update/')
+        data = session_event(request, session['session_id'])
         headers = internal_request_headers(settings)
         async with request.app['http_client'].post(url, raise_for_status=True, json=data, headers=headers) as r:
             data = await r.json()
 
         session['ts'] = data['ts']
+
     return Session(**dict(session))
 
 
