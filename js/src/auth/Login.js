@@ -19,7 +19,6 @@ class Login extends React.Component {
 
   authenticate = async data => {
     const user = await this.props.ctx.worker.call('auth-token', data)
-    this.props.ctx.setUser(user)
     this.props.ctx.setMessage({icon: 'user', message: `Logged in successfully as ${user.name}`})
     this.props.history.replace(next_url(this.props.location) || '/')
   }
@@ -48,7 +47,6 @@ class Login extends React.Component {
 
   componentDidMount () {
     window.addEventListener('message', this.on_message)
-    // this.props.ctx.setUser(null)
     this.props.ctx.setTitle('Login')
   }
 

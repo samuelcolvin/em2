@@ -7,5 +7,13 @@ db.version(1).stores({
   actions: '[conv+id], [conv+act], conv, ts',
 })
 
-export const get_session = () => db.sessions.toCollection().first()
+export async function get_session (session_id) {
+  if (session_id) {
+    const session = await db.sessions.get(parseInt(session_id))
+    if (session) {
+      return session
+    }
+  }
+  return await db.sessions.toCollection().first()
+}
 export default db

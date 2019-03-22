@@ -64,6 +64,7 @@ class App extends Component {
 
   componentDidMount () {
     this.worker.add_listener('setState', s => this.setState(s))
+    this.worker.add_listener('setUser', u => this.setUser(u))
     this.worker.call('start', sessionStorage['session_id'])
   }
 
@@ -84,6 +85,11 @@ class App extends Component {
       this.setState({message})
       this.message_timeout2 = setTimeout(() => this.setState({message: null}), 8000)
     }, 50)
+  }
+
+  setUser = user => {
+    this.setState({user})
+    sessionStorage['session_id'] = user ? user.session_id : null
   }
 
   componentDidCatch (error, info) {
@@ -109,7 +115,6 @@ class App extends Component {
     const ctx = {
       setMessage: msg => this.setMessage(msg),
       setError: error => this.setError(error),
-      setUser: user => this.setState({user}),
       setTitle: title => this.setState({title}),
       user: this.state.user,
       worker: this.worker,

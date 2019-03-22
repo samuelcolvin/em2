@@ -39,7 +39,7 @@ class Worker {
       for (const l of Object.values(this.listeners)) {
         if (l.name === message.data.method) {
           // console.log('window running:', message.data.method, message.data.call_args || '')
-          l.func(message.data.call_args || {})
+          l.func(message.data.call_args)
           matched += 1
         }
       }

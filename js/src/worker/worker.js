@@ -22,6 +22,7 @@ add_listener('auth-token', async data => {
   session.cache = new Set()
   await db.sessions.add(session)
   await ws.connect(session)
+  window_call('setUser', session)
   return {email: data.session.email, name: data.session.name}
 })
 
@@ -29,13 +30,13 @@ add_listener('logout', async () => {
   ws.close()
   await requests.post('ui', '/auth/logout/')
   await db.sessions.where({session_id: session.session_id}).delete()
-  window_call('setState', {user: null})
+  window_call('setUser', null)
 })
 
-add_listener('start', async () => {
-  session = await get_session()
+add_listener('start', async session_id => {
+  session = await get_session(session_id)
   if (session) {
-    window_call('setState', {user: session})
+    window_call('setUser', session)
     await ws.connect(session)
   } else {
     // no session, check the internet connection
