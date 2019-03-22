@@ -6,6 +6,7 @@ import {unix_ms, window_call, set_conn_status} from './worker_utils'
 const offline = 0
 const connecting = 1
 const online = 2
+const closing = 3
 
 const meta_action_types = new Set([
   'seen',
@@ -21,10 +22,14 @@ export default class Websocket {
     this._disconnects = 0
     this._socket = null
     this._session = null
-    this.connect = this.connect.bind(this)
   }
 
-  async connect (session) {
+  close = () => {
+    this._state = closing
+    this._socket.close()
+  }
+
+  connect = async session => {
     if (this._state !== offline) {
       console.warn('ws already connected')
       return
@@ -56,6 +61,11 @@ export default class Websocket {
     }
 
     this._socket.onclose = e => {
+      if (e.code === 1000 && this._state === closing) {
+        this._disconnects = 0
+        console.log('websocket closed intentionally')
+        return
+      }
       this._state = offline
       const reconnect_in = Math.min(10000, (2 ** this._disconnects - 1) * 500)
       this._disconnects += 1
@@ -69,10 +79,12 @@ export default class Websocket {
         setTimeout(() => this._state === offline && set_conn_status(statuses.offline), 3000)
       }
     }
+
     this._socket.onerror = e => {
       console.debug('websocket error:', e)
       set_conn_status(statuses.offline)
     }
+
     this._socket.onmessage = this._on_message
   }
 

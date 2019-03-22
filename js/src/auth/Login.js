@@ -48,7 +48,7 @@ class Login extends React.Component {
 
   componentDidMount () {
     window.addEventListener('message', this.on_message)
-    this.props.ctx.setUser(null)
+    // this.props.ctx.setUser(null)
     this.props.ctx.setTitle('Login')
   }
 
@@ -57,20 +57,29 @@ class Login extends React.Component {
   }
 
   render () {
+    let head = (
+      <div>
+        Not yet a user? Go to <Link to="/signup/">Sign up</Link> to create an account.
+      </div>
+    )
     const next = next_url(this.props.location)
+    if (next) {
+      head = <div>Login to view <code>{next}</code>.</div>
+    } else if (this.props.ctx.user) {
+      head = (
+        <div>
+          You're already logged in as <b>{this.props.ctx.user.name} ({this.props.ctx.user.email})</b>,
+          logging in again will create another session as a different user,
+          <br/>
+          or go to <Link to="/">your dashboard</Link>.
+        </div>
+      )
+    }
     return (
       <div>
         <Row className="justify-content-center">
           <Col lg="6">
-            {next ?
-              <div className="text-center">
-                Login to view <code>{next}</code>.
-              </div>
-              :
-              <div className="text-center">
-                Not yet a user? Go to <Link to="/signup/">Sign up</Link> to create an account.
-              </div>
-            }
+            <div className="text-center">{head}</div>
           </Col>
         </Row>
         {this.state.error &&

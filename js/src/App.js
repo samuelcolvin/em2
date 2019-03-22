@@ -12,6 +12,7 @@ import Worker from './run_worker'
 import Navbar from './common/Navbar'
 import Notify from './common/Notify'
 import Login from './auth/Login'
+import Logout from './auth/Logout'
 import ListConversations from './conversations/List'
 import ConversationDetails from './conversations/Details'
 import CreateConversation from './conversations/Create'
@@ -37,6 +38,7 @@ const Main = ({app_state}) => {
         <Route exact path="/" component={ListConversations}/>
         <Route exact path="/create/" component={CreateConversation}/>
         <Route exact path="/login/" component={Login}/>
+        <Route exact path="/logout/" component={Logout}/>
         <Route exact path="/:key([a-f0-9]{10,64})/" component={ConversationDetails}/>
 
         <Route component={NotFound}/>
@@ -62,7 +64,7 @@ class App extends Component {
 
   componentDidMount () {
     this.worker.add_listener('setState', s => this.setState(s))
-    this.worker.call('start')
+    this.worker.call('start', sessionStorage['session_id'])
   }
 
   componentDidUpdate (prevProps) {

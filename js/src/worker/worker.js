@@ -10,6 +10,7 @@ import worker_contacts from './worker_contacts'
 onmessage = route_message // eslint-disable-line no-undef
 
 const ws = new Websocket()
+let session
 
 worker_conversations()
 worker_contacts()
@@ -17,15 +18,22 @@ worker_contacts()
 add_listener('auth-token', async data => {
   await requests.post('ui', '/auth/token/', {auth_token: data.auth_token})
   delete data.session.ts
-  data.session.cache = new Set()
-  await db.sessions.add(data.session)
-  await ws.connect(data.session)
+  session = data.session
+  session.cache = new Set()
+  await db.sessions.add(session)
+  await ws.connect(session)
   return {email: data.session.email, name: data.session.name}
 })
 
+add_listener('logout', async () => {
+  ws.close()
+  await requests.post('ui', '/auth/logout/')
+  await db.sessions.where({session_id: session.session_id}).delete()
+  window_call('setState', {user: null})
+})
 
 add_listener('start', async () => {
-  const session = await get_session()
+  session = await get_session()
   if (session) {
     window_call('setState', {user: session})
     await ws.connect(session)

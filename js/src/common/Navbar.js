@@ -1,5 +1,5 @@
 import React from 'react'
-import {Link} from 'react-router-dom'
+import {Link, withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {
   Collapse,
@@ -57,6 +57,14 @@ const StatusBar = ({title, message, conn_status, user, show_tooltip, toggle_tool
   )
 }
 
+const NavButton = withRouter(({children, path, close, location}) => (
+  <NavItem active={RegExp('^' + path).test(location.pathname)}>
+    <NavLink tag={Link} onClick={close} to={path}>
+      {children}
+    </NavLink>
+  </NavItem>
+))
+
 export default class Navbar extends React.Component {
   constructor (props) {
     super(props)
@@ -75,22 +83,21 @@ export default class Navbar extends React.Component {
             em2
           </NavbarBrand>
           <NavbarToggler onClick={() => this.setState({is_open: !this.state.is_open})}/>
-          <Collapse isOpen={this.state.is_open} navbar>
-            <Nav navbar>
-              {this.props.app_state.user && [
-                <NavItem key="1" active={/^\/create\//.test(this.props.location.pathname)}>
-                  <NavLink tag={Link} onClick={this.close} to="/create/">
-                    Compose
-                  </NavLink>
-                </NavItem>,
-              ]}
-            </Nav>
-            {this.props.app_state.user && (
-              <form className="form-inline ml-auto">
+          {this.props.app_state.user && (
+            <Collapse isOpen={this.state.is_open} navbar>
+              <Nav navbar>
+                <NavButton key="create" path="/create/" close={this.close}>Compose</NavButton>
+              </Nav>
+              <div className="flex-fill"/>
+              <Nav navbar>
+                <NavButton key="settings" path="/settings/" close={this.close}>Settings</NavButton>
+                <NavButton key="logout" path="/logout/" close={this.close}>Logout</NavButton>
+              </Nav>
+              <form className="form-inline">
                 <input className="form-control" type="text" placeholder="Search"/>
               </form>
-            )}
-          </Collapse>
+            </Collapse>
+          )}
         </div>
       </NavbarBootstrap>,
       <StatusBar

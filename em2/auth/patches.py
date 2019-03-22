@@ -44,4 +44,7 @@ async def create_user(*, conn, settings, args, logger, **kwargs):
 
 @patch
 async def update_action_insert(*, conn, settings, **kwargs):
+    """
+    Run the sql section "action-insert" which creates or updates the action_insert() function
+    """
     await run_sql_section('action-insert', settings.sql_path.read_text(), conn)
