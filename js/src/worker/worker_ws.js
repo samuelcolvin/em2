@@ -37,7 +37,7 @@ export default class Websocket {
     this._session = session || this._session
     set_conn_status(statuses.connecting)
     this._state = connecting
-    let ws_url = make_url('ui', '/ws/').replace('http', 'ws')
+    let ws_url = make_url('ui', `/${this._session.session_id}/ws/`).replace('http', 'ws')
 
     try {
       this._socket = new WebSocket(ws_url)

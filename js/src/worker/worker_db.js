@@ -7,17 +7,40 @@ db.version(1).stores({
   actions: '[conv+id], [conv+act], conv, ts',
 })
 
-export async function get_session (session_id) {
-  if (session_id) {
-    const session = await db.sessions.get(session_id)
-    if (session) {
-      return session
-    }
-  }
-  return await db.sessions.toCollection().first()
-}
-
-export function other_sessions (session_id) {
-  return db.sessions.where('session_id').notEqual(session_id).toArray()
-}
 export default db
+
+class Session {
+  constructor () {
+    this.current = null
+    this.id = null
+  }
+
+  _set = session => {
+    this.current = session
+    this.id = this.current ? this.current.session_id : null
+  }
+
+  update = async session_id => {
+    if (session_id) {
+      const session = await db.sessions.get(session_id)
+      if (session) {
+        this._set(session)
+        return
+      }
+    }
+    this._set(await db.sessions.toCollection().first())
+  }
+
+  add = async session => {
+    await db.sessions.add(session)
+    this._set(session)
+  }
+
+  delete = async () => {
+    await db.sessions.where({session_id: this.id}).delete()
+    await this.update()
+  }
+
+  others = () => db.sessions.where('session_id').notEqual(this.id).toArray()
+}
+export const session = new Session()

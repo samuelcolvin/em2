@@ -1,4 +1,4 @@
-import db, {get_session} from './worker_db'
+import db, {session} from './worker_db'
 import {add_listener, get_conn_status, requests, unix_ms} from './worker_utils'
 import {statuses} from '../lib'
 
@@ -103,7 +103,7 @@ async function get_conversation (data) {
 
   const last_action = actions_incomplete(actions)
   if (!actions.length || last_action !== null) {
-    let url = `/conv/${data.key}/`
+    let url = `/${session.id}/conv/${data.key}/`
     if (last_action) {
       url += `?since=${last_action}`
     }
@@ -121,10 +121,10 @@ async function list_conversations (data) {
   const page = data.page
   let status = await get_conn_status()
   if (status === statuses.online) {
-    const session = await get_session()
+    const s = session.current
     const cache_key = `page-${data.page}`
-    if (session && !session.cache.has(cache_key)) {
-      const r = await requests.get('ui', '/conv/list/', {args: {page}})
+    if (s && !s.cache.has(cache_key)) {
+      const r = await requests.get('ui', `/${s.session_id}/conv/list/`, {args: {page}})
       const conversations = r.data.conversations.map(c => (
           Object.assign({}, c, {
             created_ts: unix_ms(c.created_ts),
@@ -133,8 +133,8 @@ async function list_conversations (data) {
           })
       ))
       await db.conversations.bulkPut(conversations)
-      session.cache.add(cache_key)
-      await db.sessions.update(session.session_id, {cache: session.cache, conv_count: r.data.count})
+      s.cache.add(cache_key)
+      await db.sessions.update(s.session_id, {cache: s.cache, conv_count: r.data.count})
     }
   }
 
@@ -151,7 +151,7 @@ export default function () {
   add_listener('get-conversation', get_conversation)
 
   add_listener('act', async data => {
-    const r = await requests.post('ui', `/conv/${data.conv}/act/`, {actions: data.actions})
+    const r = await requests.post('ui', `/${session.id}/conv/${data.conv}/act/`, {actions: data.actions})
     await db.conversations.update(data.conv, {seen: true})
     return r
   })
@@ -159,17 +159,17 @@ export default function () {
   add_listener('seen', async data => {
     const conv = await db.conversations.get(data.conv)
     if (!conv.seen) {
-      await requests.post('ui', `/conv/${data.conv}/act/`, {actions: [{act: 'seen'}]})
+      await requests.post('ui', `/${session.id}/conv/${data.conv}/act/`, {actions: [{act: 'seen'}]})
       await db.conversations.update(data.conv, {seen: true})
     }
   })
 
   add_listener('publish', async data => {
-    const r = await requests.post('ui', `/conv/${data.conv}/publish/`, {publish: true})
+    const r = await requests.post('ui', `/${session.id}/conv/${data.conv}/publish/`, {publish: true})
     await db.conversations.update(data.conv, {new_key: r.data.key})
   })
 
-  add_listener('create-conversation', async data => {
-    return await requests.post('ui', '/conv/create/', data, {expected_status: [201, 400]})
-  })
+  add_listener('create-conversation', async data => (
+    await requests.post('ui', `/${session.id}/conv/create/`, data, {expected_status: [201, 400]})
+  ))
 }
