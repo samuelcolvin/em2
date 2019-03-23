@@ -10,10 +10,10 @@ from em2.core import construct_conv
 from .conftest import Factory
 
 
-async def test_create_conv(cli, url, factory: Factory, db_conn):
+async def test_create_conv(cli, factory: Factory, db_conn):
     user = await factory.create_user()
 
-    r = await cli.post_json(url('ui:create'), {'subject': 'Sub', 'message': 'Msg'})
+    r = await cli.post_json(factory.url('ui:create'), {'subject': 'Sub', 'message': 'Msg'})
     assert r.status == 201, await r.text()
     obj = await r.json()
     conv_key = obj['key']
@@ -51,11 +51,11 @@ async def test_create_conv(cli, url, factory: Factory, db_conn):
     assert participants == ['testing-1@example.com']
 
 
-async def test_create_conv_participants(cli, url, factory: Factory, db_conn):
+async def test_create_conv_participants(cli, factory: Factory, db_conn):
     user = await factory.create_user()
 
     r = await cli.post_json(
-        url('ui:create'),
+        factory.url('ui:create'),
         {
             'subject': 'Sub',
             'message': 'Msg',
@@ -99,10 +99,10 @@ async def test_create_conv_participants(cli, url, factory: Factory, db_conn):
     assert participants == {'foobar@example.com', 'another@example.com', 'testing-1@example.com'}
 
 
-async def test_create_conv_publish(cli, url, factory: Factory, db_conn):
+async def test_create_conv_publish(cli, factory: Factory, db_conn):
     user = await factory.create_user()
 
-    r = await cli.post_json(url('ui:create'), {'subject': 'Sub', 'message': 'Msg', 'publish': True})
+    r = await cli.post_json(factory.url('ui:create'), {'subject': 'Sub', 'message': 'Msg', 'publish': True})
     assert r.status == 201, await r.text()
     obj = await r.json()
     conv_key = obj['key']
@@ -130,12 +130,12 @@ async def test_create_conv_publish(cli, url, factory: Factory, db_conn):
     }
 
 
-async def test_conv_list(cli, url, factory: Factory, db_conn):
+async def test_conv_list(cli, factory: Factory, db_conn):
     await factory.create_user()
     conv = await factory.create_conv()
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
-    r = await cli.get(url('ui:list'))
+    r = await cli.get(factory.url('ui:list'))
     assert r.status == 200, await r.text()
     obj = await r.json()
     assert obj == {
@@ -161,12 +161,12 @@ async def test_conv_list(cli, url, factory: Factory, db_conn):
     }
 
 
-async def test_conv_actions(cli, url, factory: Factory, db_conn):
+async def test_conv_actions(cli, factory: Factory, db_conn):
     await factory.create_user()
     conv = await factory.create_conv()
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
-    r = await cli.get(url('ui:get', conv=conv.key))
+    r = await cli.get(factory.url('ui:get', conv=conv.key))
     assert r.status == 200, await r.text()
     obj = await r.json()
     assert obj == [
@@ -198,17 +198,17 @@ async def test_conv_actions(cli, url, factory: Factory, db_conn):
     ]
 
 
-async def test_act(cli, url, factory: Factory):
+async def test_act(cli, factory: Factory):
     await factory.create_user()
     conv = await factory.create_conv()
 
     data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}]}
-    r = await cli.post_json(url('ui:act', conv=conv.key), data)
+    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
     assert r.status == 200, await r.text()
     obj = await r.json()
     assert obj == {'action_ids': [4]}
 
-    r = await cli.get(url('ui:get', conv=conv.key))
+    r = await cli.get(factory.url('ui:get', conv=conv.key))
     assert r.status == 200, await r.text()
     obj = await r.json()
     assert len(obj) == 4
@@ -223,15 +223,15 @@ async def test_act(cli, url, factory: Factory):
     }
 
 
-async def test_seen(cli, url, factory: Factory):
+async def test_seen(cli, factory: Factory):
     await factory.create_user()
     conv = await factory.create_conv()
 
-    async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
+    async with cli.session.ws_connect(cli.make_url(factory.url('ui:websocket'))) as ws:
         msg = await ws.receive(timeout=0.1)
         assert json.loads(msg.data) == {'user_v': 2}
 
-        r = await cli.post_json(url('ui:act', conv=conv.key), {'actions': [{'act': 'seen'}]})
+        r = await cli.post_json(factory.url('ui:act', conv=conv.key), {'actions': [{'act': 'seen'}]})
         assert r.status == 200, await r.text()
         obj = await r.json()
         assert obj == {'action_ids': [4]}
@@ -241,7 +241,7 @@ async def test_seen(cli, url, factory: Factory):
         assert len(msg['actions']) == 1
         assert msg['actions'][0]['act'] == 'seen'
 
-        r = await cli.post_json(url('ui:act', conv=conv.key), {'actions': [{'act': 'seen'}]})
+        r = await cli.post_json(factory.url('ui:act', conv=conv.key), {'actions': [{'act': 'seen'}]})
         assert r.status == 200, await r.text()
         obj = await r.json()
         assert obj == {'action_ids': []}
@@ -250,16 +250,16 @@ async def test_seen(cli, url, factory: Factory):
             await ws.receive(timeout=0.1)
 
 
-async def test_create_then_publish(cli, url, factory: Factory, db_conn):
+async def test_create_then_publish(cli, factory: Factory, db_conn):
     user = await factory.create_user()
     conv = await factory.create_conv()
 
     data = {'actions': [{'act': 'message:lock', 'follows': 2}]}
-    r = await cli.post_json(url('ui:act', conv=conv.key), data)
+    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
     assert r.status == 200, await r.text()
     assert {'action_ids': [4]} == await r.json()
     data = {'actions': [{'act': 'message:modify', 'body': 'msg changed', 'follows': 4}]}
-    r = await cli.post_json(url('ui:act', conv=conv.key), data)
+    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
     assert r.status == 200, await r.text()
     assert {'action_ids': [5]} == await r.json()
 
@@ -272,7 +272,7 @@ async def test_create_then_publish(cli, url, factory: Factory, db_conn):
     }
     assert 5 == await db_conn.fetchval('select count(*) from actions where conv=$1', conv.id)
 
-    r = await cli.post_json(url('ui:publish', conv=conv.key), {'publish': True})
+    r = await cli.post_json(factory.url('ui:publish', conv=conv.key), {'publish': True})
     assert r.status == 200, await r.text()
     conv_key2 = (await r.json())['key']
 
@@ -286,13 +286,13 @@ async def test_create_then_publish(cli, url, factory: Factory, db_conn):
     assert 3 == await db_conn.fetchval('select count(*) from actions where conv=$1', conv.id)
 
 
-async def test_ws_create(cli, url, factory: Factory, db_conn):
+async def test_ws_create(cli, factory: Factory, db_conn):
     user = await factory.create_user()
     assert 1 == await db_conn.fetchval('select v from users where id=$1', user.id)
     await factory.create_conv()
     assert 2 == await db_conn.fetchval('select v from users where id=$1', user.id)
 
-    async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
+    async with cli.session.ws_connect(cli.make_url(factory.url('ui:websocket'))) as ws:
         msg = await ws.receive(timeout=0.1)
         assert msg.type == WSMsgType.text
         assert not ws.closed
@@ -347,18 +347,18 @@ async def test_ws_create(cli, url, factory: Factory, db_conn):
     }
 
 
-async def test_ws_add_msg(cli, url, factory: Factory, db_conn):
+async def test_ws_add_msg(cli, factory: Factory, db_conn):
     user = await factory.create_user()
     conv = await factory.create_conv()
     assert 2 == await db_conn.fetchval('select v from users where id=$1', user.id)
 
-    async with cli.session.ws_connect(cli.make_url(url('ui:websocket'))) as ws:
+    async with cli.session.ws_connect(cli.make_url(factory.url('ui:websocket'))) as ws:
         msg = await ws.receive(timeout=0.1)
         assert msg.type == WSMsgType.text
         assert json.loads(msg.data) == {'user_v': 2}
 
         d = {'actions': [{'act': 'message:add', 'body': 'this is another message'}]}
-        r = await cli.post_json(url('ui:act', conv=conv.key), d)
+        r = await cli.post_json(factory.url('ui:act', conv=conv.key), d)
         assert r.status == 200, await r.text()
 
         msg = await ws.receive(timeout=0.1)
@@ -389,16 +389,16 @@ async def test_ws_add_msg(cli, url, factory: Factory, db_conn):
     }
 
 
-async def test_create_conv_many_participants(cli, url, factory: Factory):
+async def test_create_conv_many_participants(cli, factory: Factory):
     await factory.create_user()
 
     prts = [{f'email': f'p-{i}@example.com'} for i in range(66)]
-    r = await cli.post_json(url('ui:create'), {'subject': 'Sub', 'message': 'Msg', 'participants': prts})
+    r = await cli.post_json(factory.url('ui:create'), {'subject': 'Sub', 'message': 'Msg', 'participants': prts})
     assert r.status == 400, await r.text()
     assert 'no more than 64 participants permitted' in await r.text()
 
 
-async def test_act_multiple(cli, url, factory: Factory, db_conn):
+async def test_act_multiple(cli, factory: Factory, db_conn):
     user = await factory.create_user()
     conv = await factory.create_conv()
     assert 2 == await db_conn.fetchval('select v from users where id=$1', user.id)
@@ -410,7 +410,7 @@ async def test_act_multiple(cli, url, factory: Factory, db_conn):
             {'act': 'participant:add', 'participant': 'user-4@example.com'},
         ]
     }
-    r = await cli.post_json(url('ui:act', conv=conv.key), data)
+    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
     assert r.status == 200, await r.text()
     obj = await r.json()
     assert obj == {'action_ids': [4, 5, 6]}

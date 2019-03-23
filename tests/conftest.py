@@ -146,6 +146,7 @@ class User:
     password: str
     auth_user_id: int
     id: int = None
+    session_id: int = None
 
 
 @dataclass
@@ -159,12 +160,12 @@ class Factory:
         self.conn = conn
         self.redis: ArqRedis = redis
         self.cli = cli
-        self.url = url
         self.settings: Settings = cli.server.app['settings']
         self.email_index = 1
 
         self.user: User = None
         self.conv: Conv = None
+        self._url = url
 
     async def create_user(self, *, login=True, email=None, first_name='Tes', last_name='Ting', pw='testing') -> User:
         if email is None:
@@ -187,31 +188,39 @@ class Factory:
             raise RuntimeError(f'user with email {email} already exists')
 
         user_id = None
+        session_id = None
         if login:
-            await self.login(email, pw)
+            r1, r2 = await self.login(email, pw)
+            obj = await r1.json()
+            session_id = obj['session']['session_id']
             user_id = await self.conn.fetchval('select id from users where email=$1', email)
 
-        user = User(email, first_name, last_name, pw, auth_user_id, user_id)
+        user = User(email, first_name, last_name, pw, auth_user_id, user_id, session_id)
         self.user = self.user or user
         return user
+
+    def url(self, name, *, query=None, **kwargs):
+        if self.user and name.startswith('ui:'):
+            kwargs.setdefault('session_id', self.user.session_id)
+        return self._url(name, query=query, **kwargs)
 
     async def login(self, email, password, *, captcha=False):
         data = dict(email=email, password=password)
         if captcha:
             data['grecaptcha_token'] = '__ok__'
 
-        r = await self.cli.post(
-            self.url('auth:login'),
+        r1 = await self.cli.post(
+            self._url('auth:login'),
             data=json.dumps(data),
             headers={'Content-Type': 'application/json', 'Origin': 'null'},
         )
-        assert r.status == 200, await r.text()
-        obj = await r.json()
+        assert r1.status == 200, await r1.text()
+        obj = await r1.json()
 
-        r = await self.cli.post_json(self.url('ui:auth-token'), data={'auth_token': obj['auth_token']})
-        assert r.status == 200, await r.text()
+        r2 = await self.cli.post_json(self._url('ui:auth-token'), data={'auth_token': obj['auth_token']})
+        assert r2.status == 200, await r2.text()
         assert len(self.cli.session.cookie_jar) == 1
-        return r
+        return r1, r2
 
     async def create_conv(self, subject='Test Subject', message='Test Message', participants=[], publish=False) -> Conv:
         data = {'subject': subject, 'message': message, 'publish': publish, 'participants': participants}

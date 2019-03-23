@@ -31,19 +31,20 @@ def pg_middleware_check(request):
 async def create_app_ui(settings=None):
     settings = settings or Settings()
     conv_match = r'{conv:[a-f0-9]{10,64}}'
+    s = r'/{session_id:\d+}/'
     routes = [
         web.get('/online/', online, name='online'),
-        web.get('/conv/list/', ConvList.view(), name='list'),
-        web.route('*', '/conv/create/', ConvCreate.view(), name='create'),
-        web.get(f'/conv/{conv_match}/', ConvActions.view(), name='get'),
-        web.post(f'/conv/{conv_match}/act/', ConvAct.view(), name='act'),
-        web.post(f'/conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),
-        web.get('/ws/', websocket, name='websocket'),
+        web.get(s + 'conv/list/', ConvList.view(), name='list'),
+        web.route('*', s + 'conv/create/', ConvCreate.view(), name='create'),
+        web.get(s + f'conv/{conv_match}/', ConvActions.view(), name='get'),
+        web.post(s + f'conv/{conv_match}/act/', ConvAct.view(), name='act'),
+        web.post(s + f'conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),
+        web.get(s + 'ws/', websocket, name='websocket'),
         # ui auth views:
         web.route('*', '/auth/token/', AuthExchangeToken.view(), name='auth-token'),
-        web.post('/auth/logout/', logout, name='auth-logout'),
+        web.post(s + 'auth/logout/', logout, name='auth-logout'),
         # different app?:
-        web.get('/contacts/lookup-email/', ContactSearch.view(), name='contacts-lookup-email'),
+        web.get(s + 'contacts/lookup-email/', ContactSearch.view(), name='contacts-lookup-email'),
     ]
     middleware = (
         csrf_middleware,
