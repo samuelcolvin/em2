@@ -25,7 +25,7 @@ export function route_message (message) {
     let result = method(message.data.call_args)
 
     const on_error = err => {
-      console.warn('worker:', err)
+      console.warn(`worker error on ${message.data.method}:`, err, message)
       const error = {message: err.message || err.toString(), details: err.details}
       postMessage({error, async_id: message.data.async_id})
     }

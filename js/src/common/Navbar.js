@@ -101,13 +101,13 @@ export default class Navbar extends React.Component {
                   </DropdownToggle>
                   <DropdownMenu right>
                     {this.props.app_state.other_sessions.map(s => (
-                      <DropdownItem key={s.session_id} tag={Link} onClick={this.close} to={`/switch/${s.session_id}/`}
+                      <DropdownItem key={s.session_id} onClick={this.close} href={`/switch/${s.session_id}/`}
                                     target="_blank">
                         Switch to <b>{s.name}</b>
                       </DropdownItem>
                     ))}
                     {this.props.app_state.other_sessions.length ? <DropdownItem divider/> : null}
-                    <DropdownItem tag={Link} onClick={this.close} to="/login/" target="_blank">
+                    <DropdownItem onClick={this.close} href="/login/" target="_blank">
                       Login to another account
                     </DropdownItem>
                     <DropdownItem divider/>
