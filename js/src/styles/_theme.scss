@@ -57,6 +57,7 @@ $stripe-width: 10px;
   overflow: hidden;
   color: white;
   padding: 4px 0;
+  z-index: 1020; // so nav dropdown menus appear on top of this
   @include stripes(#009688, 3%);
 
   .container {

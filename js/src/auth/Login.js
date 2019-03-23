@@ -66,7 +66,7 @@ class Login extends React.Component {
     } else if (this.props.ctx.user) {
       head = (
         <div>
-          You're already logged in as <b>{this.props.ctx.user.name} ({this.props.ctx.user.email})</b>,
+          You're currently logged in as <b>{this.props.ctx.user.name} ({this.props.ctx.user.email})</b>,
           logging in again will create another session as a different user,
           <br/>
           or go to <Link to="/">your dashboard</Link>.

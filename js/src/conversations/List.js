@@ -58,7 +58,7 @@ class ConvListView extends React.Component {
 
   async componentDidMount () {
     this.mounted = true
-    this.props.ctx.setTitle('Conversations')
+    this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
     this.update()
     this.remove_listener = this.props.ctx.worker.add_listener('change', this.update)
   }
