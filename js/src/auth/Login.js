@@ -27,7 +27,12 @@ class Login extends React.Component {
     if (event.origin !== 'null') {
       return
     }
-    if (event.data.grecaptcha_required !== undefined) {
+    if (event.data.loaded) {
+      if (this.props.ctx.other_sessions.length) {
+        const existing_sessions = this.props.ctx.other_sessions.map(s => s.email)
+        this.iframe_ref.current.contentWindow.postMessage({existing_sessions}, '*')
+      }
+    } else if (event.data.grecaptcha_required !== undefined) {
       if (event.data.grecaptcha_required && this.state.recaptcha_shown) {
         Recaptcha.reset()
       }

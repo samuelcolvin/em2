@@ -22,12 +22,10 @@ const update_sessions = async session => {
 }
 
 add_listener('auth-token', async data => {
-  // TODO pass db.sessions.where({email: session.email}).toArray() so those sessions can be terminated.
   await requests.post('ui', '/auth/token/', {auth_token: data.auth_token})
   delete data.session.ts
   session = data.session
   session.cache = new Set()
-  await db.sessions.where({email: session.email}).delete()
   await db.sessions.add(session)
   await update_sessions(session)
   return {email: data.session.email, name: data.session.name}
@@ -36,8 +34,7 @@ add_listener('auth-token', async data => {
 add_listener('logout', async () => {
   ws.close()
   await requests.post('ui', '/auth/logout/')
-  console.log(session, await db.sessions.where({email: session.email}).toArray())
-  await db.sessions.where({email: session.email}).delete()
+  await db.sessions.where({session_id: session.session_id}).delete()
   window_call('setUser', null)
 })
 

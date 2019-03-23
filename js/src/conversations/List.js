@@ -58,14 +58,16 @@ class ConvListView extends React.Component {
 
   async componentDidMount () {
     this.mounted = true
-    this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
+    if (this.props.ctx.user) {
+      this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
+    }
     this.update()
     this.remove_listener = this.props.ctx.worker.add_listener('change', this.update)
   }
 
   componentWillUnmount () {
     this.mounted = false
-    this.remove_listener()
+    this.remove_listener && this.remove_listener()
   }
 
   setState (state, callback) {
