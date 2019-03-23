@@ -13,6 +13,7 @@ import Navbar from './common/Navbar'
 import Notify from './common/Notify'
 import Login from './auth/Login'
 import Logout from './auth/Logout'
+import SwitchSession from './auth/SwitchSession'
 import ListConversations from './conversations/List'
 import ConversationDetails from './conversations/Details'
 import CreateConversation from './conversations/Create'
@@ -39,6 +40,7 @@ const Main = ({app_state}) => {
         <Route exact path="/create/" component={CreateConversation}/>
         <Route exact path="/login/" component={Login}/>
         <Route exact path="/logout/" component={Logout}/>
+        <Route exact path="/switch/:id(\d+)/" component={SwitchSession}/>
         <Route exact path="/:key([a-f0-9]{10,64})/" component={ConversationDetails}/>
 
         <Route component={NotFound}/>
@@ -48,28 +50,26 @@ const Main = ({app_state}) => {
 }
 
 class App extends Component {
-  constructor (props) {
-    super(props)
-    this.state = {
-      title: null,
-      error: null,
-      message: null,
-      user: null,
-      conn_status: null,
-    }
-    this.worker = new Worker(this)
-    this.message_timeout1 = null
-    this.message_timeout2 = null
+  state = {
+    title: null,
+    error: null,
+    message: null,
+    user: null,
+    other_sessions: [],
+    conn_status: null,
   }
+  worker = new Worker(this)
+  message_timeout1 = null
+  message_timeout2 = null
 
   componentDidMount () {
     this.worker.add_listener('setState', s => this.setState(s))
     this.worker.add_listener('setUser', u => this.setUser(u))
-    this.worker.call('start', sessionStorage['session_id'])
+    this.worker.call('start', JSON.parse(sessionStorage['session_id'] || 'null'))
   }
 
   componentDidUpdate (prevProps) {
-    document.title = this.state.title ? `em2 - ${this.state.title}` : 'em2'
+    document.title = this.state.title ? this.state.title : 'em2'
     if (this.props.location !== prevProps.location) {
       this.state.error && this.setState({error: null})
     }
@@ -89,7 +89,7 @@ class App extends Component {
 
   setUser = user => {
     this.setState({user})
-    sessionStorage['session_id'] = user ? user.session_id : null
+    sessionStorage['session_id'] = JSON.stringify(user ? user.session_id : null)
   }
 
   componentDidCatch (error, info) {

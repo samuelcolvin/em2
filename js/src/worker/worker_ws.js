@@ -1,6 +1,6 @@
 import {statuses} from '../lib'
 import {make_url} from '../lib/requests'
-import db from './worker_db'
+import {session} from './worker_db'
 import {unix_ms, window_call, set_conn_status} from './worker_utils'
 
 const offline = 0
@@ -21,7 +21,6 @@ export default class Websocket {
     this._state = offline  // see above for options
     this._disconnects = 0
     this._socket = null
-    this._session = null
   }
 
   close = () => {
@@ -29,15 +28,13 @@ export default class Websocket {
     this._socket.close()
   }
 
-  connect = async session => {
+  connect = async () => {
     if (this._state !== offline) {
-      console.warn('ws already connected')
       return
     }
-    this._session = session || this._session
     set_conn_status(statuses.connecting)
     this._state = connecting
-    let ws_url = make_url('ui', '/ws/').replace('http', 'ws')
+    let ws_url = make_url('ui', `/${session.id}/ws/`).replace('http', 'ws')
 
     try {
       this._socket = new WebSocket(ws_url)
@@ -94,28 +91,27 @@ export default class Websocket {
     console.debug('ws message:', data)
 
     if (data.actions) {
-      await apply_actions(data, this._session.email)
-    } else if (data.user_v === this._session.user_v) {
+      await apply_actions(data, session.current.email)
+    } else if (data.user_v === session.current.user_v) {
       // just connecting and nothing has changed
       return
     }
 
     const session_update = {user_v: data.user_v}
-    if (data.user_v - this._session.user_v !== 1) {
+    if (data.user_v - session.current.user_v !== 1) {
       // user_v has increased by more than one, we must have missed actions, everything could have changed
       session_update.cache = new Set()
     }
-    await db.sessions.update(this._session.session_id, session_update)
-    Object.assign(this._session, session_update)
+    await session.update(session_update)
   }
 }
 
 async function apply_actions (data, session_email) {
   const actions = data.actions.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
 
-  await db.actions.bulkPut(actions)
+  await session.db.actions.bulkPut(actions)
   const action = actions[actions.length - 1]
-  const conv = await db.conversations.get(action.conv)
+  const conv = await session.db.conversations.get(action.conv)
   const publish_action = actions.find(a => a.act === 'conv:publish')
 
   const other_actor = Boolean(actions.find(a => a.actor !== session_email))
@@ -136,10 +132,10 @@ async function apply_actions (data, session_email) {
       update.seen = false
       notify_details = conv.details
     }
-    await db.conversations.update(action.conv, update)
+    await session.db.conversations.update(action.conv, update)
   } else {
     const unseen = other_actor && real_act
-    await db.conversations.add({
+    await session.db.conversations.add({
       key: action.conv,
       created_ts: actions[0].ts,
       updated_ts: action.ts,
@@ -151,9 +147,9 @@ async function apply_actions (data, session_email) {
     if (unseen) {
       notify_details = data.conv_details
     }
-    const old_conv = await db.conversations.get({new_key: action.conv})
+    const old_conv = await session.db.conversations.get({new_key: action.conv})
     if (old_conv) {
-      await db.conversations.delete(old_conv.key)
+      await session.db.conversations.delete(old_conv.key)
       window_call('change', {conv: old_conv.key, new_key: action.conv})
     }
   }

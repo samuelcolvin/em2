@@ -1,5 +1,6 @@
 import debounce from 'debounce-async'
 import isEmail from 'validator/lib/isEmail'
+import {session} from './worker_db'
 import {add_listener, requests} from './worker_utils'
 
 function parse_address (email) {
@@ -14,7 +15,7 @@ function parse_address (email) {
 }
 
 const request_contacts = debounce(
-  data => requests.get('ui', '/contacts/lookup-email/', {args: data}),
+  data => requests.get('ui', `/${session.id}/contacts/lookup-email/`, {args: data}),
   300 // may have to increase this in future
 )
 

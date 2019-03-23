@@ -10,6 +10,10 @@ import {
   NavItem,
   NavLink,
   Tooltip,
+  UncontrolledDropdown,
+  DropdownToggle,
+  DropdownMenu,
+  DropdownItem,
 } from 'reactstrap'
 import {statuses} from '../lib'
 
@@ -91,9 +95,29 @@ export default class Navbar extends React.Component {
               <div className="flex-fill"/>
               <Nav navbar>
                 <NavButton key="settings" path="/settings/" close={this.close}>Settings</NavButton>
-                <NavButton key="logout" path="/logout/" close={this.close}>Logout</NavButton>
+                <UncontrolledDropdown nav inNavbar>
+                  <DropdownToggle nav caret>
+                    Account
+                  </DropdownToggle>
+                  <DropdownMenu right>
+                    {this.props.app_state.other_sessions.map(s => (
+                      <DropdownItem key={s.session_id} onClick={this.close} href={`/switch/${s.session_id}/`}
+                                    target="_blank">
+                        Switch to <b>{s.name}</b>
+                      </DropdownItem>
+                    ))}
+                    {this.props.app_state.other_sessions.length ? <DropdownItem divider/> : null}
+                    <DropdownItem onClick={this.close} href="/login/" target="_blank">
+                      Login to another account
+                    </DropdownItem>
+                    <DropdownItem divider/>
+                    <DropdownItem tag={Link} onClick={this.close} to="/logout/">
+                      Logout
+                    </DropdownItem>
+                  </DropdownMenu>
+                </UncontrolledDropdown>
               </Nav>
-              <form className="form-inline">
+              <form className="form-inline ml-2">
                 <input className="form-control" type="text" placeholder="Search"/>
               </form>
             </Collapse>

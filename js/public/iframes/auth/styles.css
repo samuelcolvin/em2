@@ -13,7 +13,7 @@ html, body {
 
 .error {
   color: #cc1010;
-  height: 16px;
+  min-height: 20px;
   display: block;
 }
 

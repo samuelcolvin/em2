@@ -31,6 +31,7 @@
       const origin = 'http://localhost:3000'
       const email_el = document.getElementById('email')
       const password_el = document.getElementById('password')
+      setTimeout(() => window.parent.postMessage({loaded: true}, origin), 50)
 
       function on_error (message, status, xhr, error) {
         console.warn('Error:', message, xhr, error, form)
@@ -46,10 +47,15 @@
 
       let grecaptcha_token = null
       let grecaptcha_required = false
+      let existing_sessions = []
       window.addEventListener('message', event => {
-        if (event.origin === origin && event.data.grecaptcha_token) {
-          grecaptcha_token = data.grecaptcha_token
-          user_error.innerText = ''
+        if (event.origin === origin) {
+          if (event.data.existing_sessions) {
+            existing_sessions = event.data.existing_sessions
+          } else if (event.data.grecaptcha_token) {
+            grecaptcha_token = data.grecaptcha_token
+            user_error.innerText = ''
+          }
         }
       }, false)
 
@@ -76,6 +82,12 @@
 
       function on_submit (e) {
         e.preventDefault()
+        if (existing_sessions.includes(email_el.value)) {
+          user_error.innerText = `You're already logged in as ${email_el.value}.`
+          password_el.value = ''
+          return
+        }
+
         email_el.readOnly = true
         password_el.readOnly = true
         user_error.innerText = ''
