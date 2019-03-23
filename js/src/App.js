@@ -117,7 +117,6 @@ class App extends Component {
       setError: error => this.setError(error),
       setTitle: title => this.setState({title}),
       user: this.state.user,
-      other_sessions: this.state.other_sessions,
       worker: this.worker,
     }
     return (

@@ -5,15 +5,15 @@ import {Loading} from '../lib/Errors'
 
 class Logout extends React.Component {
   async componentDidMount () {
-    const next = await this.props.ctx.worker.call('logout')
+    await this.props.ctx.worker.call('logout')
     this.props.ctx.setMessage({icon: 'user', message: 'Logged out successfully'})
     // user gets redirected when the user gets set to null
-    this.setState({next})
+    this.setState({finished: true})
   }
 
   render () {
-    if (this.state && this.state.next) {
-      return <Redirect to={this.state.next}/>
+    if (this.state && this.state.finished) {
+      return <Redirect to="/login/"/>
     } else {
       return <Loading/>
     }

@@ -83,7 +83,7 @@
       function on_submit (e) {
         e.preventDefault()
         if (existing_sessions.includes(email_el.value)) {
-          user_error.innerText = `You're already logged in as ${email_el.value}, you cannot login again.`
+          user_error.innerText = `You're already logged in as ${email_el.value}.`
           password_el.value = ''
           return
         }

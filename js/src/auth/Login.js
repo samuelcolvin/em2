@@ -28,8 +28,8 @@ class Login extends React.Component {
       return
     }
     if (event.data.loaded) {
-      if (this.props.ctx.other_sessions.length) {
-        const existing_sessions = this.props.ctx.other_sessions.map(s => s.email)
+      const existing_sessions = await this.props.ctx.worker.call('all-emails')
+      if (existing_sessions.length) {
         this.iframe_ref.current.contentWindow.postMessage({existing_sessions}, '*')
       }
     } else if (event.data.grecaptcha_required !== undefined) {

@@ -55,5 +55,6 @@ class Session {
   }
 
   other_sessions = () => session_db.sessions.where('session_id').notEqual(this.id || -1).toArray()
+  all_emails = () => session_db.sessions.orderBy('email').keys()
 }
 export const session = new Session()

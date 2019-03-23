@@ -13,15 +13,6 @@ const ws = new Websocket()
 worker_conversations()
 worker_contacts()
 
-let previous_session_id = null
-
-// other sessions can change
-setInterval(() => {
-  if (session.id !== previous_session_id) {
-    update_sessions()
-  }
-}, 5000)
-
 const update_sessions = async () => {
   window_call('setUser', session.current)
   window_call('setState', {other_sessions: await session.other_sessions()})
@@ -43,11 +34,9 @@ add_listener('logout', async () => {
   await session.delete()
   if (session.id) {
     await update_sessions()
-    return '/'
   } else {
     window_call('setUser', null)
     window_call('setState', {other_sessions: []})
-    return '/login/'
   }
 })
 
@@ -56,6 +45,8 @@ add_listener('switch', async session_id => {
   await update_sessions()
   return {email: session.email, name: session.name}
 })
+
+add_listener('all-emails', session.all_emails)
 
 add_listener('start', async session_id => {
   await session.set(session_id)
