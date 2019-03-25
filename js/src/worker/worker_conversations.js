@@ -17,9 +17,21 @@ function actions_incomplete (actions) {
 
 const get_db_actions = conv_key => session.db.actions.where('conv').startsWith(conv_key).sortBy('id')
 
-const _msg_action_types = [
-    'message:recover', 'message:lock', 'message:release', 'message:add', 'message:modify', 'message:delete',
-]
+const _msg_action_types = new Set([
+  'message:recover',
+  'message:lock',
+  'message:release',
+  'message:add',
+  'message:modify',
+  'message:delete',
+])
+const _meta_action_types = new Set([
+  'message:release',
+  'subject:lock',
+  'message:lock',
+  'seen',
+  'subject:release',
+])
 
 // taken roughly from core.py:_construct_conv_actions
 function construct_conv (actions) {
@@ -33,7 +45,7 @@ function construct_conv (actions) {
     if (['conv:publish', 'conv:create'].includes(act)) {
       subject = action.body
       created = action.ts
-    } else if (act === 'subject:lock') {
+    } else if (act === 'subject:modify') {
       subject = action.body
     } else if (act === 'message:add') {
       messages[action.id] = {
@@ -47,7 +59,7 @@ function construct_conv (actions) {
         'active': true,
         'comments': [],
       }
-    } else if (_msg_action_types.includes(act)) {
+    } else if (_msg_action_types.has(act)) {
       const message = messages[action.follows]
       message.last_action = action.id
       if (act === 'message:modify') {
@@ -63,9 +75,7 @@ function construct_conv (actions) {
       participants[action.participant] = {id: action.id}
     } else if (act === 'participant:remove') {
       delete participants[action.participant]
-    } else if (act === 'seen') {
-      // do nothing so far
-    } else {
+    } else if (!_meta_action_types.has(act)) {
       throw Error(`action "${act}" construction not implemented`)
     }
   }
@@ -175,4 +185,10 @@ export default function () {
   add_listener('create-conversation', async data => (
     await requests.post('ui', `/${session.id}/conv/create/`, data, {expected_status: [201, 400]})
   ))
+
+  add_listener('last-subject-action', async data => {
+    const acts = new Set(['conv:create', 'conv:publish', 'subject:lock', 'subject:release', 'subject:modify'])
+    const actions = await session.db.actions.where({conv: data.conv}).and(a => acts.has(a.act)).reverse().sortBy('id')
+    return actions[0].id
+  })
 }

@@ -307,13 +307,13 @@ async def test_bad_participant_included():
 async def test_bad_no_body():
     with pytest.raises(ValidationError) as exc_info:
         ActionModel(act=ActionTypes.msg_add)
-    assert 'body is required for message:add and message:modify' in exc_info.value.json()
+    assert 'body is required for message:add, message:modify and subject:modify' in exc_info.value.json()
 
 
 async def test_bad_body_included():
     with pytest.raises(ValidationError) as exc_info:
         ActionModel(act=ActionTypes.prt_remove, participant='new@example.com', follows=1, body='should be here')
-    assert 'body must be omitted except for message:add and message:modify' in exc_info.value.json()
+    assert 'body must be omitted except for message:add, message:modify and subject:modify' in exc_info.value.json()
 
 
 async def test_bad_no_follows():
@@ -522,3 +522,48 @@ async def test_publish_seen(factory: Factory, db_conn):
         'messages': [{'ref': 2, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True}],
         'participants': {'testing-1@example.com': {'id': 1}},
     }
+
+
+actions_summary_sql = """
+select a.id, af.id as follows, a.act, a.body from actions a
+join actions af on a.follows=af.pk
+where a.id>3
+"""
+
+
+async def test_subject_modify(factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+
+    assert 3 == await db_conn.fetchval('select id from actions where act=$1', ActionTypes.conv_create)
+
+    assert [4] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.subject_lock, follows=3))
+    assert [5] == await factory.act(
+        user.id, conv.id, ActionModel(act=ActionTypes.subject_modify, follows=4, body='new subject')
+    )
+
+    actions_info = [dict(r) for r in await db_conn.fetch(actions_summary_sql)]
+    assert actions_info == [
+        {'id': 4, 'follows': 3, 'act': 'subject:lock', 'body': None},
+        {'id': 5, 'follows': 4, 'act': 'subject:modify', 'body': 'new subject'},
+    ]
+    obj = await construct_conv(db_conn, user.id, conv.id)
+    assert obj['subject'] == 'new subject'
+
+
+async def test_subject_lock_release(factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+
+    assert 3 == await db_conn.fetchval('select id from actions where act=$1', ActionTypes.conv_create)
+
+    assert [4] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.subject_lock, follows=3))
+    assert [5] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.subject_release, follows=4))
+
+    actions_info = [dict(r) for r in await db_conn.fetch(actions_summary_sql)]
+    assert actions_info == [
+        {'id': 4, 'follows': 3, 'act': 'subject:lock', 'body': None},
+        {'id': 5, 'follows': 4, 'act': 'subject:release', 'body': None},
+    ]
+    obj = await construct_conv(db_conn, user.id, conv.id)
+    assert obj['subject'] == 'Test Subject'

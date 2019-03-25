@@ -7,6 +7,7 @@ import {Loading} from '../../lib/Errors'
 import WithContext from '../../lib/context'
 import Message from './Message'
 import RightPanel from './RightPanel'
+import EditSubject from './EditSubject'
 
 const DraftButtons = ({state, add_msg, publish}) => (
   <ButtonGroup>
@@ -35,15 +36,15 @@ class ConvDetailsView extends React.Component {
     this.mounted = true
     this.update()
     this.remove_listener = this.props.ctx.worker.add_listener('change', this.update)
+    document.addEventListener('keydown', this.on_keydown)
     await sleep(1000)
     if (this.mounted) {
       await this.props.ctx.worker.call('seen', {conv: this.state.conv.key})
     }
-    document.addEventListener('keydown', this.on_keydown)
   }
 
-  componentDidUpdate (prevProps, prevState, snapshot) {
-    if (this.props.location !== prevProps.location) {
+  componentDidUpdate (prevProps, prevState) {
+    if (this.props.match.params.key !== prevProps.match.params.key) {
       // moved to a new conversation, clear the state completely
       this.setState(Object.assign(...Object.keys(this.state).map(k => ({[k]: null}))))
       this.update()
@@ -132,6 +133,23 @@ class ConvDetailsView extends React.Component {
     }
   }
 
+  act = async actions => {
+    if (!this.state.locked) {
+      this.setState({locked: true})
+      const r = await this.props.ctx.worker.call('act', {conv: this.state.conv.key, actions})
+      this.action_ids = r.data.action_ids
+      return r.data.action_ids
+    }
+  }
+
+  lock_subject = async () => {
+    const follows = await this.props.ctx.worker.call('last-subject-action', {conv: this.state.conv.key})
+    const action_ids = await this.act([{act: 'subject:lock', follows}])
+    return action_ids[0]
+  }
+  release_subject = async follows => this.act([{act: 'subject:release', follows}])
+  set_subject = (subject, follows) => this.act([{act: 'subject:modify', body: subject, follows}])
+
   render () {
     if (!this.state.conv) {
       return <Loading/>
@@ -180,6 +198,12 @@ class ConvDetailsView extends React.Component {
             />
           </Col>
         </Row>
+        <EditSubject
+          subject={this.state.conv.subject}
+          set_subject={this.set_subject}
+          lock_subject={this.lock_subject}
+          release_subject={this.release_subject}
+        />
       </div>
     )
   }

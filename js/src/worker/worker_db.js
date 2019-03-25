@@ -19,7 +19,7 @@ class Session {
       this.db = new Dexie('em2-' + this.current.email)
       this.db.version(1).stores({
         conversations: '&key, new_key, created_ts, updated_ts, publish_ts',
-        actions: '[conv+id], [conv+act], conv, ts',
+        actions: '[conv+id], [conv+act], id, conv, ts',
       })
     } else {
       this.id = null

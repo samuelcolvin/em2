@@ -203,8 +203,13 @@ async def update_conv_users(conn: BuildPgConnection, conv_id: int):
 
 
 _prt_action_types = {a for a in ActionTypes if a.value.startswith('participant:')}
+_subject_action_types = {a for a in ActionTypes if a.value.startswith('subject:')}
 _msg_action_types = {a for a in ActionTypes if a.value.startswith('message:')}
-_follow_action_types = (_msg_action_types - {ActionTypes.msg_add}) | {ActionTypes.prt_modify, ActionTypes.prt_remove}
+_follow_action_types = (
+    (_msg_action_types - {ActionTypes.msg_add})
+    | {ActionTypes.prt_modify, ActionTypes.prt_remove}
+    | _subject_action_types
+)
 # actions that don't materially change the conversation, and therefore don't effect whether someone has seen it
 _meta_action_types = {
     ActionTypes.seen,
@@ -214,6 +219,7 @@ _meta_action_types = {
     ActionTypes.msg_release,
 }
 max_participants = 64
+with_body_actions = {ActionTypes.msg_add, ActionTypes.msg_modify, ActionTypes.subject_modify}
 
 
 class ActionModel(BaseModel):
@@ -246,10 +252,10 @@ class ActionModel(BaseModel):
     @validator('body', always=True)
     def check_body(cls, v, values, **kwargs):
         act: ActionTypes = values.get('act')
-        if act and v is None and act in {ActionTypes.msg_add, ActionTypes.msg_modify}:
-            raise ValueError('body is required for message:add and message:modify')
-        if act and v is not None and act not in {ActionTypes.msg_add, ActionTypes.msg_modify}:
-            raise ValueError('body must be omitted except for message:add and message:modify')
+        if act and v is None and act in with_body_actions:
+            raise ValueError('body is required for message:add, message:modify and subject:modify')
+        if act and v is not None and act not in with_body_actions:
+            raise ValueError('body must be omitted except for message:add, message:modify and subject:modify')
         return v
 
     @validator('follows', always=True)
@@ -285,14 +291,53 @@ class _Act:
         return self.conv_id
 
     async def run(self, action: ActionModel) -> Optional[int]:
-        if action.act in _prt_action_types:
+        if action.act is ActionTypes.seen:
+            return await self._seen()
+        elif action.act in _prt_action_types:
             return await self._act_on_participant(action)
         elif action.act in _msg_action_types:
             return await self._act_on_message(action)
-        elif action.act is ActionTypes.seen:
-            return await self._seen()
+        elif action.act in _subject_action_types:
+            return await self._act_on_subject(action)
 
         raise NotImplementedError
+
+    async def _seen(self) -> Optional[int]:
+        # could use "parent" to identify what was seen
+        last_seen = await self.conn.fetchval(
+            """
+            select a.id from actions as a
+            where a.conv=$1 and act='seen' and actor=$2
+            order by id desc
+            limit 1
+            """,
+            self.conv_id,
+            self.actor_user_id,
+        )
+        if last_seen:
+            last_real_action = await self.conn.fetchval(
+                """
+                select id from actions
+                where conv = $1 and not (act = any($2::ActionTypes[]))
+                order by id desc
+                limit 1
+                """,
+                self.conv_id,
+                _meta_action_types,
+            )
+            if last_real_action and last_seen > last_real_action:
+                # conversation already seen by this user since it last changed
+                return
+
+        return await self.conn.fetchval(
+            """
+            insert into actions (conv, actor, act   )
+            values              ($1  , $2   , 'seen')
+            returning id
+            """,
+            self.conv_id,
+            self.actor_user_id,
+        )
 
     async def _act_on_participant(self, action: ActionModel) -> int:
         follows_pk = None
@@ -410,41 +455,34 @@ class _Act:
             follows_pk,
         )
 
-    async def _seen(self) -> Optional[int]:
-        # could use "parent" to identify what was seen
-        last_seen = await self.conn.fetchval(
-            """
-            select a.id from actions as a
-            where a.conv=$1 and act='seen' and actor=$2
-            order by id desc
-            limit 1
-            """,
-            self.conv_id,
-            self.actor_user_id,
-        )
-        if last_seen:
-            last_real_action = await self.conn.fetchval(
-                """
-                select id from actions
-                where conv = $1 and not (act = any($2::ActionTypes[]))
-                order by id desc
-                limit 1
-                """,
-                self.conv_id,
-                _meta_action_types,
-            )
-            if last_real_action and last_seen > last_real_action:
-                # conversation already seen by this user since it last changed
-                return
+    async def _act_on_subject(self, action: ActionModel) -> int:
+        follow_types = _subject_action_types | {ActionTypes.conv_create, ActionTypes.conv_publish}
+        follows_pk, follows_act, follows_actor, follows_age = await self._get_follows(action, follow_types)
+
+        if action.act == ActionTypes.subject_lock:
+            if (
+                follows_act == ActionTypes.subject_lock
+                and follows_actor != self.actor_user_id
+                and follows_age <= self.settings.message_lock_duration
+            ):
+                details = {'loc_duration': self.settings.message_lock_duration}
+                raise JsonErrors.HTTPConflict('subject not locked by you, action not possible', details=details)
+        else:
+            # modify and release
+            if follows_act != ActionTypes.subject_lock or follows_actor != self.actor_user_id:
+                raise JsonErrors.HTTPBadRequest(f'{action.act} must follow subject:lock by the same user')
 
         return await self.conn.fetchval(
             """
-            insert into actions (conv, actor, act   )
-            values              ($1  , $2   , 'seen')
+            insert into actions (conv, actor, act, body, follows)
+            values              ($1  , $2   , $3 , $4  , $5)
             returning id
             """,
             self.conv_id,
             self.actor_user_id,
+            action.act,
+            action.body,
+            follows_pk,
         )
 
     async def _get_follows(self, action: ActionModel, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
@@ -504,7 +542,9 @@ async def apply_actions(
     return conv_id, action_ids
 
 
-async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_ref: StrInt, since_id: int = None):
+async def conv_actions_json(
+    conn: BuildPgConnection, user_id: int, conv_ref: StrInt, *, since_id: int = None, inc_seen: bool = False
+):
     conv_id, last_action = await get_conv_for_user(conn, user_id, conv_ref)
     where_logic = V('a.conv') == conv_id
     if last_action:
@@ -514,7 +554,8 @@ async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_ref: Str
         await or404(conn.fetchval('select 1 from actions where conv=$1 and id=$2', conv_id, since_id))
         where_logic &= V('a.id') > since_id
 
-    where_logic &= V('a.act') != ActionTypes.seen
+    if not inc_seen:
+        where_logic &= V('a.act') != ActionTypes.seen
 
     return await or404(
         conn.fetchval_b(
@@ -542,7 +583,7 @@ async def conv_actions_json(conn: BuildPgConnection, user_id: int, conv_ref: Str
 
 
 async def construct_conv(conn: BuildPgConnection, user_id: int, conv_ref: StrInt, since_id: int = None):
-    actions_json = await conv_actions_json(conn, user_id, conv_ref, since_id)
+    actions_json = await conv_actions_json(conn, user_id, conv_ref, since_id=since_id)
     actions = json.loads(actions_json)
     return _construct_conv_actions(actions)
 
@@ -584,7 +625,7 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
             participants[action['participant']] = {'id': action_id}  # perms not implemented yet
         elif act == ActionTypes.prt_remove:
             participants.pop(action['participant'])
-        else:
+        elif act not in _meta_action_types:
             raise NotImplementedError(f'action "{act}" construction not implemented')
 
     msg_list = []
@@ -661,8 +702,8 @@ async def create_conv(
         user_ids = [creator_id] + other_user_ids
         await conn.execute(
             """
-            insert into actions (conv, act             , actor, ts, participant_user) (
-              select             $1  , 'participant:add', $2  , $3, unnest($4::int[])
+            insert into actions (conv, act              , actor, ts, participant_user) (
+            select               $1  , 'participant:add', $2   , $3, unnest($4::int[])
             )
             """,
             conv_id,

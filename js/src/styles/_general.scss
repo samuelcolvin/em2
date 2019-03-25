@@ -58,3 +58,10 @@
 .btn-box {
   @include button-variant(white, white);
 }
+
+.simplified-modal {
+  .modal-header {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+}

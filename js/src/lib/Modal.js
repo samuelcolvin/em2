@@ -13,43 +13,71 @@ export default function AsModal (WrappedComponent) {
     constructor (props) {
       super(props)
       this.regex = props.regex || /modal\/$/
-      this.path_match = () => this.regex.test(this.props.location.pathname)
       this.state = {
         shown: this.path_match(),
       }
-      this.toggle = this.toggle.bind(this)
-      this.toggle_handlers = []
+      this.change_handlers = []
     }
 
-    toggle (r) {
-      const shown_new = !this.state.shown
-      this.setState({
-        shown: shown_new,
+    path_match = () => this.regex.test(this.props.location.pathname)
+
+    parent_uri = () => {
+      if (this.props.parent_uri) {
+        return this.props.parent_uri
+      } else {
+        return this.props.location.pathname.replace(this.regex, '')
+      }
+    }
+
+    setState (s) {
+      return new Promise(resolve => {
+        super.setState(s, resolve)
       })
-      this.toggle_handlers.map(h => h(r))
-      if (!this.state.shown_new) {
-        this.props.history.replace(this.props.parent_uri + (r && r.pk ? `${r.pk}/`: ''))
+    }
+
+    componentDidMount () {
+      this.toggle(null, this.path_match())
+    }
+
+    toggle = (r, shown) => {
+      if (shown !== this.state.shown) {
+        shown = Boolean(shown)
+        this.setState({shown})
+        this.change_handlers.map(h => h({response: r || null, shown, modal: this}))
+        if (!shown) {
+          const parent_uri = this.parent_uri()
+          this.props.history.replace(parent_uri + (r && r.pk ? `${r.pk}/` : ''))
+        }
       }
     }
 
     componentDidUpdate (prevProps) {
-      if (this.props.location !== prevProps.location) {
-        this.setState({
-          shown: this.path_match(),
-        })
+      if (this.props.location.pathname !== prevProps.location.pathname) {
+        this.toggle(null, this.path_match())
+      }
+    }
+
+    register_change_handler = h => {
+      this.change_handlers.push(h)
+      return () => {
+        this.change_handlers = this.change_handlers.filter(h_ => h_ !== h)
       }
     }
 
     render () {
       return (
-        <Modal isOpen={this.state.shown} toggle={() => this.toggle()} size="lg">
+        <Modal isOpen={this.state.shown} toggle={() => this.toggle()}
+               size={this.props.size}
+               className={this.props.className}>
           <ModalHeader toggle={() => this.toggle()}>
-            {this.props.title}<span id="modal-title"/>
+            {this.props.title}
+            <span id="modal-title"/>
           </ModalHeader>
           <WrappedComponent
             {...this.props}
             done={this.toggle}
-            register_toggle_handler={h => this.toggle_handlers.push(h)}
+            modal_shown={this.state.shown}
+            register_change_handler={this.register_change_handler}
             form_body_class="modal-body"
             form_footer_class="modal-footer"/>
         </Modal>

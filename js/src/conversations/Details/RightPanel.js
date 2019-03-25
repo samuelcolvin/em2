@@ -1,4 +1,5 @@
 import React from 'react'
+import {Link} from 'react-router-dom'
 import {
   Button,
   ButtonGroup,
@@ -24,11 +25,11 @@ class ScrollSpy extends React.Component {
     }
   }
 
-  componentDidMount() {
+  componentDidMount () {
     window.addEventListener('scroll', this.set_fixed)
   }
 
-  componentWillUnmount() {
+  componentWillUnmount () {
     window.removeEventListener('scroll', this.set_fixed)
   }
 
@@ -39,13 +40,12 @@ class ScrollSpy extends React.Component {
 
 
 class RightPanel extends React.Component {
-  render() {
+  render () {
     const conv_state = this.props.conv_state
     return (
       <ScrollSpy scroll_threshold={45} fixed_top={103}>
         <ButtonGroup vertical className="btn-group-box">
-          <Button color="box">Edit Subject</Button>
-          <Button color="box" className="border-top">Archive for All</Button>
+          <Button color="box" tag={Link} to="./edit-subject/">Edit Subject</Button>
 
           <UncontrolledButtonDropdown direction="right">
             <DropdownToggle color="box" className="border-top">

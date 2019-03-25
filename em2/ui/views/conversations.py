@@ -55,7 +55,9 @@ class ConvActions(View):
 
     async def call(self):
         m = parse_request_query(self.request, self.QueryModel)
-        json_str = await conv_actions_json(self.conn, self.session.user_id, self.request.match_info['conv'], m.since)
+        json_str = await conv_actions_json(
+            self.conn, self.session.user_id, self.request.match_info['conv'], since_id=m.since, inc_seen=True
+        )
         return raw_json_response(json_str)
 
 
