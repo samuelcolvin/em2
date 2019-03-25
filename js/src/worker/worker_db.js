@@ -28,14 +28,11 @@ class Session {
   }
 
   set = async session_id => {
-    if (session_id) {
-      const session = await session_db.sessions.get(session_id)
-      if (session) {
-        this._set_session(session)
-        return
-      }
+    let session = session_id && await session_db.sessions.get(session_id)
+    if (!session) {
+      session = await session_db.sessions.toCollection().first()
     }
-    this._set_session(await session_db.sessions.toCollection().first())
+    this._set_session(session)
   }
 
   add = async session => {

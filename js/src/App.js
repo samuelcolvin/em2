@@ -122,7 +122,7 @@ class App extends Component {
     return (
       <GlobalContext.Provider value={ctx}>
         <Navbar app_state={this.state} location={this.props.location}/>
-        <main className="container">
+        <main className="container" id="main">
           <Main app_state={this.state}/>
         </main>
         <Notify/>

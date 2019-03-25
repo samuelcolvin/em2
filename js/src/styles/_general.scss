@@ -19,3 +19,42 @@
 .h-150 {
   height: 150px !important;
 }
+
+.dropright .dropdown-menu {
+  margin-left: 5px;
+}
+
+.loading {
+  width: 60px;
+}
+
+%box-border {
+  background-color: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 15px rgba(84,96,103,.25);
+  margin-bottom: 1rem;
+}
+
+.box {
+  @extend %box-border;
+  padding: 1rem;
+  &.no-pad {
+    padding: 0;
+    > div {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+  }
+}
+
+.btn-group-box {
+  @extend %box-border;
+  width: 100%;
+  .btn {
+    text-align: left;
+  }
+}
+
+.btn-box {
+  @include button-variant(white, white);
+}

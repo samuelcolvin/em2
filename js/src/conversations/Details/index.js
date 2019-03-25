@@ -5,8 +5,8 @@ import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {sleep} from '../../lib'
 import {Loading} from '../../lib/Errors'
 import WithContext from '../../lib/context'
-import Participants from '../../lib/form/Participants'
 import Message from './Message'
+import RightPanel from './RightPanel'
 
 const DraftButtons = ({state, add_msg, publish}) => (
   <ButtonGroup>
@@ -173,42 +173,11 @@ class ConvDetailsView extends React.Component {
             </div>
           </Col>
           <Col md="4">
-            <div className="box">
-              {Object.keys(this.state.conv.participants).map((p, i) => (
-                  <div key={i}>{p}</div>
-              ))}
-              {this.state.extra_prts ? (
-                <div className="mt-2">
-                  <Participants name="participants"
-                                ctx={this.props.ctx}
-                                value={this.state.extra_prts || []}
-                                disabled={this.state.locked}
-                                existing_participants={Object.keys(this.state.conv.participants).length}
-                                onChange={extra_prts => this.setState({extra_prts})}/>
-
-                  <div className="d-flex flex-row-reverse mt-2">
-                    <Button color="primary" disabled={this.state.locked} size="sm"
-                            onClick={this.add_participants}>
-                      Add
-                    </Button>
-                    <Button size="sm" color="link" className="text-muted"
-                            disabled={this.state.locked}
-                            onClick={() => this.setState({extra_prts: null})}>
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-right mt-2">
-                  <Button color="primary"
-                          disabled={!!(this.state.locked || this.state.comment_parent || this.state.new_message)}
-                          size="sm"
-                          onClick={() => this.setState({extra_prts: []})}>
-                    Add Participants
-                  </Button>
-                </div>
-              )}
-            </div>
+            <RightPanel
+              conv_state={this.state}
+              add_participants={this.add_participants}
+              set_participants={extra_prts => this.setState({extra_prts})}
+            />
           </Col>
         </Row>
       </div>

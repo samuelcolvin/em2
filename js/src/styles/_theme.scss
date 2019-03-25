@@ -100,25 +100,6 @@ $stripe-width: 10px;
   }
 }
 
-.box {
-  background-color: white;
-  border-radius: 4px;
-  box-shadow: 0 2px 15px rgba(84,96,103,.25);
-  padding: 1rem;
-  margin-bottom: 1rem;
-  &.no-pad {
-    padding: 0;
-    > div {
-      padding-left: 1rem;
-      padding-right: 1rem;
-    }
-  }
-}
-
-.loading {
-  width: 60px;
-}
-
 .login {
   iframe {
     width: 100%;
@@ -143,9 +124,9 @@ $stripe-width: 10px;
 }
 
 .conv-list {
-  padding: 0;
+  padding: 0 !important;
   user-select: none;
-  a {
+  > a {
     display: grid;
     grid-template-columns: 220px 1fr 220px;
     align-items: baseline;
@@ -189,10 +170,17 @@ $stripe-width: 10px;
     }
 
     &.seen {
-      background-color: darken($gray-100, 1%);
+      background-color: #f9f9fb;  // lighten($gray-100, 1%);
       .subject {
         font-weight: normal;
       }
+    }
+
+    &:last-child {
+      border-radius: 0 0 $border-radius $border-radius;
+    }
+    &:first-child {
+      border-radius: $border-radius $border-radius 0 0;
     }
   }
 }

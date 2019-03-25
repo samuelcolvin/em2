@@ -57,7 +57,7 @@ export default class Websocket {
       }, 500)
     }
 
-    this._socket.onclose = e => {
+    this._socket.onclose = async e => {
       if (e.code === 1000 && this._state === closing) {
         this._disconnects = 0
         console.log('websocket closed intentionally')
@@ -69,7 +69,9 @@ export default class Websocket {
       if (e.code === 4403) {
         console.debug('websocket closed with 4403, not authorised')
         set_conn_status(statuses.online)
+        await session.delete()
         window_call('setState', {user: null})
+        window_call('setState', {other_sessions: []})
       } else {
         console.debug(`websocket closed, reconnecting in ${reconnect_in}ms`, e)
         setTimeout(this.connect, reconnect_in)
