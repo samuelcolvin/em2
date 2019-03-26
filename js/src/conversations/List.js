@@ -12,7 +12,7 @@ const ConvList = ({conversations, user_email}) => conversations.map((conv, i) =>
     <div className="summary">
       {!conv.publish_ts && <span className="badge badge-dark mr-2">Draft</span>}
       <span className="body">
-        {conv.details.email === user_email ? 'you' : conv.details.email}: {conv.details.body}
+        {conv.details.email === user_email ? 'you' : conv.details.email}: {conv.details.prev}
       </span>
     </div>
 

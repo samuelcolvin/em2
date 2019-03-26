@@ -17,7 +17,7 @@ async def test_msg_add(factory: Factory, db_conn):
     conv = await factory.create_conv()
     assert 3 == await db_conn.fetchval('select count(*) from actions')
 
-    action = ActionModel(act=ActionTypes.msg_add, body='This is a test')
+    action = ActionModel(act=ActionTypes.msg_add, body='This is a **test**')
     assert [4] == await factory.act(user.id, conv.id, action)
     action_info = dict(await db_conn.fetchrow('select * from actions where id=4'))
     assert action_info == {
@@ -29,7 +29,8 @@ async def test_msg_add(factory: Factory, db_conn):
         'ts': CloseToNow(),
         'follows': None,
         'participant_user': None,
-        'body': 'This is a test',
+        'body': 'This is a **test**',
+        'preview': 'This is a test',
         'parent': None,
         'msg_format': 'markdown',
     }
@@ -52,6 +53,7 @@ async def test_msg_lock_msg(factory: Factory, db_conn):
         'follows': await db_conn.fetchval('select pk from actions where id=2'),
         'participant_user': None,
         'body': None,
+        'preview': None,
         'parent': None,
         'msg_format': None,
     }
@@ -74,6 +76,7 @@ async def test_msg_add_child(factory: Factory, db_conn):
         'follows': None,
         'participant_user': None,
         'body': 'This is a child message',
+        'preview': 'This is a child message',
         'parent': await db_conn.fetchval('select pk from actions where id=2'),
         'msg_format': 'markdown',
     }
@@ -154,6 +157,7 @@ async def test_participant_add(factory: Factory, db_conn):
         'follows': None,
         'participant_user': await db_conn.fetchval("select id from users where email='new@example.com'"),
         'body': None,
+        'preview': None,
         'parent': None,
         'msg_format': None,
     }
@@ -179,6 +183,7 @@ async def test_participant_remove(factory: Factory, db_conn):
         'follows': await db_conn.fetchval('select pk from actions where id=4'),
         'participant_user': await db_conn.fetchval("select id from users where email='new@example.com'"),
         'body': None,
+        'preview': None,
         'parent': None,
         'msg_format': None,
     }
@@ -425,7 +430,7 @@ async def test_seen(factory: Factory, db_conn):
         'act': 'participant:add',
         'sub': 'Test Subject',
         'email': 'testing-1@example.com',
-        'body': 'Test Message',
+        'prev': 'Test Message',
         'prts': 2,
         'msgs': 1,
     }
@@ -444,7 +449,7 @@ async def test_seen(factory: Factory, db_conn):
         'act': 'participant:add',
         'sub': 'Test Subject',
         'email': 'testing-1@example.com',
-        'body': 'Test Message',
+        'prev': 'Test Message',
         'prts': 2,
         'msgs': 1,
     }

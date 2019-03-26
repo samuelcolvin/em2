@@ -220,3 +220,5 @@ async def test_clean_email(factory: Factory, db_conn, cli, url, create_email):
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     body = await db_conn.fetchval("select body from actions where act='message:add'")
     assert body == '<div dir="ltr">this is a reply<br clear="all"/>\n\n</div>'
+    preview = await db_conn.fetchval("select details->>'prev' from conversations")
+    assert preview == 'this is a reply'

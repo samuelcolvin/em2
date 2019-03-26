@@ -1,11 +1,14 @@
 import hashlib
 import json
+import re
 import secrets
+import textwrap
 from datetime import datetime
 from enum import Enum, unique
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from atoolbox import JsonErrors
+from bs4 import BeautifulSoup
 from buildpg import V
 from buildpg.asyncpg import BuildPgConnection
 from pydantic import BaseModel, EmailStr, constr, validator
@@ -410,13 +413,14 @@ class _Act:
             # checks that no message in the hierarchy has been deleted
             return await self.conn.fetchval(
                 """
-                insert into actions (conv, act          , actor, body, parent, msg_format)
-                values              ($1  , 'message:add', $2   , $3  , $4        , $5)
+                insert into actions (conv, act          , actor, body, preview, parent, msg_format)
+                values              ($1  , 'message:add', $2   , $3  , $4     , $5        , $6)
                 returning id
                 """,
                 self.conv_id,
                 self.actor_user_id,
                 action.body,
+                message_preview(action.body, action.msg_format),
                 parent_pk,
                 action.msg_format,
             )
@@ -444,14 +448,15 @@ class _Act:
 
         return await self.conn.fetchval(
             """
-            insert into actions (conv, actor, act, body, follows)
-            values              ($1  , $2   , $3 , $4  , $5)
+            insert into actions (conv, actor, act, body, preview, follows)
+            values              ($1  , $2   , $3 , $4  , $5     , $6)
             returning id
             """,
             self.conv_id,
             self.actor_user_id,
             action.act,
             action.body,
+            message_preview(action.body, action.msg_format) if action.act == ActionTypes.msg_modify else None,
             follows_pk,
         )
 
@@ -713,13 +718,14 @@ async def create_conv(
         )
         await conn.execute(
             """
-            insert into actions (conv, act          , actor, ts, body, msg_format)
-            values              ($1  , 'message:add', $2   , $3, $4  , $5)
+            insert into actions (conv, act          , actor, ts, body, preview, msg_format)
+            values              ($1  , 'message:add', $2   , $3, $4  , $5     , $6)
             """,
             conv_id,
             creator_id,
             ts,
             conv.message,
+            message_preview(conv.message, conv.msg_format),
             conv.msg_format,
         )
         await conn.execute(
@@ -736,3 +742,34 @@ async def create_conv(
         await update_conv_users(conn, conv_id)
 
     return conv_id, conv_key
+
+
+_clean_markdown = [
+    (re.compile(r'\<.*?\>', flags=re.S), ''),
+    (re.compile(r'_(\S.*?\S)_'), r'\1'),
+    (re.compile(r'\[(.+?)\]\(.*?\)'), r'\1'),
+    (re.compile(r'(\*\*|`)'), ''),
+    (re.compile(r'^(#+|\*|\d+\.) ', flags=re.M), ''),
+]
+_clean_all = [
+    (re.compile(r'^\s+'), ''),
+    (re.compile(r'\s+$'), ''),
+    (re.compile(r' {2,}'), ' '),
+    (re.compile(r'\n+'), ' '),
+]
+
+
+def message_preview(body: str, msg_format: MsgFormat) -> str:
+    if msg_format == MsgFormat.markdown:
+        preview = body
+        for regex, p in _clean_markdown:
+            preview = regex.sub(p, preview)
+    elif msg_format == MsgFormat.html:
+        preview = BeautifulSoup(body, 'html.parser').text
+    else:
+        assert msg_format == MsgFormat.plain, msg_format
+        preview = body
+
+    for regex, p in _clean_all:
+        preview = regex.sub(p, preview)
+    return textwrap.shorten(preview, width=140, placeholder='…')

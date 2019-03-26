@@ -57,6 +57,7 @@ create table actions (
   follows bigint references actions,  -- when modifying/deleting etc. a component
   participant_user bigint references users on delete restrict,
   body text,
+  preview text,
    -- used for child message "comments", the thing seen, could also be used on message updates?
   parent bigint references actions,
   msg_format MsgFormat,
@@ -79,7 +80,6 @@ create or replace function action_insert() returns trigger as $$
     old_details_ json;
     details_ json;
     subject_ats ActionTypes[] = array['conv:publish', 'conv:create', 'subject:modify'];
-    add_mod_msg_ats ActionTypes[] = array['message:add', 'message:modify'];
     add_del_msg_ats ActionTypes[] = array['message:add', 'message:delete'];
     meta_ats ActionTypes[] = array['seen','subject:release','subject:lock','message:lock','message:release'];
   begin
@@ -94,13 +94,7 @@ create or replace function action_insert() returns trigger as $$
         'act', new.act,
         'sub', case when new.act=any(subject_ats) then new.body else old_details_->>'sub' end,
         'email', (select email from users where id=new.actor),
-        'body', left(
-          case when new.act=any(add_mod_msg_ats) then
-            new.body
-          else
-            old_details_->>'body'
-          end, 100
-        ),
+        'prev', left(coalesce(new.preview, old_details_->>'prev'), 140),
         'prts', (select count(*) from participants where conv=new.conv),
         'msgs', (
           select count(*) filter (where act='message:add') - count(*) filter (where act='message:delete')
@@ -146,8 +140,21 @@ create table send_events (
 create index send_events_send ON send_events USING btree (send);
 create index send_events_user_ids ON send_events USING btree (user_ids);
 
--- todo attachments
+create type FileTypes as enum ('attachment', 'asset');
 
+create table files (
+  id bigserial primary key,
+  action bigint references actions not null,
+  send bigint references sends,
+  path varchar(255) not null,
+  created timestamptz not null default current_timestamp,
+  accessed timestamptz not null default current_timestamp,
+  type FileTypes not null,
+  ref varchar(1023) not null,
+  name varchar(1023),
+  mime_type varchar(63)
+);
+create index files_action ON files USING btree (action);
 
 ----------------------------------------------------------------------------------
 -- auth tables, currently in the the same database as everything else, but with --

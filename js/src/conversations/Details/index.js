@@ -147,7 +147,7 @@ class ConvDetailsView extends React.Component {
     const action_ids = await this.act([{act: 'subject:lock', follows}])
     return action_ids[0]
   }
-  release_subject = async follows => this.act([{act: 'subject:release', follows}])
+  release_subject = follows => this.act([{act: 'subject:release', follows}])
   set_subject = (subject, follows) => this.act([{act: 'subject:modify', body: subject, follows}])
 
   render () {

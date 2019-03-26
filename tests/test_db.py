@@ -20,7 +20,8 @@ async def test_update_conv(db_conn):
     assert v == {'details': None, 'last_action_id': 0}
 
     global_id = await db_conn.fetchval(
-        "insert into actions (conv, act, actor, body) values ($1, 'message:add', $2, 'msg body') returning id",
+        "insert into actions (conv, act, actor, body, preview) values "
+        "($1, 'message:add', $2, 'msg body', 'msg preview') returning id",
         conv_id,
         user_id,
     )
@@ -31,7 +32,7 @@ async def test_update_conv(db_conn):
         'act': 'message:add',
         'sub': None,
         'email': 'testing@example.com',
-        'body': 'msg body',
+        'prev': 'msg preview',
         'prts': 0,
         'msgs': 1,
     }
@@ -51,7 +52,7 @@ async def test_update_conv(db_conn):
         'act': 'participant:add',
         'sub': None,
         'email': 'testing@example.com',
-        'body': 'msg body',
+        'prev': 'msg preview',
         'prts': 1,
         'msgs': 1,
     }
