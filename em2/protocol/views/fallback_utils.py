@@ -199,7 +199,11 @@ def get_email_body(msg: EmailMessage):
 
 
 to_remove = 'div.gmail_quote', 'div.gmail_extra'  # 'div.gmail_signature'
-html_regexes = [[re.compile('<br/></div><br/>$', re.M), ''], [re.compile('<br/>$', re.M), '']]
+html_regexes = [
+    (re.compile(r'<br/></div><br/>$', re.M), ''),
+    (re.compile(r'<br/>$', re.M), ''),
+    (re.compile(r'\n{2,}'), '\n'),
+]
 
 
 def get_smtp_body(msg: EmailMessage, message_id):

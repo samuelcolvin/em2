@@ -765,7 +765,11 @@ def message_preview(body: str, msg_format: MsgFormat) -> str:
         for regex, p in _clean_markdown:
             preview = regex.sub(p, preview)
     elif msg_format == MsgFormat.html:
-        preview = BeautifulSoup(body, 'html.parser').text
+        soup = BeautifulSoup(body, 'html.parser')
+        # remove gmail signature from preview, any others?
+        for el in soup.select('div.gmail_signature'):
+            el.decompose()
+        preview = soup.text
     else:
         assert msg_format == MsgFormat.plain, msg_format
         preview = body

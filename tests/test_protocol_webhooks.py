@@ -206,6 +206,7 @@ async def test_clean_email(factory: Factory, db_conn, cli, url, create_email):
     data = create_email(
         html_body="""
         <div dir="ltr">this is a reply<br clear="all"/>
+        <div class="gmail_signature">this is a signature</div>
         <div class="gmail_quote">
           <div class="gmail_attr" dir="ltr">On Fri, 15 Mar 2019 at 17:00, &lt;<a
                   href="mailto:testing@imber.io">testing@imber.io</a>&gt; wrote:<br/></div>
@@ -219,6 +220,9 @@ async def test_clean_email(factory: Factory, db_conn, cli, url, create_email):
     assert r.status == 204, await r.text()
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     body = await db_conn.fetchval("select body from actions where act='message:add'")
-    assert body == '<div dir="ltr">this is a reply<br clear="all"/>\n\n</div>'
-    preview = await db_conn.fetchval("select details->>'prev' from conversations")
-    assert preview == 'this is a reply'
+    assert body == (
+        '<div dir="ltr">this is a reply<br clear="all"/>\n'
+        '<div class="gmail_signature">this is a signature</div>\n'
+        '</div>'
+    )
+    assert await db_conn.fetchval("select details->>'prev' from conversations") == 'this is a reply'
