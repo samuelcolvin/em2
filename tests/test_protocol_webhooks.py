@@ -200,8 +200,8 @@ async def test_ses_reply_different_email(factory: Factory, db_conn, cli, url, cr
     }
 
 
-async def test_clean_email(factory: Factory, db_conn, cli, url, create_email):
-    await factory.create_user()
+async def test_clean_email(factory: Factory, db_conn, cli, url, create_email, send_to_remote):
+    send_id, message_id = send_to_remote
 
     data = create_email(
         html_body="""
@@ -214,12 +214,14 @@ async def test_clean_email(factory: Factory, db_conn, cli, url, create_email):
             <p>whatever</p>
           </blockquote>
         </div>
-        """
+        """,
+        **{'In-Reply-To': message_id},
     )
+    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
     assert r.status == 204, await r.text()
-    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
-    body = await db_conn.fetchval("select body from actions where act='message:add'")
+    assert 2 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+    body = await db_conn.fetchval("select body from actions where act='message:add' order by pk desc limit 1")
     assert body == (
         '<div dir="ltr">this is a reply<br clear="all"/>\n'
         '<div class="gmail_signature">this is a signature</div>\n'
@@ -232,12 +234,21 @@ async def test_attachment(factory: Factory, db_conn, cli, url, create_email, cre
     await factory.create_user()
 
     data = create_email(
-        html_body='This is the <b>message</b>.', attachments=[('testing.jpeg', 'image/jpeg', create_image())]
+        html_body='This is the <b>message</b>.',
+        attachments=[('testing.jpeg', 'image/jpeg', create_image(), {'Content-ID': 'foobar-123'})],
     )
     r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
     assert r.status == 204, await r.text()
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
-    body = await db_conn.fetchval("select body from actions where act='message:add'")
+    assert 'This is the <b>message</b>.' == await db_conn.fetchval("select body from actions where act='message:add'")
 
-    assert body == 'This is the <b>message</b>.'
-    # TODO
+    assert 1 == await db_conn.fetchval("select count(*) from files")
+    file = await db_conn.fetchrow('select action, storage, type, ref, name, content_type from files')
+    assert dict(file) == {
+        'action': await db_conn.fetchval('select pk from actions order by id limit 1'),
+        'storage': None,
+        'type': 'attachment',
+        'ref': 'foobar-123',
+        'name': 'testing.jpeg',
+        'content_type': 'image/jpeg',
+    }

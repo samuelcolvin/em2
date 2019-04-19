@@ -23,7 +23,7 @@ from yarl import URL
 from em2.background import push_multiple
 from em2.settings import Settings
 
-from .fallback_utils import ProcessSMTP, get_email_recipients, remove_participants
+from .fallback_utils import get_email_recipients, process_smtp, remove_participants
 
 logger = logging.getLogger('em2.protocol.ses')
 
@@ -83,8 +83,9 @@ async def _record_email_message(request, message: Dict):
     message_id = headers['Message-ID'].strip('<> ')
     common_headers = mail['commonHeaders']
     to, cc = common_headers.get('to', []), common_headers.get('cc', [])
-    # make sure we don't process unnecessary messages, should also delete from S3
-    await get_email_recipients(to, cc, message_id, request['conn'])
+    # make sure we don't process unnecessary messages
+    # TODO should perhaps also delete from S3, or at least store somewhere for later deletion
+    recipients = await get_email_recipients(to, cc, message_id, request['conn'])
 
     s3_action = message['receipt']['action']
     bucket, prefix, path = s3_action['bucketName'], s3_action['objectKeyPrefix'], s3_action['objectKey']
@@ -100,7 +101,7 @@ async def _record_email_message(request, message: Dict):
     del r, s3
     msg = email_parser.parsebytes(body)
     del body
-    await ProcessSMTP(request['conn'], request.app['redis'], settings).run(msg, f's3://{bucket}/{path}')
+    await process_smtp(request, msg, recipients, f's3://{bucket}/{path}')
 
 
 async def _record_email_event(request, message: Dict):

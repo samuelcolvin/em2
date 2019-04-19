@@ -146,13 +146,13 @@ create table files (
   id bigserial primary key,
   action bigint references actions not null,
   send bigint references sends,
-  storage varchar(255) not null,
-  created timestamptz not null default current_timestamp,
-  accessed timestamptz not null default current_timestamp,
+  storage varchar(255),
+  storage_expires timestamptz,
   type FileTypes not null,
-  ref varchar(1023) not null,
+  ref varchar(255),
   name varchar(1023),
-  mime_type varchar(63)
+  content_type varchar(63)
+  -- TODO probably more when we do em2 attachments
 );
 create index files_action ON files USING btree (action);
 

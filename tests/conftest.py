@@ -342,9 +342,14 @@ def _fix_create_email(dummy_server, sns_data):
         text_body and email_msg.set_content(text_body)
         html_body and email_msg.add_alternative(html_body, subtype='html')
 
-        for filename, mime_type, content in attachments:
+        for filename, mime_type, content, headers in attachments:
+            email_msg.make_mixed()
+            attachment = EmailMessage(email_msg.policy)
             maintype, subtype = mime_type.split('/', 1)
-            email_msg.add_attachment(content, maintype=maintype, subtype=subtype, filename=filename)
+            attachment.set_content(content, maintype=maintype, subtype=subtype, filename=filename)
+            for k, v in headers.items():
+                attachment[k] = v
+            email_msg.attach(attachment)
 
         dummy_server.app['s3_emails'][key] = email_msg.as_string()
 
