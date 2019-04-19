@@ -10,3 +10,7 @@ def to_unix_ms(dt: datetime) -> int:
     else:
         diff = dt - EPOCH_TZ
     return int(diff.total_seconds() * 1000)
+
+
+def utcnow():
+    return datetime.utcnow().replace(tzinfo=timezone.utc)

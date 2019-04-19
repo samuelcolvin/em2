@@ -4,7 +4,6 @@ import hmac
 import logging
 import re
 from binascii import hexlify
-from datetime import datetime
 from email.message import EmailMessage
 from functools import reduce
 from typing import Set
@@ -12,6 +11,8 @@ from urllib.parse import urlencode
 
 from aiohttp import ClientSession, ClientTimeout
 from atoolbox import RequestError
+
+from em2.utils.datetime import utcnow
 
 from .base_handler import BaseFallbackHandler
 
@@ -61,7 +62,7 @@ class SesFallbackHandler(BaseFallbackHandler):
         await self.session.close()
 
     def _aws_headers(self, data):
-        n = datetime.utcnow()
+        n = utcnow()
         x_amz_date = n.strftime('%Y%m%dT%H%M%SZ')
         date_stamp = n.strftime('%Y%m%d')
         ctx = dict(

@@ -14,7 +14,7 @@ from buildpg.asyncpg import BuildPgConnection
 from pydantic import BaseModel, EmailStr, constr, validator
 
 from .settings import Settings
-from .utils.datetime import to_unix_ms
+from .utils.datetime import to_unix_ms, utcnow
 from .utils.db import or404
 
 StrInt = Union[str, int]
@@ -677,7 +677,7 @@ async def create_conv(
     conv: CreateConvModel,
     ts: Optional[datetime] = None,
 ):
-    ts = ts or datetime.utcnow()
+    ts = ts or utcnow()
     conv_key = generate_conv_key(creator_email, ts, conv.subject) if conv.publish else draft_conv_key()
     async with conn.transaction():
         conv_id = await conn.fetchval(

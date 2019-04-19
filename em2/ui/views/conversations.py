@@ -16,6 +16,7 @@ from em2.core import (
     get_conv_for_user,
     update_conv_users,
 )
+from em2.utils.datetime import utcnow
 
 from .utils import ExecView, View
 
@@ -104,7 +105,7 @@ class ConvPublish(ExecView):
         # could do more efficiently than this, but would require duplicate logic
         conv_summary = await construct_conv(self.conn, self.session.user_id, conv_prefix)
 
-        ts = datetime.utcnow()
+        ts = utcnow()
         conv_key = generate_conv_key(self.session.email, ts, conv_summary['subject'])
         async with self.conn.transaction():
             async with self.conn.transaction():
