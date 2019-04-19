@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from email.message import EmailMessage
+from io import BytesIO
 from typing import List
 
 import aiodns
@@ -15,6 +16,7 @@ from aioredis import create_redis
 from arq import ArqRedis, Worker
 from atoolbox.db.helpers import SimplePgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
+from PIL import Image, ImageDraw
 
 from em2.auth.utils import mk_password
 from em2.background import push_multiple
@@ -324,6 +326,7 @@ def _fix_create_email(dummy_server, sns_data):
         html_body='this is an html <b>message</b>.',
         message_id='message-id@remote.com',
         key='foobar',
+        attachments=(),
         **headers,
     ):
         email_msg = EmailMessage()
@@ -338,6 +341,11 @@ def _fix_create_email(dummy_server, sns_data):
 
         text_body and email_msg.set_content(text_body)
         html_body and email_msg.add_alternative(html_body, subtype='html')
+
+        for filename, mime_type, content in attachments:
+            maintype, subtype = mime_type.split('/', 1)
+            email_msg.add_attachment(content, maintype=maintype, subtype=subtype, filename=filename)
+
         dummy_server.app['s3_emails'][key] = email_msg.as_string()
 
         h = [{'name': 'Message-ID', 'value': message_id}] + [{'name': k, 'value': v} for k, v in headers.items()]
@@ -349,3 +357,16 @@ def _fix_create_email(dummy_server, sns_data):
         )
 
     return run
+
+
+@pytest.fixture(name='create_image')
+async def _fix_create_image():
+    def create_image(image_format='JPEG'):
+        stream = BytesIO()
+
+        image = Image.new('RGB', (400, 300), (50, 100, 150))
+        ImageDraw.Draw(image).polygon([(0, 0), (image.width, 0), (image.width, 100), (0, 100)], fill=(128, 128, 128))
+        image.save(stream, format=image_format, optimize=True)
+        return stream.getvalue()
+
+    return create_image

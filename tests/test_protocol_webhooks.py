@@ -226,3 +226,18 @@ async def test_clean_email(factory: Factory, db_conn, cli, url, create_email):
         '</div>'
     )
     assert await db_conn.fetchval("select details->>'prev' from conversations") == 'this is a reply'
+
+
+async def test_attachment(factory: Factory, db_conn, cli, url, create_email, create_image):
+    await factory.create_user()
+
+    data = create_email(
+        html_body='This is the <b>message</b>.', attachments=[('testing.jpeg', 'image/jpeg', create_image())]
+    )
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
+    assert r.status == 204, await r.text()
+    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+    body = await db_conn.fetchval("select body from actions where act='message:add'")
+
+    assert body == 'This is the <b>message</b>.'
+    # TODO

@@ -182,20 +182,15 @@ class ProcessSMTP:
         return msg_id
 
 
-def get_email_body(msg: EmailMessage):
-    body = None
-    if msg.is_multipart():
-        for m in msg.walk():
-            ct = m['Content-Type']
-            if 'text' in ct:
-                body = m.get_payload()
-                if 'text/html' in ct:
-                    if m['Content-Transfer-Encoding'] == 'quoted-printable':
-                        body = quopri.decodestring(body).decode()
-                    return body, True
-    else:
-        body = msg.get_payload()
-    return body, False
+def get_email_body(msg: EmailMessage) -> Tuple[str, bool]:
+    m: EmailMessage = msg.get_body(preferencelist=('html', 'plain'))
+    if not m:
+        raise RuntimeError('email with no content')
+    content = m.get_content()
+    is_html = m.get_content_subtype() == 'html'
+    if is_html and m['Content-Transfer-Encoding'] == 'quoted-printable':
+        content = quopri.decodestring(content).decode()
+    return content, is_html
 
 
 to_remove = 'div.gmail_quote', 'div.gmail_extra'  # 'div.gmail_signature'
@@ -224,7 +219,7 @@ def get_smtp_body(msg: EmailMessage, message_id):
         body = str(soup)
         for regex, rep in html_regexes:
             body = regex.sub(rep, body)
-    return body.strip('\n'), is_html
+    return body, is_html
 
 
 async def get_email_recipients(to: List[str], cc: List[str], message_id: str, conn: BuildPgConnection):

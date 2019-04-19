@@ -140,13 +140,13 @@ create table send_events (
 create index send_events_send ON send_events USING btree (send);
 create index send_events_user_ids ON send_events USING btree (user_ids);
 
-create type FileTypes as enum ('attachment', 'asset');
+create type FileTypes as enum ('attachment', 'inline');
 
 create table files (
   id bigserial primary key,
   action bigint references actions not null,
   send bigint references sends,
-  path varchar(255) not null,
+  storage varchar(255) not null,
   created timestamptz not null default current_timestamp,
   accessed timestamptz not null default current_timestamp,
   type FileTypes not null,

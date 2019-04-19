@@ -1,9 +1,10 @@
 import asyncio
 import base64
-import email
 import hashlib
 import json
 import logging
+from email import policy as email_policy
+from email.parser import BytesParser
 from secrets import compare_digest
 from typing import Dict
 
@@ -25,6 +26,8 @@ from em2.settings import Settings
 from .fallback_utils import ProcessSMTP, get_email_recipients, remove_participants
 
 logger = logging.getLogger('em2.protocol.ses')
+
+email_parser = BytesParser(policy=email_policy.default)
 
 
 async def ses_webhook(request):
@@ -95,7 +98,7 @@ async def _record_email_message(request, message: Dict):
             body = await stream.read()
 
     del r, s3
-    msg = email.message_from_string(body.decode())
+    msg = email_parser.parsebytes(body)
     del body
     await ProcessSMTP(request['conn'], request.app['redis'], settings).run(msg, f's3://{bucket}/{path}')
 
