@@ -69,6 +69,7 @@ async def _record_email_message(request, message: Dict):
     """
     Record the email, check email should be processed before downloading from s3.
     """
+    # TODO if we don't want the message, store it in a new table to be deleted later
     mail = message['mail']
     if mail.get('messageId') == 'AMAZON_SES_SETUP_NOTIFICATION':
         logger.info('SES setup notification, ignoring')
@@ -84,7 +85,6 @@ async def _record_email_message(request, message: Dict):
     common_headers = mail['commonHeaders']
     to, cc = common_headers.get('to', []), common_headers.get('cc', [])
     # make sure we don't process unnecessary messages
-    # TODO should perhaps also delete from S3, or at least store somewhere for later deletion
     recipients = await get_email_recipients(to, cc, message_id, request['conn'])
 
     s3_action = message['receipt']['action']

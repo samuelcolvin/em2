@@ -325,9 +325,8 @@ def _fix_create_email(dummy_server, sns_data):
         text_body='this is a message.',
         html_body='this is an html <b>message</b>.',
         message_id='message-id@remote.com',
-        key='foobar',
         attachments=(),
-        **headers,
+        headers=None,
     ):
         email_msg = EmailMessage()
         email_msg['Message-ID'] = message_id
@@ -336,23 +335,35 @@ def _fix_create_email(dummy_server, sns_data):
         email_msg['To'] = ','.join(to)
         email_msg['Date'] = email.utils.format_datetime(datetime(2032, 1, 1, 12, 0))
 
-        for k, v in headers.items():
+        for k, v in (headers or {}).items():
             email_msg[k] = v
 
         text_body and email_msg.set_content(text_body)
         html_body and email_msg.add_alternative(html_body, subtype='html')
 
-        for filename, mime_type, content, headers in attachments:
+        for filename, mime_type, content, a_headers in attachments:
             email_msg.make_mixed()
             attachment = EmailMessage(email_msg.policy)
             maintype, subtype = mime_type.split('/', 1)
             attachment.set_content(content, maintype=maintype, subtype=subtype, filename=filename)
-            for k, v in headers.items():
+            for k, v in a_headers.items():
                 attachment[k] = v
             email_msg.attach(attachment)
 
-        dummy_server.app['s3_emails'][key] = email_msg.as_string()
+        return email_msg
 
+    return run
+
+
+@pytest.fixture(name='create_ses_email')
+def _fix_create_ses_email(dummy_server, sns_data, create_email):
+    def run(
+        *args, to=('testing-1@example.com',), key='foobar', headers=None, message_id='message-id@remote.com', **kwargs
+    ):
+        msg = create_email(*args, to=to, message_id=message_id, headers=headers, **kwargs)
+        dummy_server.app['s3_emails'][key] = msg.as_string()
+
+        headers = headers or {}
         h = [{'name': 'Message-ID', 'value': message_id}] + [{'name': k, 'value': v} for k, v in headers.items()]
         return sns_data(
             message_id,
@@ -375,3 +386,16 @@ async def _fix_create_image():
         return stream.getvalue()
 
     return create_image
+
+
+@pytest.fixture(name='fake_request')
+async def _fix_fake_request(db_conn, settings, redis):
+    class Request:
+        def __init__(self):
+            self.dict = {'conn': db_conn}
+            self.app = {'settings': settings, 'redis': redis}
+
+        def __getitem__(self, item):
+            return self.dict[item]
+
+    return Request()

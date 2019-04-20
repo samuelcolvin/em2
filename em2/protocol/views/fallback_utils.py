@@ -69,9 +69,7 @@ async def get_email_recipients(to: List[str], cc: List[str], message_id: str, co
 
 
 async def process_smtp(request: Request, msg: EmailMessage, recipients: Set[str], storage: Optional[str]):
-    if msg['EM2-ID']:
-        # this is an em2 message and should be received via the proper route too
-        return
+    assert not msg['EM2-ID'], 'messages with EM2-ID header should not be filtered out before this'
     p = ProcessSMTP(request)
     await p.run(msg, recipients, storage)
 
