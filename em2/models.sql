@@ -141,7 +141,7 @@ create table send_events (
 create index send_events_send ON send_events USING btree (send);
 create index send_events_user_ids ON send_events USING btree (user_ids);
 
-create type FileTypes as enum ('attachment', 'inline');
+create type ContentDisposition as enum ('attachment', 'inline');
 
 create table files (
   id bigserial primary key,
@@ -149,15 +149,14 @@ create table files (
   send bigint references sends,
   storage varchar(255),
   storage_expires timestamptz,
-  type FileTypes not null,
-  ref varchar(63),
-  content_id varchar(255),
+  content_disp ContentDisposition not null,
+  hash varchar(63) not null,
+  content_id varchar(255) not null,
   name varchar(1023),
   content_type varchar(63)
-  -- TODO probably more when we do em2 attachments
+  -- TODO add size
 );
-create index files_action ON files USING btree (action);
-create index files_ref ON files USING btree (ref);
+create index files_action_ci ON files USING btree (action, content_id);
 
 ----------------------------------------------------------------------------------
 -- auth tables, currently in the the same database as everything else, but with --

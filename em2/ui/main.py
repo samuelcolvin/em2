@@ -13,7 +13,7 @@ from .middleware import user_middleware
 from .views import online
 from .views.auth import AuthExchangeToken, logout
 from .views.contacts import ContactSearch
-from .views.conversations import ConvAct, ConvActions, ConvCreate, ConvList, ConvPublish
+from .views.conversations import ConvAct, ConvActions, ConvCreate, ConvList, ConvPublish, GetFile
 from .views.ws import websocket
 
 
@@ -39,6 +39,7 @@ async def create_app_ui(settings=None):
         web.get(s + f'conv/{conv_match}/', ConvActions.view(), name='get'),
         web.post(s + f'conv/{conv_match}/act/', ConvAct.view(), name='act'),
         web.post(s + f'conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),
+        web.get(s + fr'conv/{conv_match}/{{action_id:\d+}}/{{content_id}}/', GetFile.view(), name='get-file'),
         web.get(s + 'ws/', websocket, name='websocket'),
         # ui auth views:
         web.route('*', '/auth/token/', AuthExchangeToken.view(), name='auth-token'),

@@ -165,11 +165,11 @@ class ProcessSMTP:
         files = list(find_smtp_files(msg))
         if files:
             action_pk = await self.conn.fetchval('select action from sends where id=$1', send_id)
-            files = [(action_pk, send_id, f.type, f.ref, f.filename, f.content_type) for f in files]
+            files = [(action_pk, send_id, f.content_disp, f.hash, f.content_id, f.name, f.content_type) for f in files]
             await self.conn.executemany(
                 """
-                insert into files (action, send, type, ref, name, content_type)
-                values            ($1    , $2  , $3  , $4 , $5  , $6)
+                insert into files (action, send, content_disp, hash, content_id, name, content_type)
+                values            ($1    , $2  , $3          , $4  , $5        , $6  , $7)
                 """,
                 files,
             )

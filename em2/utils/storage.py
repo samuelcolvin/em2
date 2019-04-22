@@ -16,7 +16,7 @@ from .datetime import to_unix_s, utcnow
 
 __all__ = ('parse_storage_uri', 'S3Client', 'S3')
 
-uri_re = re.compile(r'^(s3)://(\w+)(/.+)$')
+uri_re = re.compile(r'^(s3)://([^/]+)/(.+)$')
 
 
 def parse_storage_uri(uri):
@@ -38,8 +38,12 @@ class S3Client:
         async with r['Body'] as stream:
             return await stream.read()
 
-    async def upload(self, bucket: str, path: str, content: bytes, content_type: str):
-        return await self._client.put_object(Bucket=bucket, Key=path, Body=content, ContentType=content_type)
+    async def upload(
+        self, bucket: str, path: str, content: bytes, content_type: Optional[str], content_disposition: Optional[str]
+    ):
+        return await self._client.put_object(
+            Bucket=bucket, Key=path, Body=content, ContentType=content_type, ContentDisposition=content_disposition
+        )
 
 
 class S3:
@@ -75,10 +79,12 @@ class S3:
         The url is valid for between 30 seconds and ttl + 30 seconds, this is because hte signature is rounded
         so a CDN can better cache the content.
         """
-        assert path.startswith('/'), 'path should start with /'
+        assert not path.startswith('/'), 'path should not start with /'
         min_expires = to_unix_s(utcnow()) + 30
         expires = int(ceil(min_expires / ttl) * ttl)
         to_sign = f'GET\n\n\n{expires}\n /{bucket} /{path}'
-        signature = base64.b64encode(hmac.new(self._settings.aws_secret_key, to_sign.encode(), hashlib.sha1).digest())
+        signature = base64.b64encode(
+            hmac.new(self._settings.aws_secret_key.encode(), to_sign.encode(), hashlib.sha1).digest()
+        )
         args = {'AWSAccessKeyId': self._settings.aws_access_key, 'Signature': signature, 'expires': expires}
         return f'https://{bucket}/{path}?{urlencode(args)}'

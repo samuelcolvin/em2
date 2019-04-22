@@ -572,7 +572,7 @@ async def conv_actions_json(
               prt_user.email as participant, follows_action.id as follows, parent_action.id as parent,
               (select array_agg(row_to_json(f))
                 from (
-                  select storage, type, name, ref, content_type
+                  select content_disp, hash, content_id, name, content_type
                   from files
                   where files.action = a.pk
                 ) f

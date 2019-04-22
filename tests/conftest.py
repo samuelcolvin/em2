@@ -45,6 +45,7 @@ settings_args = dict(
     aws_sns_signing_host='localhost',
     aws_sns_signing_schema='http',
     internal_auth_key='testing' * 6,
+    s3_temp_bucket='s3_temp_bucket.example.com',
 )
 
 
@@ -320,6 +321,8 @@ def _fix_sns_data(dummy_server, mocker):
 def _fix_attachment():
     def run(filename, mime_type, content, headers=None):
         attachment = EmailMessage()
+        for k, v in (headers or {}).items():
+            attachment[k] = v
         maintype, subtype = mime_type.split('/', 1)
         kwargs = dict(subtype=subtype, filename=filename)
         if maintype != 'text':
@@ -327,7 +330,10 @@ def _fix_attachment():
             kwargs['maintype'] = maintype
         attachment.set_content(content, **kwargs)
         for k, v in (headers or {}).items():
-            attachment[k] = v
+            if k in attachment:
+                attachment.replace_header(k, v)
+            else:
+                attachment.add_header(k, v)
         return attachment
 
     return run
