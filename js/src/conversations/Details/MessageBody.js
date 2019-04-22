@@ -1,6 +1,8 @@
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import {sleep} from '../../lib'
+import {make_url} from '../../lib/requests'
+
 
 
 class Html extends React.Component {
@@ -10,7 +12,7 @@ class Html extends React.Component {
   on_message = event => {
     if (event.origin === 'null' && this.props.msg.first_action === event.data.iframe_id) {
       if (event.data.loaded) {
-        this.iframe_ref.current.contentWindow.postMessage({body: this.props.msg.body}, '*')
+        this.iframe_ref.current.contentWindow.postMessage({body: this.build_body()}, '*')
       } else if (event.data.height) {
         // do this rather than keeping height in state to avoid rendering the iframe multiple times
         this.iframe_ref.current.style.height = event.data.height + 'px'
@@ -29,6 +31,27 @@ class Html extends React.Component {
   async componentDidMount () {
     await sleep(50)
     window.addEventListener('message', this.on_message)
+  }
+
+  build_body = () =>{
+    const body = document.createElement('div')
+    body.innerHTML = this.props.msg.body
+    let styles = ''
+    body.querySelectorAll('style').forEach(el => styles += el.innerHTML)
+    if (styles.length > 0) {
+      const s = document.createElement('style')
+      s.innerHTML = styles
+      body.appendChild(s)
+    }
+    const action_id = this.props.msg.first_action
+    for (const img of body.getElementsByTagName('img')) {
+      if (img.src.startsWith('cid:')) {
+        const cid = img.src.substr(4)
+        img.src = make_url('ui', `/${this.props.session_id}/conv/${this.props.conv}/${action_id}/${cid}/`)
+        console.log(img.src, cid)
+      }
+    }
+    return body.innerHTML
   }
 
   componentWillUnmount () {
@@ -61,11 +84,11 @@ const markdown_props = {
   },
 }
 
-export default ({msg}) => {
+export default ({msg, conv, session_id}) => {
   if (msg.format === 'markdown') {
     return <ReactMarkdown {...markdown_props} source={msg.body}/>
   } else if (msg.format === 'html') {
-    return <Html msg={msg}/>
+    return <Html msg={msg} conv={conv} session_id={session_id}/>
   } else {
     // plain
     return <div>{msg.body}</div>

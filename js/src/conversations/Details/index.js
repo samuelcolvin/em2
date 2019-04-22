@@ -167,6 +167,7 @@ class ConvDetailsView extends React.Component {
               <Message msg={msg}
                        key={msg.first_action}
                        state={this.state}
+                       session_id={this.props.ctx.user.session_id}
                        setState={s => this.setState(s)}
                        comment_ref={this.comment_ref}
                        add_comment={() => this.add_comment()}/>

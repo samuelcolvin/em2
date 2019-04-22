@@ -95,9 +95,12 @@ class CopyToTemp:
         if ongoing > 1:
             await self._await_ongoing(key)
         else:
-            await self._copy_files(conv_id, send_id, send_storage, key)
+            try:
+                await self._copy_files(conv_id, send_id, send_storage)
+            finally:
+                await self.redis.delete(key)
 
-    async def _copy_files(self, conv_id: int, send_id: int, send_storage: str, key: str):
+    async def _copy_files(self, conv_id: int, send_id: int, send_storage: str):
         _, bucket, send_path = parse_storage_uri(send_storage)
         conv_key = await self.conn.fetchval('select key from conversations where id=$1', conv_id)
         async with S3(self.settings) as s3_client:
@@ -118,7 +121,6 @@ class CopyToTemp:
             )
             assert v
             # debug(ref, storage, v)
-        await self.redis.delete(key)
 
     async def _upload_file(self, s3_client: S3Client, conv_key, send_path, file: File):
         path = f'{conv_key}/{send_path}/{file.content_id}/{file.name}'

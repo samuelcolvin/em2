@@ -63,7 +63,7 @@ const Comment = ({msg, depth = 1, ...props}) => {
         <span className="text-muted small">{format_ts(msg.created)}</span>
       </div>
       <div>
-      <MessageBody msg={msg}/>
+      <MessageBody msg={msg} conv={props.state.conv.key} session_id={props.session_id}/>
       </div>
       <div className="d-flex">
         <div className="flex-grow-1">
@@ -88,7 +88,7 @@ export default ({msg, ...props}) => (
       <span className="text-muted small">{format_ts(msg.created)}</span>
     </div>
     <div className="mt-1">
-      <MessageBody msg={msg}/>
+      <MessageBody msg={msg} conv={props.state.conv.key} session_id={props.session_id}/>
     </div>
     {Boolean(msg.comments.length) && (
       <div className="pb-2">
