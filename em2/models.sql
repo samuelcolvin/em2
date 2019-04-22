@@ -63,6 +63,7 @@ create table actions (
   msg_format MsgFormat,
 
   -- todo participant details, attachment details, perhaps json for other types
+  -- could have json lump summarising files to improve performance
 
   unique (conv, id),
   -- only one action can follow a given action: where follows is required, a linear direct time line is enforced

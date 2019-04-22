@@ -1,3 +1,8 @@
+import json
+
+from pytest_toolbox.comparison import RegexStr
+
+from em2.core import conv_actions_json
 from em2.protocol.views.fallback_utils import process_smtp
 
 from .conftest import Factory
@@ -32,12 +37,12 @@ async def test_clean_email(fake_request, db_conn, create_email, send_to_remote):
     assert await db_conn.fetchval("select details->>'prev' from conversations") == 'this is a reply'
 
 
-async def test_attachment(fake_request, factory: Factory, db_conn, create_email, create_image):
+async def test_attachment_content_id(fake_request, factory: Factory, db_conn, create_email, attachment, create_image):
     await factory.create_user()
 
     msg = create_email(
         html_body='This is the <b>message</b>.',
-        attachments=[('testing.jpeg', 'image/jpeg', create_image(), {'Content-ID': 'foobar-123'})],
+        attachments=[attachment('testing.jpeg', 'image/jpeg', create_image(), {'Content-ID': 'foobar-123'})],
     )
     await process_smtp(fake_request, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
@@ -46,10 +51,83 @@ async def test_attachment(fake_request, factory: Factory, db_conn, create_email,
     assert 1 == await db_conn.fetchval("select count(*) from files")
     file = await db_conn.fetchrow('select action, storage, type, ref, name, content_type from files')
     assert dict(file) == {
-        'action': await db_conn.fetchval('select pk from actions order by id limit 1'),
+        'action': await db_conn.fetchval("select pk from actions where act='message:add'"),
         'storage': None,
         'type': 'attachment',
         'ref': 'foobar-123',
         'name': 'testing.jpeg',
         'content_type': 'image/jpeg',
     }
+
+
+async def test_attachment_actions(fake_request, factory: Factory, db_conn, create_email, attachment):
+    await factory.create_user()
+
+    msg = create_email(
+        html_body='This is the <b>message</b>.',
+        attachments=[
+            attachment('testing1.txt', 'text/plain', 'hello1'),
+            attachment('testing2.txt', 'text/plain', 'hello2'),
+        ],
+    )
+    await process_smtp(fake_request, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+    assert 'This is the <b>message</b>.' == await db_conn.fetchval("select body from actions where act='message:add'")
+
+    assert 2 == await db_conn.fetchval("select count(*) from files")
+    file = await db_conn.fetchrow(
+        """
+        select action, storage, type, ref, name, content_type
+        from files
+        where name='testing1.txt'
+        """
+    )
+    assert dict(file) == {
+        'action': await db_conn.fetchval("select pk from actions where act='message:add'"),
+        'storage': None,
+        'type': 'attachment',
+        'ref': None,
+        'name': 'testing1.txt',
+        'content_type': 'text/plain',
+    }
+    conv_id = await db_conn.fetchval('select id from conversations')
+    data = json.loads(await conv_actions_json(db_conn, factory.user.id, conv_id))
+    assert data == [
+        {
+            'id': 1,
+            'conv': RegexStr('.*'),
+            'act': 'participant:add',
+            'ts': '2032-01-01T12:00:00+00:00',
+            'actor': 'whomever@remote.com',
+            'participant': 'whomever@remote.com',
+        },
+        {
+            'id': 2,
+            'conv': RegexStr('.*'),
+            'act': 'participant:add',
+            'ts': '2032-01-01T12:00:00+00:00',
+            'actor': 'whomever@remote.com',
+            'participant': 'testing-1@example.com',
+        },
+        {
+            'id': 3,
+            'conv': RegexStr('.*'),
+            'act': 'message:add',
+            'ts': '2032-01-01T12:00:00+00:00',
+            'actor': 'whomever@remote.com',
+            'body': 'This is the <b>message</b>.',
+            'msg_format': 'html',
+            'files': [
+                {'type': 'attachment', 'name': 'testing2.txt', 'content_type': 'text/plain'},
+                {'type': 'attachment', 'name': 'testing1.txt', 'content_type': 'text/plain'},
+            ],
+        },
+        {
+            'id': 4,
+            'conv': RegexStr('.*'),
+            'act': 'conv:publish',
+            'ts': '2032-01-01T12:00:00+00:00',
+            'actor': 'whomever@remote.com',
+            'body': 'Test Subject',
+        },
+    ]

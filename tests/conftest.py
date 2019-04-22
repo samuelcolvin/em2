@@ -316,8 +316,25 @@ def _fix_sns_data(dummy_server, mocker):
     return run
 
 
+@pytest.fixture(name='attachment')
+def _fix_attachment():
+    def run(filename, mime_type, content, headers=None):
+        attachment = EmailMessage()
+        maintype, subtype = mime_type.split('/', 1)
+        kwargs = dict(subtype=subtype, filename=filename)
+        if maintype != 'text':
+            # not sure why this is
+            kwargs['maintype'] = maintype
+        attachment.set_content(content, **kwargs)
+        for k, v in (headers or {}).items():
+            attachment[k] = v
+        return attachment
+
+    return run
+
+
 @pytest.fixture(name='create_email')
-def _fix_create_email(dummy_server, sns_data):
+def _fix_create_email():
     def run(
         subject='Test Subject',
         e_from='whomever@remote.com',
@@ -341,13 +358,9 @@ def _fix_create_email(dummy_server, sns_data):
         text_body and email_msg.set_content(text_body)
         html_body and email_msg.add_alternative(html_body, subtype='html')
 
-        for filename, mime_type, content, a_headers in attachments:
-            email_msg.make_mixed()
-            attachment = EmailMessage(email_msg.policy)
-            maintype, subtype = mime_type.split('/', 1)
-            attachment.set_content(content, maintype=maintype, subtype=subtype, filename=filename)
-            for k, v in a_headers.items():
-                attachment[k] = v
+        for attachment in attachments:
+            if email_msg.get_content_type() != 'multipart/mixed':
+                email_msg.make_mixed()
             email_msg.attach(attachment)
 
         return email_msg

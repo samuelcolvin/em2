@@ -124,9 +124,19 @@ class ProcessSMTP:
                 await self.conn.execute(
                     'update actions set ts=$1 where conv=$2 and id=any($3)', timestamp, conv_id, all_action_ids
                 )
-                action_pk = await self.conn.fetchval(
-                    'select pk from actions where conv=$1 and id=$2', conv_id, action_ids[0]
+                send_id = await self.conn.fetchval(
+                    """
+                    insert into sends (action, ref, complete, storage)
+                    (select pk, $1, true, $2 from actions where conv=$3 and id=any($4) and act='message:add')
+                    returning id
+                    """,
+                    message_id,
+                    storage,
+                    conv_id,
+                    action_ids,
                 )
+                await self.store_attachments(send_id, msg)
+                await push_multiple(self.conn, self.redis, conv_id, action_ids, transmit=False)
             else:
                 conv = CreateConvModel(
                     subject=msg['Subject'] or '-',
@@ -138,35 +148,31 @@ class ProcessSMTP:
                 conv_id, conv_key = await create_conv(
                     conn=self.conn, creator_email=actor_email, creator_id=actor_id, conv=conv, ts=timestamp
                 )
-                action_pk = await self.conn.fetchval(
-                    'select pk from actions where conv=$1 order by id limit 1', conv_id
+                send_id = await self.conn.fetchval(
+                    """
+                    insert into sends (action, ref, complete, storage)
+                    (select pk, $1, true, $2 from actions where conv=$3 and act='message:add')
+                    returning id
+                    """,
+                    message_id,
+                    storage,
+                    conv_id,
                 )
-
-            send_id = await self.conn.fetchval(
-                """
-                insert into sends (action, ref, complete, storage)
-                values            ($1    ,  $2,     true,      $3)
-                returning id
-                """,
-                action_pk,
-                message_id,
-                storage,
-            )
-            await self.store_attachments(action_pk, send_id, msg)
-
-            if existing_conv:
-                await push_multiple(self.conn, self.redis, conv_id, action_ids, transmit=False)
-            else:
+                await self.store_attachments(send_id, msg)
                 await push_all(self.conn, self.redis, conv_id, transmit=False)
 
-    async def store_attachments(self, action_pk: int, send_id: int, msg: EmailMessage):
-        await self.conn.executemany(
-            """
-            insert into files (action, send, type, ref, name, content_type)
-            values            ($1    , $2  , $3  , $4 , $5  , $6)
-            """,
-            [(action_pk, send_id, f.type, f.content_id, f.filename, f.content_type) for f in find_smtp_files(msg)],
-        )
+    async def store_attachments(self, send_id: int, msg: EmailMessage):
+        files = list(find_smtp_files(msg))
+        if files:
+            action_pk = await self.conn.fetchval('select action from sends where id=$1', send_id)
+            files = [(action_pk, send_id, f.type, f.content_id, f.filename, f.content_type) for f in files]
+            await self.conn.executemany(
+                """
+                insert into files (action, send, type, ref, name, content_type)
+                values            ($1    , $2  , $3  , $4 , $5  , $6)
+                """,
+                files,
+            )
 
     async def get_conv(self, msg: EmailMessage) -> Tuple[int, int]:
         conv_actor = None

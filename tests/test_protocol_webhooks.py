@@ -137,7 +137,7 @@ async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_ses_ema
         'storage': 's3://em2-testing/foobar',
     }
     action = await db_conn.fetchrow('select id, conv, actor, act from actions where pk=$1', r['action'])
-    assert dict(action) == {'id': 1, 'conv': conv_id, 'actor': new_user_id, 'act': 'participant:add'}
+    assert dict(action) == {'id': 3, 'conv': conv_id, 'actor': new_user_id, 'act': 'message:add'}
 
 
 async def test_ses_reply(factory: Factory, db_conn, cli, url, create_ses_email, send_to_remote):
