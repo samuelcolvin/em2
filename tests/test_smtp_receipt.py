@@ -67,7 +67,7 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, creat
         html_body='This is the <b>message</b>.',
         attachments=[
             attachment('testing1.txt', 'text/plain', 'hello1'),
-            attachment('testing2.txt', 'text/plain', 'hello2'),
+            attachment('testing2.txt', 'text/plain', 'hello2', {'Content-ID': 'testing-hello2'}),
         ],
     )
     await process_smtp(fake_request, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
@@ -86,7 +86,7 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, creat
         'action': await db_conn.fetchval("select pk from actions where act='message:add'"),
         'storage': None,
         'type': 'attachment',
-        'ref': None,
+        'ref': '578b46f8e0a475175f9219db37fe4bd1',
         'name': 'testing1.txt',
         'content_type': 'text/plain',
     }
@@ -118,8 +118,13 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, creat
             'body': 'This is the <b>message</b>.',
             'msg_format': 'html',
             'files': [
-                {'type': 'attachment', 'name': 'testing2.txt', 'content_type': 'text/plain'},
-                {'type': 'attachment', 'name': 'testing1.txt', 'content_type': 'text/plain'},
+                {'type': 'attachment', 'name': 'testing2.txt', 'ref': 'testing-hello2', 'content_type': 'text/plain'},
+                {
+                    'type': 'attachment',
+                    'name': 'testing1.txt',
+                    'ref': '578b46f8e0a475175f9219db37fe4bd1',
+                    'content_type': 'text/plain',
+                },
             ],
         },
         {

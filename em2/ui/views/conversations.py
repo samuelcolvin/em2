@@ -1,6 +1,9 @@
-from datetime import datetime
-from typing import Any, Dict, List
+import asyncio
+from datetime import datetime, timedelta
+from mimetypes import guess_extension
+from typing import Any, Dict, List, Optional
 
+from aiohttp.web_exceptions import HTTPGatewayTimeout, HTTPTemporaryRedirect
 from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
 from pydantic import BaseModel, validator
 
@@ -17,6 +20,9 @@ from em2.core import (
     update_conv_users,
 )
 from em2.utils.datetime import utcnow
+from em2.utils.db import or404
+from em2.utils.smtp import File, find_smtp_files, parse_smtp
+from em2.utils.storage import S3, S3Client, parse_storage_uri
 
 from .utils import ExecView, View
 
@@ -171,3 +177,99 @@ class ConvPublish(ExecView):
         )
         for msg in msg_info.get('children', []):
             await self.add_msg(msg, conv_id, ts, pk)
+
+
+class GetFile(View):
+    async def call(self):
+        conv_prefix = self.request.match_info['conv']
+        conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, conv_prefix)
+        file_id = int(self.request.match_info['id'])
+        action_id, storage, storage_expires, send_id, send_storage = await or404(
+            self.conn.fetchrow(
+                """
+                select a.id, f.storage, f.storage_expires, send, s.storage
+                from files f
+                join actions a on f.action = a.pk
+                join sends s on a.pk = s.action
+                where f.id=$1 and a.conv=$2
+                """,
+                file_id,
+                conv_id,
+            )
+        )
+        if last_action and action_id > last_action:
+            raise JsonErrors.HTTPForbidden('not permitted to view this file')
+
+        storage_ref = await self.get_file_url(file_id, storage, storage_expires, send_id, send_storage, conv_id)
+        _, bucket, path = parse_storage_uri(storage_ref)
+        url = S3(self.settings).sign_url(bucket, path)
+        raise HTTPTemporaryRedirect(url)
+
+    async def get_file_url(
+        self,
+        file_id: int,
+        storage: Optional[str],
+        storage_expires: datetime,
+        send_id: int,
+        send_storage: str,
+        conv_id: int,
+    ) -> str:
+        min_storage_expiry = utcnow() + timedelta(seconds=30)
+        if storage and storage_expires < min_storage_expiry:
+            return storage
+
+        key = f'get-files:{send_id}'
+        tr = self.redis.multi_exec()
+        tr.incr(key)
+        tr.expire(key, 60)
+        ongoing, _ = await tr.execute()
+        if ongoing:
+            await self.await_ongoing(key)
+        else:
+            await self.update_storage(send_id, send_storage, conv_id, key)
+
+        storage = await self.conn.fetchval('select storage from files where id=$1', file_id)
+        assert storage, 'storage still not set'
+        return storage
+
+    async def await_ongoing(self, key):
+        for i in range(20):
+            if not await self.redis.exists(key):
+                return
+            await asyncio.sleep(0.5)
+
+        raise HTTPGatewayTimeout(body=b'timeout waiting for s3 files to be prepared elsewhere')
+
+    async def update_storage(self, send_id: int, send_storage: str, conv_id: int, cache_key: str):
+        _, bucket, send_path = parse_storage_uri(send_storage)
+        conv_key = self.conn.fetchval('select key from conversations where id=$1', conv_id)
+        async with S3(self.settings) as s3_client:
+            body = await s3_client.download(bucket, send_path)
+            msg = parse_smtp(body)
+            del body
+            expires = utcnow() + timedelta(days=30)
+            results = await asyncio.gather(
+                *(self.upload_file(s3_client, conv_key, send_path, f) for f in find_smtp_files(msg, True))
+            )
+        for ref, storage in results:
+            v = await self.conn.execute(
+                'update files set storage=$1, storage_expires=$2 where send=$3 and ref=$4',
+                storage,
+                expires,
+                send_id,
+                ref,
+            )
+            assert v
+            # debug(ref, storage, v)
+        await self.redis.delete(cache_key)
+
+    async def upload_file(self, s3_client: S3Client, conv_key, send_path, file: File):
+        ct = file.content_type
+        ext = guess_extension(ct)
+        if ext is None:
+            ct = None
+
+        path = f'{conv_key}/{send_path}/{file.ref}.{ext}'
+        bucket = self.settings.s3_temp_bucket
+        await s3_client.upload(bucket, path, file.content, ct)
+        return file.ref, f's3://{bucket}/{path}'

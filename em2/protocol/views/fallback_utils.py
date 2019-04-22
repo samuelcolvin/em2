@@ -2,10 +2,9 @@ import email
 import logging
 import quopri
 import re
-from dataclasses import dataclass
 from datetime import datetime
 from email.message import EmailMessage
-from typing import Generator, List, Optional, Set, Tuple
+from typing import List, Set, Tuple
 
 from aiohttp.abc import Request
 from aiohttp.web_exceptions import HTTPBadRequest
@@ -25,6 +24,7 @@ from em2.core import (
     get_create_user,
 )
 from em2.settings import Settings
+from em2.utils.smtp import find_smtp_files
 
 logger = logging.getLogger('em2.protocol.views.fallback')
 
@@ -68,8 +68,8 @@ async def get_email_recipients(to: List[str], cc: List[str], message_id: str, co
     return recipients
 
 
-async def process_smtp(request: Request, msg: EmailMessage, recipients: Set[str], storage: Optional[str]):
-    assert not msg['EM2-ID'], 'messages with EM2-ID header should not be filtered out before this'
+async def process_smtp(request: Request, msg: EmailMessage, recipients: Set[str], storage: str):
+    assert not msg['EM2-ID'], 'messages with EM2-ID header should be filtered out before this'
     p = ProcessSMTP(request)
     await p.run(msg, recipients, storage)
 
@@ -82,7 +82,7 @@ class ProcessSMTP:
         self.redis: ArqRedis = request.app['redis']
         self.settings: Settings = request.app['settings']
 
-    async def run(self, msg: EmailMessage, recipients: Set[str], storage: Optional[str]):
+    async def run(self, msg: EmailMessage, recipients: Set[str], storage: str):
         # TODO deal with non multipart
         _, actor_email = email.utils.parseaddr(msg['From'])
         assert actor_email, actor_email
@@ -165,7 +165,7 @@ class ProcessSMTP:
         files = list(find_smtp_files(msg))
         if files:
             action_pk = await self.conn.fetchval('select action from sends where id=$1', send_id)
-            files = [(action_pk, send_id, f.type, f.content_id, f.filename, f.content_type) for f in files]
+            files = [(action_pk, send_id, f.type, f.ref, f.filename, f.content_type) for f in files]
             await self.conn.executemany(
                 """
                 insert into files (action, send, type, ref, name, content_type)
@@ -250,26 +250,3 @@ def get_smtp_body(msg: EmailMessage, message_id: str, existing_conv: bool) -> Tu
         for regex, rep in html_regexes:
             body = regex.sub(rep, body)
     return body, is_html
-
-
-@dataclass
-class File:
-    filename: str
-    content_id: str
-    type: str
-    content_type: str
-
-
-def find_smtp_files(m: EmailMessage) -> Generator[File, None, None]:
-    for part in m.iter_parts():
-        disposition = part.get_content_disposition()
-        if disposition:
-            content_id = part['Content-ID']
-            yield File(
-                part.get_filename(),
-                content_id and content_id.strip('<>'),
-                'inline' if disposition == 'inline' else 'attachment',
-                part.get_content_type(),
-            )
-        else:
-            yield from find_smtp_files(part)

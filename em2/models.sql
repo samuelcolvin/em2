@@ -150,12 +150,14 @@ create table files (
   storage varchar(255),
   storage_expires timestamptz,
   type FileTypes not null,
-  ref varchar(255),
+  ref varchar(63),
+  content_id varchar(255),
   name varchar(1023),
   content_type varchar(63)
   -- TODO probably more when we do em2 attachments
 );
 create index files_action ON files USING btree (action);
+create index files_ref ON files USING btree (ref);
 
 ----------------------------------------------------------------------------------
 -- auth tables, currently in the the same database as everything else, but with --

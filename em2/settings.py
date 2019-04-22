@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     ses_configuration_set = 'em2'
     smtp_message_id_domain = 'email.amazonses.com'
     s3_endpoint_url: str = None  # only used when testing
+    s3_temp_bucket: str = None
     # generate randomly to avoid leaking secrets:
     ses_url_token: str = token_urlsafe()
     aws_sns_signing_host = '.amazonaws.com'
