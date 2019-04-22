@@ -201,7 +201,7 @@ class GetFile(View):
             )
         )
 
-        if file_storage and storage_expires < (utcnow() + timedelta(seconds=30)):
+        if file_storage and storage_expires > (utcnow() + timedelta(seconds=30)):
             storage_ref = file_storage
         else:
             storage_ref = await self.get_file_url(conv_id, send_id, file_id, send_storage)
