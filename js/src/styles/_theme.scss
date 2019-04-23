@@ -223,6 +223,8 @@ textarea.msg {
 .msg-iframe {
   width: 100%;
   height: 0;
+  border: none;
+  overflow: hidden;
 }
 
 .pagination {

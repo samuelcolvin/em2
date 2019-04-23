@@ -504,8 +504,8 @@ async def test_publish_remote(factory: Factory, redis, db_conn, worker: Worker, 
     assert (worker.jobs_complete, worker.jobs_failed, worker.jobs_retried) == (2, 0, 0)
     job_results = await redis.all_job_results()
     assert len(job_results) == 2
-    push_job = next(j for j in job_results if j['function'] == 'push_actions')
-    assert push_job['result'] == 'retry=0 fallback=1 em2=0'
+    push_job = next(j for j in job_results if j.function == 'push_actions')
+    assert push_job.result == 'retry=0 fallback=1 em2=0'
 
     log = '\n'.join(r.message for r in caplog.records)
     assert "testing-1@example.com > whatever@remote.com\n  Subject: Test Subject" in log

@@ -1,13 +1,11 @@
 import asyncio
 import base64
-import email
 import hashlib
 import json
 import logging
 from secrets import compare_digest
 from typing import Dict
 
-import aiobotocore
 from aiohttp.web_response import Response
 from atoolbox import JsonErrors
 from buildpg import Values
@@ -21,8 +19,10 @@ from yarl import URL
 
 from em2.background import push_multiple
 from em2.settings import Settings
+from em2.utils.smtp import parse_smtp
+from em2.utils.storage import S3
 
-from .fallback_utils import ProcessSMTP, get_email_recipients, remove_participants
+from .fallback_utils import get_email_recipients, process_smtp, remove_participants
 
 logger = logging.getLogger('em2.protocol.ses')
 
@@ -66,6 +66,7 @@ async def _record_email_message(request, message: Dict):
     """
     Record the email, check email should be processed before downloading from s3.
     """
+    # TODO if we don't want the message, store it in a new table to be deleted later
     mail = message['mail']
     if mail.get('messageId') == 'AMAZON_SES_SETUP_NOTIFICATION':
         logger.info('SES setup notification, ignoring')
@@ -80,24 +81,20 @@ async def _record_email_message(request, message: Dict):
     message_id = headers['Message-ID'].strip('<> ')
     common_headers = mail['commonHeaders']
     to, cc = common_headers.get('to', []), common_headers.get('cc', [])
-    # make sure we don't process unnecessary messages, should also delete from S3
-    await get_email_recipients(to, cc, message_id, request['conn'])
+    # make sure we don't process unnecessary messages
+    recipients = await get_email_recipients(to, cc, message_id, request['conn'])
 
     s3_action = message['receipt']['action']
     bucket, prefix, path = s3_action['bucketName'], s3_action['objectKeyPrefix'], s3_action['objectKey']
     if prefix:
         path = f'{prefix}/{path}'
 
-    settings: Settings = request.app['settings']
-    async with create_s3_session(settings) as s3:
-        r = await s3.get_object(Bucket=bucket, Key=path)
-        async with r['Body'] as stream:
-            body = await stream.read()
+    async with S3(request.app['settings']) as s3_client:
+        body = await s3_client.download(bucket, path)
 
-    del r, s3
-    msg = email.message_from_string(body.decode())
+    msg = parse_smtp(body)
     del body
-    await ProcessSMTP(request['conn'], request.app['redis'], settings).run(msg, f's3://{bucket}/{path}')
+    await process_smtp(request, msg, recipients, f's3://{bucket}/{path}')
 
 
 async def _record_email_event(request, message: Dict):
@@ -231,14 +228,3 @@ async def verify_sns(app, data: Dict):
         pubkey.verify(signature, canonical_msg, padding.PKCS1v15(), hashes.SHA1())
     except InvalidSignature:
         raise JsonErrors.HTTPForbidden('invalid signature')
-
-
-def create_s3_session(settings: Settings):
-    session = aiobotocore.get_session()
-    return session.create_client(
-        's3',
-        region_name=settings.aws_region,
-        aws_access_key_id=settings.aws_access_key,
-        aws_secret_access_key=settings.aws_secret_key,
-        endpoint_url=settings.s3_endpoint_url,
-    )

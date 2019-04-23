@@ -93,14 +93,14 @@ async def test_ses_invalid_sig(cli, url, sns_data):
     assert r.status == 403
 
 
-async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_email):
+async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_ses_email):
     await factory.create_user()
     assert 0 == await db_conn.fetchval('select count(*) from sends')
     assert 0 == await db_conn.fetchval('select count(*) from conversations')
     assert 0 == await db_conn.fetchval('select count(*) from actions')
     assert 1 == await db_conn.fetchval('select count(*) from users')
 
-    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=create_email())
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=create_ses_email())
     assert r.status == 204, await r.text()
 
     assert 1 == await db_conn.fetchval('select count(*) from sends')
@@ -137,14 +137,14 @@ async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_email):
         'storage': 's3://em2-testing/foobar',
     }
     action = await db_conn.fetchrow('select id, conv, actor, act from actions where pk=$1', r['action'])
-    assert dict(action) == {'id': 1, 'conv': conv_id, 'actor': new_user_id, 'act': 'participant:add'}
+    assert dict(action) == {'id': 3, 'conv': conv_id, 'actor': new_user_id, 'act': 'message:add'}
 
 
-async def test_ses_reply(factory: Factory, db_conn, cli, url, create_email, send_to_remote):
+async def test_ses_reply(factory: Factory, db_conn, cli, url, create_ses_email, send_to_remote):
     send_id, message_id = send_to_remote
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
-    data = create_email(**{'html_body': 'This is a <u>reply</u>.', 'In-Reply-To': message_id})
+    data = create_ses_email(html_body='This is a <u>reply</u>.', headers={'In-Reply-To': message_id})
     r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
     assert r.status == 204, await r.text()
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
@@ -168,12 +168,16 @@ async def test_ses_reply(factory: Factory, db_conn, cli, url, create_email, send
     }
 
 
-async def test_ses_reply_different_email(factory: Factory, db_conn, cli, url, create_email, send_to_remote):
+async def test_ses_reply_different_email(factory: Factory, db_conn, cli, url, create_ses_email, send_to_remote):
     send_id, message_id = send_to_remote
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
-    kwargs = {'e_from': 'different@remote.com', 'html_body': 'This is a <u>reply</u>.', 'In-Reply-To': message_id}
-    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=create_email(**kwargs))
+    kwargs = {
+        'e_from': 'different@remote.com',
+        'html_body': 'This is a <u>reply</u>.',
+        'headers': {'In-Reply-To': message_id},
+    }
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=create_ses_email(**kwargs))
     assert r.status == 204, await r.text()
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
@@ -198,31 +202,3 @@ async def test_ses_reply_different_email(factory: Factory, db_conn, cli, url, cr
             'different@remote.com': {'id': 5},
         },
     }
-
-
-async def test_clean_email(factory: Factory, db_conn, cli, url, create_email):
-    await factory.create_user()
-
-    data = create_email(
-        html_body="""
-        <div dir="ltr">this is a reply<br clear="all"/>
-        <div class="gmail_signature">this is a signature</div>
-        <div class="gmail_quote">
-          <div class="gmail_attr" dir="ltr">On Fri, 15 Mar 2019 at 17:00, &lt;<a
-                  href="mailto:testing@imber.io">testing@imber.io</a>&gt; wrote:<br/></div>
-          <blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;padding-left:1ex">
-            <p>whatever</p>
-          </blockquote>
-        </div>
-        """
-    )
-    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
-    assert r.status == 204, await r.text()
-    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
-    body = await db_conn.fetchval("select body from actions where act='message:add'")
-    assert body == (
-        '<div dir="ltr">this is a reply<br clear="all"/>\n'
-        '<div class="gmail_signature">this is a signature</div>\n'
-        '</div>'
-    )
-    assert await db_conn.fetchval("select details->>'prev' from conversations") == 'this is a reply'

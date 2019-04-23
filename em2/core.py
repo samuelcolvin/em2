@@ -569,7 +569,14 @@ async def conv_actions_json(
             from (
               select a.id as id, c.key as conv, a.act as act, a.ts as ts, actor_user.email as actor,
               a.body as body, a.msg_format as msg_format,
-              prt_user.email as participant, follows_action.id as follows, parent_action.id as parent
+              prt_user.email as participant, follows_action.id as follows, parent_action.id as parent,
+              (select array_agg(row_to_json(f))
+                from (
+                  select content_disp, hash, content_id, name, content_type
+                  from files
+                  where files.action = a.pk
+                ) f
+              ) as files
               from actions as a
 
               join users as actor_user on a.actor = actor_user.id

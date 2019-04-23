@@ -63,6 +63,7 @@ create table actions (
   msg_format MsgFormat,
 
   -- todo participant details, attachment details, perhaps json for other types
+  -- could have json lump summarising files to improve performance
 
   unique (conv, id),
   -- only one action can follow a given action: where follows is required, a linear direct time line is enforced
@@ -140,21 +141,22 @@ create table send_events (
 create index send_events_send ON send_events USING btree (send);
 create index send_events_user_ids ON send_events USING btree (user_ids);
 
-create type FileTypes as enum ('attachment', 'asset');
+create type ContentDisposition as enum ('attachment', 'inline');
 
 create table files (
   id bigserial primary key,
   action bigint references actions not null,
   send bigint references sends,
-  path varchar(255) not null,
-  created timestamptz not null default current_timestamp,
-  accessed timestamptz not null default current_timestamp,
-  type FileTypes not null,
-  ref varchar(1023) not null,
+  storage varchar(255),
+  storage_expires timestamptz,
+  content_disp ContentDisposition not null,
+  hash varchar(63) not null,
+  content_id varchar(255) not null,
   name varchar(1023),
-  mime_type varchar(63)
+  content_type varchar(63)
+  -- TODO add size
 );
-create index files_action ON files USING btree (action);
+create index files_content_id ON files USING btree (content_id);
 
 ----------------------------------------------------------------------------------
 -- auth tables, currently in the the same database as everything else, but with --

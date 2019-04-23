@@ -4,8 +4,9 @@ import quopri
 import re
 from datetime import datetime
 from email.message import EmailMessage
-from typing import List, Optional, Tuple
+from typing import List, Set, Tuple
 
+from aiohttp.abc import Request
 from aiohttp.web_exceptions import HTTPBadRequest
 from arq import ArqRedis
 from bs4 import BeautifulSoup
@@ -23,8 +24,11 @@ from em2.core import (
     get_create_user,
 )
 from em2.settings import Settings
+from em2.utils.smtp import find_smtp_files
 
 logger = logging.getLogger('em2.protocol.views.fallback')
+
+__all__ = ['remove_participants', 'get_email_recipients', 'process_smtp']
 
 
 async def remove_participants(conn: BuildPgConnection, conv_id: int, ts: datetime, user_ids: List[int]):
@@ -50,34 +54,53 @@ async def remove_participants(conn: BuildPgConnection, conv_id: int, ts: datetim
     return [r_[0] for r_ in r]
 
 
+async def get_email_recipients(to: List[str], cc: List[str], message_id: str, conn: BuildPgConnection) -> Set[str]:
+    recipients = email.utils.getaddresses(to + cc)
+    recipients = {a for n, a in recipients}
+    if not recipients:
+        logger.warning('email with no recipient, ignoring %s', message_id)
+        raise HTTPBadRequest(text='no recipient, ignoring')
+
+    loc_users = await conn.fetchval("select 1 from users where user_type='local' and email=any($1) limit 1", recipients)
+    if not loc_users:
+        logger.warning('email with no local recipient (%r), ignoring %s', recipients, message_id)
+        raise HTTPBadRequest(text='no local recipient, ignoring')
+    return recipients
+
+
+async def process_smtp(request: Request, msg: EmailMessage, recipients: Set[str], storage: str):
+    assert not msg['EM2-ID'], 'messages with EM2-ID header should be filtered out before this'
+    p = ProcessSMTP(request)
+    await p.run(msg, recipients, storage)
+
+
+inline_regex = re.compile(' src')
+
+
 class ProcessSMTP:
     __slots__ = 'conn', 'settings', 'redis'
 
-    def __init__(self, conn: BuildPgConnection, redis: ArqRedis, settings: Settings):
-        self.conn = conn
-        self.redis = redis
-        self.settings = settings
+    def __init__(self, request):
+        self.conn: BuildPgConnection = request['conn']
+        self.redis: ArqRedis = request.app['redis']
+        self.settings: Settings = request.app['settings']
 
-    async def run(self, msg: EmailMessage, storage: Optional[str]):
+    async def run(self, msg: EmailMessage, recipients: Set[str], storage: str):
         # TODO deal with non multipart
-        if msg['EM2-ID']:
-            # this is an em2 message and should be received via the proper route too
-            return
-
         _, actor_email = email.utils.parseaddr(msg['From'])
         assert actor_email, actor_email
         actor_email = actor_email.lower()
 
         message_id = msg.get('Message-ID', '').strip('<> ')
-        recipients = await self.get_recipients(msg, message_id)
         timestamp = email.utils.parsedate_to_datetime(msg['Date'])
 
         conv_id, original_actor_id = await self.get_conv(msg)
         actor_id = await get_create_user(self.conn, actor_email, UserTypes.remote_other)
 
-        body, is_html = get_smtp_body(msg, message_id)
+        existing_conv = bool(conv_id)
+        body, is_html = get_smtp_body(msg, message_id, existing_conv)
         async with self.conn.transaction():
-            if conv_id:
+            if existing_conv:
                 existing_prts = await self.conn.fetch(
                     'select email from participants p join users u on p.user_id=u.id where conv=$1', conv_id
                 )
@@ -104,16 +127,18 @@ class ProcessSMTP:
                 await self.conn.execute(
                     'update actions set ts=$1 where conv=$2 and id=any($3)', timestamp, conv_id, all_action_ids
                 )
-                await self.conn.execute(
+                send_id = await self.conn.fetchval(
                     """
                     insert into sends (action, ref, complete, storage)
-                    (select pk, $1, true, $2 from actions where conv=$3 and id=$4)
+                    (select pk, $1, true, $2 from actions where conv=$3 and id=any($4) and act='message:add')
+                    returning id
                     """,
                     message_id,
                     storage,
                     conv_id,
-                    action_ids[0],
+                    action_ids,
                 )
+                await self.store_attachments(send_id, msg)
                 await push_multiple(self.conn, self.redis, conv_id, action_ids, transmit=False)
             else:
                 conv = CreateConvModel(
@@ -126,20 +151,31 @@ class ProcessSMTP:
                 conv_id, conv_key = await create_conv(
                     conn=self.conn, creator_email=actor_email, creator_id=actor_id, conv=conv, ts=timestamp
                 )
-                await self.conn.execute(
+                send_id = await self.conn.fetchval(
                     """
                     insert into sends (action, ref, complete, storage)
-                    (select pk, $1, true, $2 from actions where conv=$3 order by id limit 1)
+                    (select pk, $1, true, $2 from actions where conv=$3 and act='message:add')
+                    returning id
                     """,
                     message_id,
                     storage,
                     conv_id,
                 )
+                await self.store_attachments(send_id, msg)
                 await push_all(self.conn, self.redis, conv_id, transmit=False)
 
-    async def get_recipients(self, msg: EmailMessage, message_id: str):
-        to, cc = msg.get_all('To', []), msg.get_all('Cc', [])
-        return await get_email_recipients(to, cc, message_id, self.conn)
+    async def store_attachments(self, send_id: int, msg: EmailMessage):
+        files = list(find_smtp_files(msg))
+        if files:
+            action_pk = await self.conn.fetchval('select action from sends where id=$1', send_id)
+            files = [(action_pk, send_id, f.content_disp, f.hash, f.content_id, f.name, f.content_type) for f in files]
+            await self.conn.executemany(
+                """
+                insert into files (action, send, content_disp, hash, content_id, name, content_type)
+                values            ($1    , $2  , $3          , $4  , $5        , $6  , $7)
+                """,
+                files,
+            )
 
     async def get_conv(self, msg: EmailMessage) -> Tuple[int, int]:
         conv_actor = None
@@ -182,22 +218,6 @@ class ProcessSMTP:
         return msg_id
 
 
-def get_email_body(msg: EmailMessage):
-    body = None
-    if msg.is_multipart():
-        for m in msg.walk():
-            ct = m['Content-Type']
-            if 'text' in ct:
-                body = m.get_payload()
-                if 'text/html' in ct:
-                    if m['Content-Transfer-Encoding'] == 'quoted-printable':
-                        body = quopri.decodestring(body).decode()
-                    return body, True
-    else:
-        body = msg.get_payload()
-    return body, False
-
-
 to_remove = 'div.gmail_quote', 'div.gmail_extra'  # 'div.gmail_signature'
 html_regexes = [
     (re.compile(r'<br/></div><br/>$', re.M), ''),
@@ -206,9 +226,15 @@ html_regexes = [
 ]
 
 
-def get_smtp_body(msg: EmailMessage, message_id):
-    # text/html is generally the best representation of the email
-    body, is_html = get_email_body(msg)
+def get_smtp_body(msg: EmailMessage, message_id: str, existing_conv: bool) -> Tuple[str, bool]:
+    m: EmailMessage = msg.get_body(preferencelist=('html', 'plain'))
+    if not m:
+        raise RuntimeError('email with no content')
+
+    body = m.get_content()
+    is_html = m.get_content_type() == 'text/html'
+    if is_html and m['Content-Transfer-Encoding'] == 'quoted-printable':
+        body = quopri.decodestring(body).decode()
 
     if not body:
         logger.warning('Unable to find body in email "%s"', message_id)
@@ -216,26 +242,14 @@ def get_smtp_body(msg: EmailMessage, message_id):
     if is_html:
         soup = BeautifulSoup(body, 'html.parser')
 
-        for el_selector in to_remove:
-            for el in soup.select(el_selector):
-                el.decompose()
+        if existing_conv:
+            # remove the body only if conversation already exists in the db
+            for el_selector in to_remove:
+                for el in soup.select(el_selector):
+                    el.decompose()
 
         # body = soup.prettify()
         body = str(soup)
         for regex, rep in html_regexes:
             body = regex.sub(rep, body)
-    return body.strip('\n'), is_html
-
-
-async def get_email_recipients(to: List[str], cc: List[str], message_id: str, conn: BuildPgConnection):
-    recipients = email.utils.getaddresses(to + cc)
-    recipients = {a for n, a in recipients}
-    if not recipients:
-        logger.warning('email with no recipient, ignoring %s', message_id)
-        raise HTTPBadRequest(text='no recipient, ignoring')
-
-    loc_users = await conn.fetchval("select 1 from users where user_type='local' and email=any($1) limit 1", recipients)
-    if not loc_users:
-        logger.warning('email with no local recipient (%r), ignoring %s', recipients, message_id)
-        raise HTTPBadRequest(text='no local recipient, ignoring')
-    return recipients
+    return body, is_html

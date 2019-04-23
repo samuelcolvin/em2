@@ -30,6 +30,7 @@ class Worker {
       const resolver = this.rosolvers[message.data.async_id]
       if (message.data.error) {
         const err = DetailedError('Worker error: ' + message.data.error.message, message.data.error.details)
+        this.app.setError(err)  // TODO might need to not always set this?
         resolver.reject(err)
       } else {
         resolver.resolve(message.data.result)

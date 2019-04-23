@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from email.message import EmailMessage
+from io import BytesIO
 from typing import List
 
 import aiodns
@@ -15,6 +16,7 @@ from aioredis import create_redis
 from arq import ArqRedis, Worker
 from atoolbox.db.helpers import SimplePgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
+from PIL import Image, ImageDraw
 
 from em2.auth.utils import mk_password
 from em2.background import push_multiple
@@ -43,6 +45,7 @@ settings_args = dict(
     aws_sns_signing_host='localhost',
     aws_sns_signing_schema='http',
     internal_auth_key='testing' * 6,
+    s3_temp_bucket='s3_temp_bucket.example.com',
 )
 
 
@@ -314,8 +317,30 @@ def _fix_sns_data(dummy_server, mocker):
     return run
 
 
+@pytest.fixture(name='attachment')
+def _fix_attachment():
+    def run(filename, mime_type, content, headers=None):
+        attachment = EmailMessage()
+        for k, v in (headers or {}).items():
+            attachment[k] = v
+        maintype, subtype = mime_type.split('/', 1)
+        kwargs = dict(subtype=subtype, filename=filename)
+        if maintype != 'text':
+            # not sure why this is
+            kwargs['maintype'] = maintype
+        attachment.set_content(content, **kwargs)
+        for k, v in (headers or {}).items():
+            if k in attachment:
+                attachment.replace_header(k, v)
+            else:
+                attachment.add_header(k, v)
+        return attachment
+
+    return run
+
+
 @pytest.fixture(name='create_email')
-def _fix_create_email(dummy_server, sns_data):
+def _fix_create_email():
     def run(
         subject='Test Subject',
         e_from='whomever@remote.com',
@@ -323,8 +348,8 @@ def _fix_create_email(dummy_server, sns_data):
         text_body='this is a message.',
         html_body='this is an html <b>message</b>.',
         message_id='message-id@remote.com',
-        key='foobar',
-        **headers,
+        attachments=(),
+        headers=None,
     ):
         email_msg = EmailMessage()
         email_msg['Message-ID'] = message_id
@@ -333,13 +358,31 @@ def _fix_create_email(dummy_server, sns_data):
         email_msg['To'] = ','.join(to)
         email_msg['Date'] = email.utils.format_datetime(datetime(2032, 1, 1, 12, 0))
 
-        for k, v in headers.items():
+        for k, v in (headers or {}).items():
             email_msg[k] = v
 
         text_body and email_msg.set_content(text_body)
         html_body and email_msg.add_alternative(html_body, subtype='html')
-        dummy_server.app['s3_emails'][key] = email_msg.as_string()
 
+        for attachment in attachments:
+            if email_msg.get_content_type() != 'multipart/mixed':
+                email_msg.make_mixed()
+            email_msg.attach(attachment)
+
+        return email_msg
+
+    return run
+
+
+@pytest.fixture(name='create_ses_email')
+def _fix_create_ses_email(dummy_server, sns_data, create_email):
+    def run(
+        *args, to=('testing-1@example.com',), key='foobar', headers=None, message_id='message-id@remote.com', **kwargs
+    ):
+        msg = create_email(*args, to=to, message_id=message_id, headers=headers, **kwargs)
+        dummy_server.app['s3_emails'][key] = msg.as_string()
+
+        headers = headers or {}
         h = [{'name': 'Message-ID', 'value': message_id}] + [{'name': k, 'value': v} for k, v in headers.items()]
         return sns_data(
             message_id,
@@ -349,3 +392,29 @@ def _fix_create_email(dummy_server, sns_data):
         )
 
     return run
+
+
+@pytest.fixture(name='create_image')
+async def _fix_create_image():
+    def create_image(image_format='JPEG'):
+        stream = BytesIO()
+
+        image = Image.new('RGB', (400, 300), (50, 100, 150))
+        ImageDraw.Draw(image).polygon([(0, 0), (image.width, 0), (image.width, 100), (0, 100)], fill=(128, 128, 128))
+        image.save(stream, format=image_format, optimize=True)
+        return stream.getvalue()
+
+    return create_image
+
+
+@pytest.fixture(name='fake_request')
+async def _fix_fake_request(db_conn, settings, redis):
+    class Request:
+        def __init__(self):
+            self.dict = {'conn': db_conn}
+            self.app = {'settings': settings, 'redis': redis}
+
+        def __getitem__(self, item):
+            return self.dict[item]
+
+    return Request()

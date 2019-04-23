@@ -57,6 +57,7 @@ function construct_conv (actions) {
         'format': action.msg_format,
         'parent': action.parent || null,
         'active': true,
+        'files': action.files || null,
         'comments': [],
       }
     } else if (_msg_action_types.has(act)) {
