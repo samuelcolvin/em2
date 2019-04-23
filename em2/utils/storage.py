@@ -82,9 +82,9 @@ class S3:
         assert not path.startswith('/'), 'path should not start with /'
         min_expires = to_unix_s(utcnow()) + 30
         expires = int(ceil(min_expires / ttl) * ttl)
-        to_sign = f'GET\n\n\n{expires}\n /{bucket} /{path}'
+        to_sign = f'GET\n\n\n{expires}\n/{bucket}/{path}'
         signature = base64.b64encode(
             hmac.new(self._settings.aws_secret_key.encode(), to_sign.encode(), hashlib.sha1).digest()
         )
-        args = {'AWSAccessKeyId': self._settings.aws_access_key, 'Signature': signature, 'expires': expires}
+        args = {'AWSAccessKeyId': self._settings.aws_access_key, 'Signature': signature, 'Expires': expires}
         return f'https://{bucket}/{path}?{urlencode(args)}'
