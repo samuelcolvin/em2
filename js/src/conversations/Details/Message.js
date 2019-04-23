@@ -95,9 +95,9 @@ const Attachments = ({files, session_id, conv}) => {
       <span className="text-muted">Attachments</span>
       <ListGroup>
         {attachments.map(f => (
-          <ListGroupItem key={f.hash} tag="a" href={file_url(f)} action>
+          <ListGroupItem key={f.hash} tag="a" href={file_url(f)} action download>
             <FontAwesomeIcon icon={file_icon(f.content_type)} className="mr-2"/>
-            {f.name}
+            <span data-content-type={f.content_type}>{f.name}</span>
           </ListGroupItem>
         ))}
       </ListGroup>

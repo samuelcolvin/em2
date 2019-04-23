@@ -2,8 +2,10 @@ import json
 
 import pytest
 from aiohttp.web_exceptions import HTTPGatewayTimeout
+from arq.jobs import Job
 from pytest_toolbox.comparison import RegexStr
 
+from em2.background import push_all
 from em2.core import conv_actions_json
 from em2.protocol.views.fallback_utils import process_smtp
 from em2.utils.smtp import CopyToTemp
@@ -73,7 +75,7 @@ async def test_attachment_content_id(fake_request, factory: Factory, db_conn, cr
     }
 
 
-async def test_attachment_actions(fake_request, factory: Factory, db_conn, create_email, attachment):
+async def test_attachment_actions(fake_request, factory: Factory, db_conn, redis, create_email, attachment):
     await factory.create_user()
 
     msg = create_email(
@@ -157,6 +159,15 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, creat
             'body': 'Test Subject',
         },
     ]
+    assert len(await redis.keys('arq:job:*')) == 0
+    await push_all(db_conn, redis, conv_id, transmit=True)
+    arq_keys = await redis.keys('arq:job:*')
+    assert len(arq_keys) == 1
+    key = arq_keys[0].replace('arq:job:', '')
+    job = Job(key, redis)
+    job_info = await job.info()
+    ws_data = json.loads(job_info.args[0])
+    assert ws_data['actions'] == data
 
 
 async def test_get_file(fake_request, factory: Factory, db_conn, create_email, attachment, cli, dummy_server):

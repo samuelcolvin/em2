@@ -35,7 +35,7 @@ const full_types = {
   'application/xhtml+xml': 'file-code',
   'application/xml': 'file-code',
   'application/zip': 'file-archive',
-  'text/calendar': 'file-spreadsheet',
+  'text/calendar': 'file-medical',
   'text/css': 'file-code',
   'text/csv': 'file-csv',
   'text/html': 'file-code',

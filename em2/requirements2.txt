@@ -4,7 +4,7 @@ aiohttp-session==2.7.0
 aiohttp-toolbox==0.3.2
 aioredis==1.2.0
 async-timeout==3.0.1
-arq==0.16a5
+arq==0.16b1
 beautifulsoup4==4.6.3
 bcrypt==3.1.6
 buildpg==0.1
