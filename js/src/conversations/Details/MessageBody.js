@@ -15,7 +15,7 @@ class Html extends React.Component {
         this.iframe_ref.current.contentWindow.postMessage({body: this.build_body()}, '*')
       } else if (event.data.height) {
         // do this rather than keeping height in state to avoid rendering the iframe multiple times
-        this.iframe_ref.current.style.height = event.data.height + 'px'
+        this.iframe_ref.current.style.height = (event.data.height + 10) + 'px'
       } else if (event.data.href) {
         // checked with https://mathiasbynens.github.io/rel-noopener/ for opener
         // and https://httpbin.org/get for referer
@@ -33,25 +33,11 @@ class Html extends React.Component {
     window.addEventListener('message', this.on_message)
   }
 
-  build_body = () =>{
-    const body = document.createElement('div')
-    body.innerHTML = this.props.msg.body
-    let styles = ''
-    body.querySelectorAll('style').forEach(el => styles += el.innerHTML)
-    if (styles.length > 0) {
-      const s = document.createElement('style')
-      s.innerHTML = styles
-      body.appendChild(s)
-    }
-    const action_id = this.props.msg.first_action
-    for (const img of body.getElementsByTagName('img')) {
-      if (img.src.startsWith('cid:')) {
-        const cid = img.src.substr(4)
-        img.src = make_url('ui', `/${this.props.session_id}/conv/${this.props.conv}/${action_id}/${cid}/`)
-        console.log(img.src, cid)
-      }
-    }
-    return body.innerHTML
+  build_body = () => this.props.msg.body.replace(/src="cid:(.+?)"/g, this.replace_id)
+
+  replace_id = (m, cid) => {
+    const url = make_url('ui', `/${this.props.session_id}/img/${this.props.conv}/${cid}`)
+    return `src="${url}"`
   }
 
   componentWillUnmount () {

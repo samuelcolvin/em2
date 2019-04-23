@@ -74,6 +74,9 @@ async def process_smtp(request: Request, msg: EmailMessage, recipients: Set[str]
     await p.run(msg, recipients, storage)
 
 
+inline_regex = re.compile(' src')
+
+
 class ProcessSMTP:
     __slots__ = 'conn', 'settings', 'redis'
 

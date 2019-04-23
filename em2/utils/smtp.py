@@ -2,7 +2,6 @@ import asyncio
 import hashlib
 import logging
 from dataclasses import dataclass
-from datetime import timedelta
 from email import policy as email_policy
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -107,7 +106,7 @@ class CopyToTemp:
             body = await s3_client.download(bucket, send_path)
             msg = parse_smtp(body)
             del body
-            expires = utcnow() + timedelta(days=30)
+            expires = utcnow() + self.settings.s3_tmp_bucket_lifetime
             results = await asyncio.gather(
                 *(self._upload_file(s3_client, conv_key, send_path, f) for f in find_smtp_files(msg, True))
             )

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
-from aiohttp.web_exceptions import HTTPTemporaryRedirect
+from aiohttp.web_exceptions import HTTPFound
 from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
 from pydantic import BaseModel, validator
 
@@ -181,25 +181,26 @@ class GetFile(View):
     async def call(self):
         conv_prefix = self.request.match_info['conv']
         conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, conv_prefix)
-        action_id = int(self.request.match_info['action_id'])
-        if last_action and action_id > last_action:
-            raise JsonErrors.HTTPForbidden('not permitted to view this file')
 
-        file_id, file_storage, storage_expires, send_id, send_storage = await or404(
+        # order by f.id so that if some email system is dumb and repeats a content_id, we always use the first
+        # one we received
+        file_id, action_id, file_storage, storage_expires, send_id, send_storage = await or404(
             self.conn.fetchrow(
                 """
-                select f.id, f.storage, f.storage_expires, send, s.storage
+                select f.id, a.id, f.storage, f.storage_expires, send, s.storage
                 from files f
                 join actions a on f.action = a.pk
                 join sends s on a.pk = s.action
-                where a.conv=$1 and a.id=$2 and f.content_id=$3
+                where a.conv=$1 and f.content_id=$2
+                order by f.id
                 limit 1
                 """,
                 conv_id,
-                action_id,
                 self.request.match_info['content_id'],
             )
         )
+        if last_action and action_id > last_action:
+            raise JsonErrors.HTTPForbidden("You're not permitted to view this file")
 
         if file_storage and storage_expires > (utcnow() + timedelta(seconds=30)):
             storage_ref = file_storage
@@ -208,7 +209,7 @@ class GetFile(View):
 
         _, bucket, path = parse_storage_uri(storage_ref)
         url = S3(self.settings).sign_url(bucket, path)
-        raise HTTPTemporaryRedirect(url)
+        raise HTTPFound(url)
 
     async def get_file_url(self, conv_id: int, send_id: int, file_id: int, send_storage: str) -> str:
         await CopyToTemp(self.settings, self.conn, self.redis).run(conv_id, send_id, send_storage)

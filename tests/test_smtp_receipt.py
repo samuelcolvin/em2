@@ -183,17 +183,17 @@ async def test_get_file(fake_request, factory: Factory, db_conn, create_email, a
     ]
     dummy_server.app['s3_emails']['s3-test-path'] = msg.as_string()
 
-    url = factory.url('ui:get-file', conv=conv_key, action_id=3, content_id='testing-hello2')
-    r = await cli.get(url, allow_redirects=False)
-    assert r.status == 307, await r.text()
-    assert r.headers['Location'].startswith(
+    url = factory.url('ui:get-file', conv=conv_key, content_id='testing-hello2')
+    r1 = await cli.get(url, allow_redirects=False)
+    assert r1.status == 302, await r1.text()
+    assert r1.headers['Location'].startswith(
         f'https://s3_temp_bucket.example.com/{conv_key}/s3-test-path/testing-hello2/testing.txt?'
         f'AWSAccessKeyId=testing_access_key&Signature='
     )
 
     r2 = await cli.get(url, allow_redirects=False)
-    assert r2.status == 307, await r2.text()
-    assert r2.headers['Location'] == r.headers['Location']
+    assert r2.status == 302, await r2.text()
+    assert r2.headers['Location'] == r1.headers['Location']
 
     assert dummy_server.log == [
         'GET s3_endpoint_url/foobar/s3-test-path',

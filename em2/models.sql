@@ -156,7 +156,7 @@ create table files (
   content_type varchar(63)
   -- TODO add size
 );
-create index files_action_ci ON files USING btree (action, content_id);
+create index files_content_id ON files USING btree (content_id);
 
 ----------------------------------------------------------------------------------
 -- auth tables, currently in the the same database as everything else, but with --

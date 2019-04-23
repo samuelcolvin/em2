@@ -39,7 +39,8 @@ async def create_app_ui(settings=None):
         web.get(s + f'conv/{conv_match}/', ConvActions.view(), name='get'),
         web.post(s + f'conv/{conv_match}/act/', ConvAct.view(), name='act'),
         web.post(s + f'conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),
-        web.get(s + fr'img/{conv_match}/{{action_id:\d+}}/{{content_id}}/', GetFile.view(), name='get-file'),
+        # no trailing slash so we capture everything and deal with weird/ugly content ids
+        web.get(s + fr'img/{conv_match}/{{content_id:.*}}', GetFile.view(), name='get-file'),
         web.get(s + 'ws/', websocket, name='websocket'),
         # ui auth views:
         web.route('*', '/auth/token/', AuthExchangeToken.view(), name='auth-token'),
