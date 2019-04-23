@@ -39,7 +39,7 @@
           existing && document.removeChild(existing)
           const main = document.createElement('div')
           main.id = 'main'
-          main.innerHTML = event.data.body + '<a href="https://www.example.com">foobar</a>'
+          main.innerHTML = event.data.body
           let styles = ''
           main.querySelectorAll('style').forEach(el => styles += el.innerHTML)
           if (styles.length > 0) {

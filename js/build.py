@@ -26,14 +26,17 @@ else:
 
 
 iframe_msg_old_path = Path('iframes') / 'message' / 'message.html'
-iframe_msg_hash = hashlib.md5((this_dir / 'public' / iframe_msg_old_path).read_bytes()).hexdigest()
-iframe_msg_new_path = iframe_msg_old_path.with_name(f'message.{iframe_msg_hash[:8]}.html')
 
 review_id = os.getenv('REVIEW_ID')
 if review_id and os.getenv('CONTEXT') == 'deploy-preview':
     origin = f'https://deploy-preview-{review_id}--em2.netlify.com'
 else:
     origin = f'https://app.{main_domain}'
+
+iframe_msg_hash = hashlib.md5(
+    (this_dir / 'public' / iframe_msg_old_path).read_bytes() + origin.encode()
+).hexdigest()
+iframe_msg_new_path = iframe_msg_old_path.with_name(f'message.{iframe_msg_hash[:8]}.html')
 
 main_csp = {
     'default-src': [
@@ -86,7 +89,11 @@ iframe_msg_csp = {
     'default-src': ["'none'"],
     'style-src': ["'unsafe-inline'"],
     'font-src': ["'unsafe-inline'"],
-    'img-src': ["'unsafe-inline'"],
+    'img-src': [
+        "'unsafe-inline'",
+        f'https://ui.{main_domain}',
+        f'https://temp.{main_domain}',
+    ],
 }
 details_env = 'BRANCH', 'PULL_REQUEST', 'HEAD', 'COMMIT_REF', 'CONTEXT', 'REVIEW_ID'
 
