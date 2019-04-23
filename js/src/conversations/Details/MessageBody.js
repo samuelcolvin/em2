@@ -33,15 +33,15 @@ class Html extends React.Component {
     window.addEventListener('message', this.on_message)
   }
 
+  componentWillUnmount () {
+    window.removeEventListener('message', this.on_message)
+  }
+
   build_body = () => this.props.msg.body.replace(/src="cid:(.+?)"/g, this.replace_id)
 
   replace_id = (m, cid) => {
     const url = make_url('ui', `/${this.props.session_id}/img/${this.props.conv}/${cid}`)
     return `src="${url}"`
-  }
-
-  componentWillUnmount () {
-    window.removeEventListener('message', this.on_message)
   }
 
   shouldComponentUpdate (nextProps) {
@@ -63,7 +63,7 @@ class Html extends React.Component {
   }
 }
 
-// TODO following local links, eg. to conversations, block links to settings
+// TODO following local links, eg. to conversations, block links to settings, perhaps move this to an iframe
 const markdown_props = {
   renderers: {
     link: props => <a href={props.href} target="_blank" rel="noopener noreferrer">{props.children}</a>,

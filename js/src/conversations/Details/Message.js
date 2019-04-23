@@ -1,8 +1,10 @@
 import React from 'react'
-import {Button, Tooltip} from 'reactstrap'
+import {Button, Tooltip, ListGroup, ListGroupItem} from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {format_ts} from '../../lib'
+import {make_url} from '../../lib/requests'
 import MessageBody from './MessageBody'
+import file_icon from './file_icons'
 
 const CommentButton = ({msg, state, setState, comment_ref, children}) => {
   const btn_id = `msg-${msg.last_action}`
@@ -81,6 +83,28 @@ const Comment = ({msg, depth = 1, ...props}) => {
   )
 }
 
+
+const Attachments = ({files, session_id, conv}) => {
+  const attachments = (files || []).filter(f => f.content_disp === 'attachment')
+  if (!attachments.length) {
+    return null
+  }
+  const file_url = f => make_url('ui', `/${session_id}/img/${conv}/${f.content_id}`)
+  return (
+    <div>
+      <span className="text-muted">Attachments</span>
+      <ListGroup>
+        {attachments.map(f => (
+          <ListGroupItem key={f.hash} tag="a" href={file_url(f)} action>
+            <FontAwesomeIcon icon={file_icon(f.content_type)} className="mr-2"/>
+            {f.name}
+          </ListGroupItem>
+        ))}
+      </ListGroup>
+    </div>
+  )
+}
+
 export default ({msg, ...props}) => (
   <div className="box no-pad msg-details">
     <div className="border-bottom py-2" id="TestingElement">
@@ -89,12 +113,13 @@ export default ({msg, ...props}) => (
     </div>
     <div className="mt-1">
       <MessageBody msg={msg} conv={props.state.conv.key} session_id={props.session_id}/>
+      <Attachments files={msg.files} conv={props.state.conv.key} session_id={props.session_id}/>
     </div>
-    {Boolean(msg.comments.length) && (
+    {msg.comments.length ? (
       <div className="pb-2">
         {msg.comments.map(c => <Comment {...props} msg={c} key={c.first_action}/>)}
       </div>
-    )}
+    ) : null}
 
     {props.state.comment_parent !== msg.last_action ?
       <div className="pb-2">

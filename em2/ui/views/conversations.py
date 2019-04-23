@@ -179,6 +179,8 @@ class ConvPublish(ExecView):
 
 class GetFile(View):
     async def call(self):
+        # in theory we might need to add action_id here to specify the file via content_id, but in practice probably
+        # not necessary (until it is)
         conv_prefix = self.request.match_info['conv']
         conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, conv_prefix)
 
