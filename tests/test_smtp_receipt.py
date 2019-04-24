@@ -8,7 +8,7 @@ from pytest_toolbox.comparison import RegexStr
 from em2.background import push_all
 from em2.core import conv_actions_json
 from em2.protocol.views.fallback_utils import process_smtp
-from em2.utils.smtp import CopyToTemp
+from em2.utils.smtp import CopyToTemp, File, find_smtp_files
 
 from .conftest import Factory
 
@@ -219,3 +219,44 @@ async def test_get_file_ongoing(settings, db_conn, redis):
     await redis.set('get-files:123', 1)
     with pytest.raises(HTTPGatewayTimeout):
         await c._await_ongoing('get-files:123', sleep=0)
+
+
+def test_finding_attachment(create_email, attachment, create_image):
+    image_data = create_image()
+    msg = create_email(
+        html_body='This is the <b>message</b>.',
+        attachments=[
+            attachment('testing.tff', 'font/ttf', b'foobar'),
+            attachment('testing.txt', 'text/plain', 'hello', {'Content-ID': 'testing-hello2'}),
+            attachment(
+                'testing.jpeg', 'image/jpeg', image_data, {'Content-ID': 'foobar-123', 'Content-Disposition': 'inline'}
+            ),
+        ],
+    )
+    attachments = list(find_smtp_files(msg, True))
+    assert attachments == [
+        File(
+            hash='816f0241b8a5f206b224197b87b2cbc464e626a9',
+            name='testing.tff',
+            content_id='816f0241b8a5f206b224197b87b2cbc464e626a9',
+            content_disp='attachment',
+            content_type='font/ttf',
+            content=b'foobar',
+        ),
+        File(
+            hash='874f36549f57ff5d6596dd153cb94524f1eeebc1',
+            name='testing.txt',
+            content_id='testing-hello2',
+            content_disp='attachment',
+            content_type='text/plain',
+            content=b'hello\n',
+        ),
+        File(
+            hash='fc0f9baebcd2abc35d49151df755603d1c52fe4b',
+            name=None,
+            content_id='foobar-123',
+            content_disp='inline',
+            content_type='image/jpeg',
+            content=image_data,
+        ),
+    ]

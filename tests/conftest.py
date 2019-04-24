@@ -395,7 +395,7 @@ def _fix_create_ses_email(dummy_server, sns_data, create_email):
 
 
 @pytest.fixture(name='create_image')
-async def _fix_create_image():
+def _fix_create_image():
     def create_image(image_format='JPEG'):
         stream = BytesIO()
 
@@ -408,7 +408,7 @@ async def _fix_create_image():
 
 
 @pytest.fixture(name='fake_request')
-async def _fix_fake_request(db_conn, settings, redis):
+def _fix_fake_request(db_conn, settings, redis):
     class Request:
         def __init__(self):
             self.dict = {'conn': db_conn}

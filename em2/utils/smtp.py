@@ -29,7 +29,7 @@ def parse_smtp(body: bytes) -> EmailMessage:
 @dataclass
 class File:
     hash: str
-    name: str
+    name: Optional[str]
     content_id: str
     content_disp: str
     content_type: str
@@ -46,10 +46,7 @@ def find_smtp_files(m: EmailMessage, inc_content=False, *, _msg_id=None, _cids=N
 
             name = part.get_filename()
             content_type = part.get_content_type()
-
-            content = part.get_content()
-            if isinstance(content, str):
-                content = content.encode()
+            content = part.get_payload(decode=True)
 
             hash = hashlib.sha1(f'{name or ""}/{content_type or ""}/'.encode() + content).hexdigest()
             content_id = part['Content-ID']
