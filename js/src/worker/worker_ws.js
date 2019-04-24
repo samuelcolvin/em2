@@ -1,12 +1,7 @@
-import {statuses} from '../lib'
+import {statuses, sleep} from '../lib'
 import {make_url} from '../lib/requests'
 import {session} from './worker_db'
 import {unix_ms, window_call, set_conn_status} from './worker_utils'
-
-const offline = 0
-const connecting = 1
-const online = 2
-const closing = 3
 
 const meta_action_types = new Set([
   'seen',
@@ -18,73 +13,61 @@ const meta_action_types = new Set([
 
 export default class Websocket {
   constructor () {
-    this._state = offline  // see above for options
     this._disconnects = 0
     this._socket = null
+    this._clear_reconnect = null
   }
 
   close = () => {
-    this._state = closing
+    this._socket.manually_closing = true
     this._socket.close()
   }
 
-  connect = async () => {
-    if (this._state !== offline) {
+  connect = () => {
+    if (this._socket) {
+      console.warn('ws already connected, not connecting again')
       return
     }
     set_conn_status(statuses.connecting)
-    this._state = connecting
-    let ws_url = make_url('ui', `/${session.id}/ws/`).replace('http', 'ws')
+    this._socket = this._connect()
+  }
 
+  _connect = () => {
+    let ws_url = make_url('ui', `/${session.id}/ws/`).replace('http', 'ws')
+    let socket
     try {
-      this._socket = new WebSocket(ws_url)
+      socket = new WebSocket(ws_url)
     } catch (error) {
       console.error('ws connection error', error)
-      this._state = offline
       set_conn_status(statuses.offline)
-      return
+      return null
     }
 
-    this._socket.onopen = () => {
+    socket.onopen = this._on_open
+    socket.onclose = this._on_close
+    socket.onerror = this._on_error
+    socket.onmessage = this._on_message
+    return socket
+  }
+
+  _reconnect = () => {
+    const new_socket = this._connect()
+    if (new_socket) {
+      this.close()
+      this._socket = new_socket
+    }
+  }
+
+  _on_open = async () => {
+    await sleep(100)
+    if (this._socket) {
       console.debug('websocket open')
       set_conn_status(statuses.online)
-      this._state = online
-      setTimeout(() => {
-        if (this._state === online) {
-          this._disconnects = 0
-          window_call('notify', 'request')
-        }
-      }, 500)
+      this._disconnects = 0
+      window_call('notify', 'request')
+      // reconnect after 50 seconds to avoid lots of 503 in heroku and also so we always have an active connection
+      this._clear_reconnect = setTimeout(this._reconnect, 49900)
     }
-
-    this._socket.onclose = async e => {
-      if (e.code === 1000 && this._state === closing) {
-        this._disconnects = 0
-        console.log('websocket closed intentionally')
-        return
-      }
-      this._state = offline
-      const reconnect_in = Math.min(10000, (2 ** this._disconnects - 1) * 500)
-      this._disconnects += 1
-      if (e.code === 4403) {
-        console.debug('websocket closed with 4403, not authorised')
-        set_conn_status(statuses.online)
-        await session.delete()
-        window_call('setState', {user: null})
-        window_call('setState', {other_sessions: []})
-      } else {
-        console.debug(`websocket closed, reconnecting in ${reconnect_in}ms`, e)
-        setTimeout(this.connect, reconnect_in)
-        setTimeout(() => this._state === offline && set_conn_status(statuses.offline), 3000)
-      }
-    }
-
-    this._socket.onerror = e => {
-      console.debug('websocket error:', e)
-      set_conn_status(statuses.offline)
-    }
-
-    this._socket.onmessage = this._on_message
   }
 
   _on_message = async event => {
@@ -105,6 +88,35 @@ export default class Websocket {
       session_update.cache = new Set()
     }
     await session.update(session_update)
+  }
+
+  _on_close = async e => {
+    if (e.code === 1000 && e.target.manually_closing) {
+      this._disconnects = 0
+      console.debug('websocket closed intentionally')
+      return
+    }
+    clearInterval(this._clear_reconnect)
+    this._socket = null
+    const reconnect_in = Math.min(20000, 2 ** this._disconnects * 500)
+    this._disconnects += 1
+    if (e.code === 4403) {
+      console.debug('websocket closed with 4403, not authorised')
+      set_conn_status(statuses.online)
+      await session.delete()
+      window_call('setState', {user: null})
+      window_call('setState', {other_sessions: []})
+    } else {
+      console.debug(`websocket closed, reconnecting in ${reconnect_in}ms`, e)
+      setTimeout(this.connect, reconnect_in)
+      setTimeout(() => !this._socket && set_conn_status(statuses.offline), 3000)
+    }
+  }
+
+  _on_error = () => {
+    // console.debug('websocket error:', e)
+    set_conn_status(statuses.offline)
+    this._socket = null
   }
 }
 
