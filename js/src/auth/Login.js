@@ -1,10 +1,11 @@
 import React from 'react'
 import {Row, Col, Button, FormFeedback} from 'reactstrap'
 import {Link} from 'react-router-dom'
+import {DetailedError} from '../lib'
 import WithContext from '../lib/context'
+import {make_url} from '../lib/requests'
 import IFrame from './IFrame'
 import Recaptcha from './Recaptcha'
-import {DetailedError} from '../lib'
 
 function next_url (location) {
   const match = location.search.match('next=([^&]+)')
@@ -28,10 +29,12 @@ class Login extends React.Component {
       return
     }
     if (event.data.loaded) {
-      const existing_sessions = await this.props.ctx.worker.call('all-emails')
-      if (existing_sessions.length) {
-        this.iframe_ref.current.contentWindow.postMessage({existing_sessions}, '*')
+      const load_msg = {
+        loaded: true,
+        existing_sessions: await this.props.ctx.worker.call('all-emails'),
+        login_url: make_url('auth', '/login/'),
       }
+      this.iframe_ref.current.contentWindow.postMessage(load_msg, '*')
     } else if (event.data.grecaptcha_required !== undefined) {
       if (event.data.grecaptcha_required && this.state.recaptcha_shown) {
         Recaptcha.reset()

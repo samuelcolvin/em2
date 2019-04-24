@@ -7,8 +7,7 @@
     <link rel="stylesheet" href="/iframes/auth/styles.css">
   </head>
   <body class="pt-2 px-1">
-    <!--<form id="login-form" action="https://auth.imber.io/login/" method="POST">-->
-    <form id="login-form" action="http://localhost:8000/auth/login/" method="POST">
+    <form id="login-form" method="POST">
 
       <small class="error mb-2" id="user-error"></small>
 
@@ -50,8 +49,10 @@
       let existing_sessions = []
       window.addEventListener('message', event => {
         if (event.origin === origin) {
-          if (event.data.existing_sessions) {
+          if (event.data.loaded) {
             existing_sessions = event.data.existing_sessions
+            form.action = event.data.login_url
+            check_grecaptcha(event.data.login_url)
           } else if (event.data.grecaptcha_token) {
             grecaptcha_token = data.grecaptcha_token
             user_error.innerText = ''
@@ -60,25 +61,27 @@
       }, false)
 
       // check if we're connected and whether grecaptcha is required
-      const xhr = new XMLHttpRequest()
-      xhr.open('GET', form.action)
-      xhr.setRequestHeader('Accept', 'application/json')
-      xhr.onload = () => {
-        let data
-        try {
-          data = JSON.parse(xhr.responseText)
-        } catch (error) {
-          on_error('Error decoding response', xhr.status, xhr, error)
+      function check_grecaptcha (url) {
+        const xhr = new XMLHttpRequest()
+        xhr.open('GET', url)
+        xhr.setRequestHeader('Accept', 'application/json')
+        xhr.onload = () => {
+          let data
+          try {
+            data = JSON.parse(xhr.responseText)
+          } catch (error) {
+            on_error('Error decoding response', xhr.status, xhr, error)
+          }
+          if (xhr.status === 200) {
+            grecaptcha_required = data.grecaptcha_required
+            window.parent.postMessage({grecaptcha_required}, origin)
+          } else {
+            on_error(data.message || 'Unexpected response', xhr.status, xhr)
+          }
         }
-        if (xhr.status === 200) {
-          grecaptcha_required = data.grecaptcha_required
-          window.parent.postMessage({grecaptcha_required}, origin)
-        } else {
-          on_error(data.message || 'Unexpected response', xhr.status, xhr)
-        }
+        xhr.onerror = e => on_error('Network Error', 0, xhr, e)
+        xhr.send()
       }
-      xhr.onerror = e => on_error('Network Error', 0, xhr, e)
-      xhr.send()
 
       function on_submit (e) {
         e.preventDefault()

@@ -90,12 +90,7 @@ def mod():
     # replace urls in iframes
     for path in (build_dir / 'iframes').glob('**/*.html'):
         print('changing urls in', path)
-        content = path.read_text()
-        path.write_text(
-            content.replace('http://localhost:8000/auth', f'https://auth.{main_domain}').replace(
-                'http://localhost:3000', origin
-            )
-        )
+        path.write_text(path.read_text().replace('http://localhost:3000', origin))
 
     main_csp['script-src'].append(get_script(build_dir / 'index.html'))
 
