@@ -30,6 +30,8 @@ module.exports = {
     'react/jsx-uses-react': 2,
     'react/jsx-uses-vars': 2,
     'no-unused-vars': 2,
+    'react-hooks/rules-of-hooks': 2,
+    'react-hooks/exhaustive-deps': 2,
     'max-len': [
       'error', {
         'code': 120
