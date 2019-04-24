@@ -9,8 +9,8 @@ import {
   DropdownItem,
 } from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
-import Participants from '../../lib/form/Participants'
-import WithContext from '../../lib/context'
+import {WithContext} from 'reactstrap-toolbox'
+import {Participants} from '../ParticipantsInput'
 
 class ScrollSpy extends React.Component {
   state = {style: null}

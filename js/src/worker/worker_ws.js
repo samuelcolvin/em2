@@ -1,5 +1,5 @@
-import {statuses, sleep} from '../lib'
-import {make_url} from '../lib/requests'
+import {sleep} from 'reactstrap-toolbox'
+import {make_url, statuses} from '../utils/network'
 import {session} from './worker_db'
 import {unix_ms, window_call, set_conn_status} from './worker_utils'
 

@@ -1,9 +1,8 @@
 import React from 'react'
 import {Row, Col, Button, FormFeedback} from 'reactstrap'
 import {Link} from 'react-router-dom'
-import {DetailedError} from '../lib'
-import WithContext from '../lib/context'
-import {make_url} from '../lib/requests'
+import {WithContext, DetailedError} from 'reactstrap-toolbox'
+import {make_url} from '../utils/network'
 import IFrame from './IFrame'
 import Recaptcha from './Recaptcha'
 

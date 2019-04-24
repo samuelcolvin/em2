@@ -6,8 +6,10 @@ import {
   ButtonGroup,
   Button,
 } from 'reactstrap'
-import WithContext from '../lib/context'
-import {Form} from '../lib/form'
+import {WithContext, form} from 'reactstrap-toolbox'
+import {ParticipantsInput} from './ParticipantsInput'
+
+const Form = form.Form
 
 const fields = {
   subject: {required: true, max_length: 63},
@@ -97,6 +99,7 @@ class Create extends React.Component {
               Buttons={FormButtons}
               RenderFields={RenderFields}
               submitted={this.submitted.bind(this)}
+              type_lookup={{participants: ParticipantsInput}}
               onChange={form_data => this.setState({form_data})}/>
       </div>
     )

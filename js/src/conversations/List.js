@@ -2,9 +2,8 @@ import React from 'react'
 import {Link} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {withRouter} from 'react-router-dom'
-import {format_ts} from '../lib'
-import {Loading} from '../lib/Errors'
-import WithContext from '../lib/context'
+import {WithContext, Loading} from 'reactstrap-toolbox'
+import {format_ts} from '../utils/dt'
 
 const ConvList = ({conversations, user_email}) => conversations.map((conv, i) => (
   <Link key={i} to={`/${conv.key.substr(0, 10)}/`} className={conv.seen ? 'seen' : ''}>

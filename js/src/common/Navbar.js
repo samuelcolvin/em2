@@ -15,7 +15,7 @@ import {
   DropdownMenu,
   DropdownItem,
 } from 'reactstrap'
-import {statuses} from '../lib'
+import {statuses} from '../utils/network'
 
 const StatusBar = ({title, message, conn_status, user, show_tooltip, toggle_tooltip}) => {
   const class_name = ['extra-menu', 'fixed-top']

@@ -1,6 +1,6 @@
 import {session} from './worker_db'
 import {add_listener, get_conn_status, requests, unix_ms} from './worker_utils'
-import {statuses} from '../lib'
+import {statuses} from '../utils/network'
 
 
 function actions_incomplete (actions) {

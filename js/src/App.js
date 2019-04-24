@@ -1,9 +1,8 @@
 import React from 'react'
 import {Route, Switch, withRouter} from 'react-router-dom'
+import {GlobalContext, Error, NotFound} from 'reactstrap-toolbox'
 
-import {statuses} from './lib'
-import {GlobalContext} from './lib/context'
-import {Error, NotFound} from './lib/Errors'
+import {statuses} from './utils/network'
 import Worker from './run_worker'
 import Navbar from './common/Navbar'
 import Notify from './common/Notify'

@@ -1,7 +1,6 @@
 import React from 'react'
 import {Redirect} from 'react-router-dom'
-import WithContext from '../lib/context'
-import {Loading} from '../lib/Errors'
+import {WithContext, Loading} from 'reactstrap-toolbox'
 
 class Logout extends React.Component {
   async componentDidMount () {

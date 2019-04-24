@@ -1,5 +1,6 @@
-import {request as basic_request} from '../lib/requests'
-import {sleep, statuses} from '../lib'
+import {sleep} from 'reactstrap-toolbox'
+import {request as basic_request} from 'reactstrap-toolbox'
+import {make_url, statuses} from '../utils/network'
 import db from './worker_db'
 
 export function window_call (method, call_args) {
@@ -47,8 +48,9 @@ export function route_message (message) {
 
 async function request (method, app_name, path, config) {
   // wraps basic_request and re-authenticates when a session has expired, also takes care of allow_fail
+  const url = make_url(app_name, path)
   try {
-    return await basic_request(method, app_name, path, config)
+    return await basic_request(method, url, config)
   } catch (e) {
     if (e.status === 401) {
       // TODO check and reauthenticate

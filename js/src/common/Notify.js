@@ -1,6 +1,7 @@
 import React from 'react'
 import {withRouter} from 'react-router-dom'
-import WithContext from '../lib/context'
+import {WithContext} from 'reactstrap-toolbox'
+
 
 const now = () => new Date()
 

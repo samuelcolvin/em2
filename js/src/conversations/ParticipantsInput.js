@@ -1,6 +1,7 @@
 import React from 'react'
 import {AsyncTypeahead, Token} from 'react-bootstrap-typeahead'
-import WithContext from '../context'
+import {FormGroup, FormFeedback} from 'reactstrap'
+import {WithContext, form} from 'reactstrap-toolbox'
 
 const render_option = o => o.name ? `${o.name} <${o.email}>` : o.email
 const token = (option, props, index) => (
@@ -24,7 +25,7 @@ const static_props = {
 }
 const max_participants = 64
 
-class Participants extends React.Component {
+class Participants_ extends React.Component {
   state = {options: [], ongoing_searches: 0}
 
   selected = () => this.state.options.filter(o => this.props.value.includes(o.email))
@@ -93,4 +94,22 @@ class Participants extends React.Component {
   }
 }
 
-export default WithContext(Participants)
+export const Participants = WithContext(Participants_)
+const Label = form.inputs.Label
+const HelpText = form.inputs.HelpText
+
+export const ParticipantsInput = ({className, field, disabled, error, value, onChange}) => (
+  <FormGroup className={className || field.className}>
+    <Label field={field}/>
+    <Participants
+      value={value || []}
+      disabled={disabled}
+      name={field.name}
+      id={field.name}
+      required={field.required}
+      onChange={onChange}
+    />
+    {error && <FormFeedback>{error}</FormFeedback>}
+    <HelpText field={field}/>
+  </FormGroup>
+)
