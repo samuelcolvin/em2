@@ -1,4 +1,5 @@
 import React from 'react'
+import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {
   Col,
   Row,
@@ -55,6 +56,7 @@ class FormButtons extends React.Component {
           <ButtonGroup className="flex-row-reverse">
 
             <Button color="primary" disabled={this.props.state.disabled} onClick={() => this.submit(true)}>
+              <FontAwesomeIcon icon="paper-plane" className="mr-1"/>
               Send
             </Button>
 

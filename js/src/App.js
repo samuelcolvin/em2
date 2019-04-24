@@ -1,9 +1,5 @@
-import React, {Component} from 'react'
+import React from 'react'
 import {Route, Switch, withRouter} from 'react-router-dom'
-import {library as FaLibrary} from '@fortawesome/fontawesome-svg-core'
-import {far} from '@fortawesome/free-regular-svg-icons'
-import {fas} from '@fortawesome/free-solid-svg-icons'
-import {fab} from '@fortawesome/free-brands-svg-icons'
 
 import {statuses} from './lib'
 import {GlobalContext} from './lib/context'
@@ -17,9 +13,8 @@ import SwitchSession from './auth/SwitchSession'
 import ListConversations from './conversations/List'
 import ConversationDetails from './conversations/Details'
 import CreateConversation from './conversations/Create'
+import './fa'
 
-// TODO replace with specific icons
-FaLibrary.add(far, fas, fab)
 
 const Main = ({app_state}) => {
   if (app_state.error) {
@@ -48,7 +43,7 @@ const Main = ({app_state}) => {
   }
 }
 
-class App extends Component {
+class App extends React.Component {
   state = {
     title: null,
     error: null,

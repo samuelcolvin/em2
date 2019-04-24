@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
-from aiohttp.web_exceptions import HTTPFound
+from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
 from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
 from pydantic import BaseModel, validator
 
@@ -179,6 +179,8 @@ class ConvPublish(ExecView):
 
 class GetFile(View):
     async def call(self):
+        if not all((self.settings.aws_secret_key, self.settings.aws_access_key, self.settings.s3_temp_bucket)):
+            raise HTTPNotImplemented(text="Storage keys not set, can't display images")
         # in theory we might need to add action_id here to specify the file via content_id, but in practice probably
         # not necessary (until it is)
         conv_prefix = self.request.match_info['conv']

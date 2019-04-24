@@ -1,54 +1,51 @@
+import * as fas from '@fortawesome/free-solid-svg-icons'
+
 const main_types = {
-  'image/': 'file-image',
-  'video/': 'file-video',
-  'audio/': 'file-audio',
+  'image/': fas.faFileImage,
+  'video/': fas.faFileVideo,
+  'audio/': fas.faFileAudio,
 }
 
 
 const full_types = {
-  'application/epub+zip': 'file-archive',
-  'application/java-archive': 'file-code',
-  'application/javascript': 'file-code',
-  'application/json': 'file-code',
-  'application/ld+json': 'file-code',
-  'application/msword': 'file-word',
-  'application/ogg': 'file-audio',
-  'application/pdf': 'file-pdf',
-  'application/rtf': 'file-alt',
-  'application/sql': 'file-code',
-  'application/vnd.ms-excel': 'file-excel',
-  'application/vnd.ms-powerpoint': 'file-powerpoint',
-  'application/vnd.oasis.opendocument.presentation': 'file-powerpoint',
-  'application/vnd.oasis.opendocument.spreadsheet': 'file-excel',
-  'application/vnd.oasis.opendocument.text': 'file-word',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'file-powerpoint',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'file-excel',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'file-word',
-  'application/x-7z-compressed': 'file-archive',
-  'application/x-bzip': 'file-archive',
-  'application/x-bzip2': 'file-archive',
-  'application/x-python-code': 'file-code',
-  'application/x-python': 'file-code',
-  'application/x-rar-compressed': 'file-archive',
-  'application/x-sh': 'file-code',
-  'application/x-tar': 'file-archive',
-  'application/xhtml+xml': 'file-code',
-  'application/xml': 'file-code',
-  'application/zip': 'file-archive',
-  'text/calendar': 'file-medical',
-  'text/css': 'file-code',
-  'text/csv': 'file-csv',
-  'text/html': 'file-code',
-  'text/javascript': 'file-code',
-  'text/plain': 'file-alt',
+  'application/epub+zip': fas.faFileArchive,
+  'application/java-archive': fas.faFileCode,
+  'application/javascript': fas.faFileCode,
+  'application/json': fas.faFileCode,
+  'application/ld+json': fas.faFileCode,
+  'application/msword': fas.faFileWord,
+  'application/ogg': fas.faFileAudio,
+  'application/pdf': fas.faFilePdf,
+  'application/rtf': fas.faFileAlt,
+  'application/sql': fas.faFileCode,
+  'application/vnd.ms-excel': fas.faFileExcel,
+  'application/vnd.ms-powerpoint': fas.faFilePowerpoint,
+  'application/vnd.oasis.opendocument.presentation': fas.faFilePowerpoint,
+  'application/vnd.oasis.opendocument.spreadsheet': fas.faFileExcel,
+  'application/vnd.oasis.opendocument.text': fas.faFileWord,
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': fas.faFilePowerpoint,
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': fas.faFileExcel,
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': fas.faFileWord,
+  'application/x-7z-compressed': fas.faFileArchive,
+  'application/x-bzip': fas.faFileArchive,
+  'application/x-bzip2': fas.faFileArchive,
+  'application/x-python-code': fas.faFileCode,
+  'application/x-python': fas.faFileCode,
+  'application/x-rar-compressed': fas.faFileArchive,
+  'application/x-sh': fas.faFileCode,
+  'application/x-tar': fas.faFileArchive,
+  'application/xhtml+xml': fas.faFileCode,
+  'application/xml': fas.faFileCode,
+  'application/zip': fas.faFileArchive,
+  'text/calendar': fas.faFileMedical,
+  'text/css': fas.faFileCode,
+  'text/csv': fas.faFileCsv,
+  'text/html': fas.faFileCode,
+  'text/javascript': fas.faFileCode,
+  'text/plain': fas.faFileAlt,
 }
 
 export default function (content_type) {
-  const ct = content_type.toLowerCase().trim()
-  for (const [main_type, icon] of Object.entries(main_types)) {
-    if (ct.startsWith(main_type)) {
-      return icon
-    }
-  }
-  return full_types[ct] || 'file'
+  const ct = content_type.toLowerCase()
+  return main_types[ct.match(/.*\//)[0]] || full_types[ct.trim()] || fas.faFile
 }

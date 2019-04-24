@@ -1,3 +1,5 @@
+const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin
+
 module.exports = function override(config, env) {
   // Add worker-loader by hijacking configuration for regular .js files.
 
@@ -18,6 +20,17 @@ module.exports = function override(config, env) {
     ]
   }
   config.module.rules.push(worker_loader)
+
+  // if run with `ANALYSE=1 yarn build` create report.js size report
+  if (env === 'production' && process.env.ANALYSE) {
+    config.plugins.push(
+      new BundleAnalyzerPlugin({
+        analyzerMode: 'static',
+        reportFilename: 'report.html',
+      })
+    )
+  }
+
 
   // temporary fix for https://github.com/webpack/webpack/issues/6525
   config.output.globalObject = 'this'
