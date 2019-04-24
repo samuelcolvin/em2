@@ -33,67 +33,31 @@ if review_id and os.getenv('CONTEXT') == 'deploy-preview':
 else:
     origin = f'https://app.{main_domain}'
 
-iframe_msg_hash = hashlib.md5(
-    (this_dir / 'public' / iframe_msg_old_path).read_bytes() + origin.encode()
-).hexdigest()
+iframe_msg_hash = hashlib.md5((this_dir / 'public' / iframe_msg_old_path).read_bytes() + origin.encode()).hexdigest()
 iframe_msg_new_path = iframe_msg_old_path.with_name(f'message.{iframe_msg_hash[:8]}.html')
 
 main_csp = {
-    'default-src': [
-        "'self'",
-    ],
-    'script-src': [
-        "'self'",
-        'storage.googleapis.com',  # workbox, TODO remove and change CDN
-    ],
-    'font-src': [
-        "'self'",
-        'data:',
-    ],
-    'style-src': [
-        "'self'",
-        "'unsafe-inline'",  # TODO remove
-    ],
-    'frame-src': [
-        "'self'",
-        'data:',
-    ],
-    'img-src': [
-        "'self'",
-        'blob:',
-        'data:',
-    ],
-    'media-src': [
-        "'self'",
-    ],
+    'default-src': ["'self'"],
+    'script-src': ["'self'", 'storage.googleapis.com'],  # workbox, TODO remove and change CDN
+    'font-src': ["'self'", 'data:'],
+    'style-src': ["'self'", "'unsafe-inline'"],  # TODO remove
+    'frame-src': ["'self'", 'data:'],
+    'img-src': ["'self'", 'blob:', 'data:'],
+    'media-src': ["'self'"],
     'connect-src': [
         "'self'",
         'https://sentry.io',
         f'https://ui.{main_domain}',
         f'wss://ui.{main_domain}',
-        f'https://auth.{main_domain}'
-    ],
-}
-iframe_auth_csp = {
-    'default-src': [
-        "'none'",
-    ],
-    'connect-src': [
         f'https://auth.{main_domain}',
     ],
-    'style-src': [
-        origin,
-    ],
 }
+iframe_auth_csp = {'default-src': ["'none'"], 'connect-src': [f'https://auth.{main_domain}'], 'style-src': [origin]}
 iframe_msg_csp = {
     'default-src': ["'none'"],
     'style-src': ["'unsafe-inline'"],
     'font-src': ["'unsafe-inline'"],
-    'img-src': [
-        "'unsafe-inline'",
-        f'https://ui.{main_domain}',
-        f'https://temp.{main_domain}',
-    ],
+    'img-src': ["'unsafe-inline'", f'https://ui.{main_domain}', f'https://temp.{main_domain}'],
 }
 details_env = 'BRANCH', 'PULL_REQUEST', 'HEAD', 'COMMIT_REF', 'CONTEXT', 'REVIEW_ID'
 
@@ -128,9 +92,9 @@ def mod():
         print('changing urls in', path)
         content = path.read_text()
         path.write_text(
-            content
-            .replace('http://localhost:8000/auth', f'https://auth.{main_domain}')
-            .replace('http://localhost:3000', origin)
+            content.replace('http://localhost:8000/auth', f'https://auth.{main_domain}').replace(
+                'http://localhost:3000', origin
+            )
         )
 
     main_csp['script-src'].append(get_script(build_dir / 'index.html'))
@@ -147,11 +111,7 @@ def mod():
     iframe_auth_csp['script-src'] = [get_script(build_dir / 'iframes' / 'auth' / 'login.html')]
     iframe_msg_csp['script-src'] = [get_script(build_dir / iframe_msg_old_path)]
 
-    replacements = {
-        'main_csp': main_csp,
-        'iframe_auth_csp': iframe_auth_csp,
-        'iframe_msg_csp': iframe_msg_csp,
-    }
+    replacements = {'main_csp': main_csp, 'iframe_auth_csp': iframe_auth_csp, 'iframe_msg_csp': iframe_msg_csp}
     headers_path = build_dir / '_headers'
     content = headers_path.read_text()
     for k, v in replacements.items():
@@ -168,7 +128,7 @@ def mod():
     # rename iframes/message/message.html and add to precache-manifest.js
     (build_dir / iframe_msg_old_path).rename(build_dir / iframe_msg_new_path)
     man_path = next(build_dir.glob('precache-manifest.*'))
-    man_data = json.loads(re.search(r'\[.+\]', man_path.read_text(), flags=re.S).group(0))
+    man_data = json.loads(re.search(r'\.concat\((\[.+\])', man_path.read_text(), flags=re.S).group(1))
     man_data.append({'revision': iframe_msg_hash, 'url': f'/{iframe_msg_new_path}'})
 
     man_path.write_text(f'self.__precacheManifest = {json.dumps(man_data, indent=2)};')

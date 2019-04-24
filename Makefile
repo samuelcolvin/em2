@@ -2,6 +2,7 @@
 isort = isort -rc -w 120 em2 tests
 black = black -S -l 120 --py36 em2 tests
 heroku ?= em2-demo
+REACT_APP_DOMAIN ?= imber.io
 
 .PHONY: install
 install:
@@ -80,7 +81,7 @@ docker-dev-stop:
 
 .PHONY: js
 js:
-	COMMIT_REF=$(shell git rev-parse HEAD) ./js/build.py
+	COMMIT_REF=$(shell git rev-parse HEAD) REACT_APP_DOMAIN=$(REACT_APP_DOMAIN) ./js/build.py
 
 .PHONY: release-js
 release-js: js
