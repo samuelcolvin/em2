@@ -25,7 +25,7 @@ const static_props = {
 }
 const max_participants = 64
 
-class Participants_ extends React.Component {
+class Participants extends React.Component {
   state = {options: [], ongoing_searches: 0}
 
   selected = () => this.state.options.filter(o => this.props.value.includes(o.email))
@@ -94,17 +94,18 @@ class Participants_ extends React.Component {
   }
 }
 
-export const Participants = WithContext(Participants_)
+const ParticipantsWithContext = WithContext(Participants)
 
-export const ParticipantsInput = ({className, field, disabled, error, value, onChange}) => (
+export default ({className, field, disabled, error, value, onChange, existing_participants}) => (
   <FormGroup className={className || field.className}>
     <InputLabel field={field}/>
-    <Participants
+    <ParticipantsWithContext
       value={value || []}
       disabled={disabled}
       name={field.name}
       id={field.name}
       required={field.required}
+      existing_participants={existing_participants || 0}
       onChange={onChange}
     />
     {error && <FormFeedback>{error}</FormFeedback>}

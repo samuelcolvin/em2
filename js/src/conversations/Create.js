@@ -7,7 +7,7 @@ import {
   Button,
 } from 'reactstrap'
 import {WithContext, Form} from 'reactstrap-toolbox'
-import {ParticipantsInput} from './ParticipantsInput'
+import ParticipantsInput from './ParticipantsInput'
 
 const fields = {
   subject: {required: true, max_length: 63},
