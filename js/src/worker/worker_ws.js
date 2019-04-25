@@ -10,6 +10,8 @@ const meta_action_types = new Set([
   'message:lock',
   'message:release',
 ])
+// reconnect after 50 seconds to avoid lots of 503 in heroku and also so we always have an active connection
+const ws_ttl = 49900
 
 export default class Websocket {
   constructor () {
@@ -65,8 +67,7 @@ export default class Websocket {
       set_conn_status(statuses.online)
       this._disconnects = 0
       window_call('notify-request')
-      // reconnect after 50 seconds to avoid lots of 503 in heroku and also so we always have an active connection
-      this._clear_reconnect = setTimeout(this._reconnect, 49900)
+      this._clear_reconnect = setTimeout(this._reconnect, ws_ttl)
     }
   }
 

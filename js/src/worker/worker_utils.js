@@ -73,8 +73,10 @@ export const requests = {
 export let CONN_STATUS = null
 
 export const set_conn_status = conn_status => {
-  CONN_STATUS = conn_status
-  window_call('setState', {conn_status})
+  if (conn_status !== CONN_STATUS) {
+    CONN_STATUS = conn_status
+    window_call('setState', {conn_status})
+  }
 }
 
 export async function get_conn_status () {
