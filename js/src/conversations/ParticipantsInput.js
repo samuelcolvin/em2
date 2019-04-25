@@ -1,7 +1,7 @@
 import React from 'react'
 import {AsyncTypeahead, Token} from 'react-bootstrap-typeahead'
 import {FormGroup, FormFeedback} from 'reactstrap'
-import {WithContext, InputLabel, InputHelpText} from 'reactstrap-toolbox'
+import {WithContext, InputLabel, InputHelpText, message_toast} from 'reactstrap-toolbox'
 
 const render_option = o => o.name ? `${o.name} <${o.email}>` : o.email
 const token = (option, props, index) => (
@@ -59,7 +59,7 @@ class Participants_ extends React.Component {
         this.onChange(this.props.value.concat(addresses))
       }
       if (bad_count) {
-        this.props.ctx.setMessage({icon: 'times', message: `Skipped ${bad_count} invalid addresses while pasting`})
+        message_toast({icon: 'times', message: `Skipped ${bad_count} invalid addresses while pasting`})
       }
     }
   }
@@ -67,7 +67,7 @@ class Participants_ extends React.Component {
   onChange = addresses => {
     const existing_participants = this.props.existing_participants || 0
     if (existing_participants + addresses.length > max_participants) {
-      this.props.ctx.setMessage({icon: 'times', message: `Maximum ${max_participants} participants permitted`})
+      message_toast({icon: 'times', message: `Maximum ${max_participants} participants permitted`})
     } else {
       this.props.onChange(addresses)
     }

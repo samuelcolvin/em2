@@ -2,7 +2,7 @@ import React from 'react'
 import {Link} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {withRouter} from 'react-router-dom'
-import {WithContext, Loading} from 'reactstrap-toolbox'
+import {WithContext, Loading, message_toast} from 'reactstrap-toolbox'
 import {format_ts} from '../utils/dt'
 
 const ConvList = ({conversations, user_email}) => conversations.map((conv, i) => (
@@ -91,7 +91,7 @@ class ConvListView extends React.Component {
       this.setState(r)
       this.props.history.push(link)
     } else {
-      this.props.ctx.setMessage({icon: 'times', message: 'No more conversations found'})
+      message_toast({icon: 'times', title: 'No more Conversations', message: 'No more Conversations found'})
       this.setState({more_pages: false})
     }
   }

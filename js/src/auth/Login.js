@@ -1,7 +1,7 @@
 import React from 'react'
 import {Row, Col, Button, FormFeedback} from 'reactstrap'
 import {Link} from 'react-router-dom'
-import {WithContext, DetailedError} from 'reactstrap-toolbox'
+import {WithContext, DetailedError, message_toast} from 'reactstrap-toolbox'
 import {make_url} from '../utils/network'
 import IFrame from './IFrame'
 import Recaptcha from './Recaptcha'
@@ -19,7 +19,13 @@ class Login extends React.Component {
 
   authenticate = async data => {
     const user = await this.props.ctx.worker.call('auth-token', data)
-    this.props.ctx.setMessage({icon: 'user', message: `Logged in successfully as ${user.name}`})
+    message_toast({
+      icon: 'user',
+      title: 'Logged in',
+      message: `Logged in successfully as ${user.name}`,
+      progress: false,
+      time: 2000,
+    })
     this.props.history.replace(next_url(this.props.location) || '/')
   }
 

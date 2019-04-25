@@ -64,7 +64,7 @@ export default class Websocket {
       console.debug('websocket open')
       set_conn_status(statuses.online)
       this._disconnects = 0
-      window_call('notify', 'request')
+      window_call('notify-request')
       // reconnect after 50 seconds to avoid lots of 503 in heroku and also so we always have an active connection
       this._clear_reconnect = setTimeout(this._reconnect, 49900)
     }
@@ -173,7 +173,7 @@ async function apply_actions (data, session_email) {
     // TODO better summary of action
     window_call('notify', {
       title: action.actor,
-      body: notify_details.sub,
+      message: notify_details.sub,
       link: `/${action.conv.substr(0, 10)}/`,
     })
   }

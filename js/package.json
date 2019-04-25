@@ -27,7 +27,7 @@
     "react-router-dom": "^5.0.0",
     "react-scripts": "3.0.0",
     "reactstrap": "^8.0.0",
-    "reactstrap-toolbox": "^0.0.13",
+    "reactstrap-toolbox": "^0.0.14",
     "validator": "^10.11.0",
     "webpack-bundle-analyzer": "^3.3.2",
     "worker-loader": "^2.0.0"
