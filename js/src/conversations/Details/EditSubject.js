@@ -6,8 +6,7 @@ import {
   Button,
   FormFeedback,
 } from 'reactstrap'
-import WithContext from '../../lib/context'
-import AsModal from '../../lib/Modal'
+import {WithContext, AsModal} from 'reactstrap-toolbox'
 
 
 class EditSubject_ extends React.Component {

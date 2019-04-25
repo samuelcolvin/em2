@@ -1,5 +1,4 @@
-import {statuses} from '../lib'
-import {make_url} from '../lib/requests'
+import {make_url, statuses} from '../utils/network'
 import {session} from './worker_db'
 import {add_listener, window_call, route_message, set_conn_status, requests} from './worker_utils'
 import Websocket from './worker_ws'

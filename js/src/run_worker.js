@@ -1,5 +1,5 @@
 import MainWorker from './worker/worker.js'
-import {DetailedError} from './lib'
+import {DetailedError} from 'reactstrap-toolbox'
 
 if (!window) {
   throw Error('WebWorkerRun.js should only be called from the window, not a worker')

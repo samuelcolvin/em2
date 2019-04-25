@@ -1,12 +1,10 @@
 import React from 'react'
 import {Route, Switch, withRouter} from 'react-router-dom'
+import {GlobalContext, Error, NotFound, Notify} from 'reactstrap-toolbox'
 
-import {statuses} from './lib'
-import {GlobalContext} from './lib/context'
-import {Error, NotFound} from './lib/Errors'
+import {statuses} from './utils/network'
 import Worker from './run_worker'
 import Navbar from './common/Navbar'
-import Notify from './common/Notify'
 import Login from './auth/Login'
 import Logout from './auth/Logout'
 import SwitchSession from './auth/SwitchSession'
@@ -47,14 +45,18 @@ class App extends React.Component {
   state = {
     title: null,
     error: null,
-    message: null,
     user: null,
     other_sessions: [],
     conn_status: null,
   }
-  worker = new Worker(this)
-  message_timeout1 = null
-  message_timeout2 = null
+
+  constructor (props) {
+    super(props)
+    this.worker = new Worker(this)
+    this.notify = new Notify(this.props.history)
+    this.worker.add_listener('notify', this.notify.notify)
+    this.worker.add_listener('notify-request', this.notify.request)
+  }
 
   componentDidMount () {
     this.worker.add_listener('setState', s => this.setState(s))
@@ -72,15 +74,6 @@ class App extends React.Component {
     }
   }
 
-  setMessage = async message => {
-    clearInterval(this.message_timeout1)
-    clearInterval(this.message_timeout2)
-    this.message_timeout1 = setTimeout(() => {
-      this.setState({message})
-      this.message_timeout2 = setTimeout(() => this.setState({message: null}), 8000)
-    }, 50)
-  }
-
   setUser = user => {
     this.setState({user})
     sessionStorage['session_id'] = JSON.stringify(user ? user.session_id : null)
@@ -94,8 +87,6 @@ class App extends React.Component {
   setError = error => {
     if (error.status === 401 && this.props.location.pathname !== '/login/') {
       this.props.history.push('/login/')
-    // } else if (error.status === 0) {
-      // this.setState({connection_status: conn_status.not_connected})
     } else {
       console.warn('setting error:', error)
       // Raven.captureMessage(`caught error: ${error.message || error.toString()}`, {
@@ -107,7 +98,6 @@ class App extends React.Component {
 
   render () {
     const ctx = {
-      setMessage: msg => this.setMessage(msg),
       setError: error => this.setError(error),
       setTitle: title => this.setState({title}),
       user: this.state.user,
@@ -119,7 +109,6 @@ class App extends React.Component {
         <main className="container" id="main">
           <Main app_state={this.state}/>
         </main>
-        <Notify/>
       </GlobalContext.Provider>
     )
   }

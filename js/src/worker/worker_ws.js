@@ -1,5 +1,5 @@
-import {statuses, sleep} from '../lib'
-import {make_url} from '../lib/requests'
+import {sleep} from 'reactstrap-toolbox'
+import {make_url, statuses} from '../utils/network'
 import {session} from './worker_db'
 import {unix_ms, window_call, set_conn_status} from './worker_utils'
 
@@ -10,6 +10,8 @@ const meta_action_types = new Set([
   'message:lock',
   'message:release',
 ])
+// reconnect after 50 seconds to avoid lots of 503 in heroku and also so we always have an active connection
+const ws_ttl = 49900
 
 export default class Websocket {
   constructor () {
@@ -64,9 +66,8 @@ export default class Websocket {
       console.debug('websocket open')
       set_conn_status(statuses.online)
       this._disconnects = 0
-      window_call('notify', 'request')
-      // reconnect after 50 seconds to avoid lots of 503 in heroku and also so we always have an active connection
-      this._clear_reconnect = setTimeout(this._reconnect, 49900)
+      window_call('notify-request')
+      this._clear_reconnect = setTimeout(this._reconnect, ws_ttl)
     }
   }
 
@@ -173,7 +174,7 @@ async function apply_actions (data, session_email) {
     // TODO better summary of action
     window_call('notify', {
       title: action.actor,
-      body: notify_details.sub,
+      message: notify_details.sub,
       link: `/${action.conv.substr(0, 10)}/`,
     })
   }

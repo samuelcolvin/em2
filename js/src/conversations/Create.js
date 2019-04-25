@@ -1,4 +1,5 @@
 import React from 'react'
+import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {
   Col,
@@ -6,8 +7,8 @@ import {
   ButtonGroup,
   Button,
 } from 'reactstrap'
-import WithContext from '../lib/context'
-import {Form} from '../lib/form'
+import {WithContext, Form} from 'reactstrap-toolbox'
+import ParticipantsInput from './ParticipantsInput'
 
 const fields = {
   subject: {required: true, max_length: 63},
@@ -29,78 +30,69 @@ const RenderFields = ({fields, RenderField}) => (
   </Row>
 )
 
-class FormButtons extends React.Component {
-  submit = async publish => {
-    await this.props.setField('publish', publish)
-    this.props.submit()
+const FormButtons = ({state, form_props, submit, setField}) => {
+  const pub_submit = async publish => {
+    await setField('publish', publish)
+    submit()
   }
 
-  on_keydown = e => {
+  const on_keydown = e => {
     if (e.key === 'Enter' && e.ctrlKey) {
-      this.submit(false)
+      pub_submit(false)
     }
   }
 
-  componentDidMount () {
-    document.addEventListener('keydown', this.on_keydown)
-  }
+  React.useEffect(() => {
+    window.addEventListener('keydown', on_keydown)
+    return () => window.removeEventListener('keydown', on_keydown)
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  componentWillUnmount (){
-    document.removeEventListener('keydown', this.on_keydown)
-  }
+  return (
+    <Row>
+      <Col md="8" className="text-right">
+        <ButtonGroup className="flex-row-reverse">
 
-  render () {
-    return (
-      <Row>
-        <Col md="8" className="text-right">
-          <ButtonGroup className="flex-row-reverse">
+          <Button color="primary" disabled={state.disabled} onClick={() => pub_submit(true)}>
+            <FontAwesomeIcon icon="paper-plane" className="mr-1"/>
+            Send
+          </Button>
 
-            <Button color="primary" disabled={this.props.state.disabled} onClick={() => this.submit(true)}>
-              <FontAwesomeIcon icon="paper-plane" className="mr-1"/>
-              Send
-            </Button>
+          <Button color="primary" disabled={state.disabled} onClick={() => pub_submit(false)}>
+            Save Draft
+          </Button>
 
-            <Button color="primary" disabled={this.props.state.disabled} onClick={() => this.submit(false)}>
-              Save Draft
-            </Button>
-
-            <Button type="button" color="secondary"
-                    disabled={this.props.state.disabled}
-                    onClick={this.props.form_props.cancel}>
-              Cancel
-            </Button>
-          </ButtonGroup>
-        </Col>
-      </Row>
-    )
-  }
+          <Button type="button" color="secondary"
+                  disabled={state.disabled}
+                  onClick={form_props.cancel}>
+            Cancel
+          </Button>
+        </ButtonGroup>
+      </Col>
+    </Row>
+  )
 }
 
 
-class Create extends React.Component {
-  state = {form_data: {}}
+const Create = ({ctx, history}) => {
+  const [form_data, set_form_data] = React.useState(0)
+  React.useEffect(() => {
+    ctx.setTitle('Compose Conversation')
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  submitted (r) {
-    this.props.history.push(`/${r.data.key}/`)
-  }
-
-  componentDidMount () {
-    this.props.ctx.setTitle('Compose Conversation')
-  }
-
-  render () {
-    return (
-      <div className="box create-conv">
-        <Form fields={fields}
-              form_data={this.state.form_data}
-              function="create-conversation"
-              Buttons={FormButtons}
-              RenderFields={RenderFields}
-              submitted={this.submitted.bind(this)}
-              onChange={form_data => this.setState({form_data})}/>
-      </div>
-    )
-  }
+  return (
+    <div className="box create-conv">
+      <Form
+        fields={fields}
+        form_data={form_data}
+        function="create-conversation"
+        Buttons={FormButtons}
+        RenderFields={RenderFields}
+        submitted={r => history.push(`/${r.data.key}/`)}
+        type_lookup={{participants: ParticipantsInput}}
+        onChange={set_form_data}
+      />
+    </div>
+  )
 }
 
-export default WithContext(Create)
+export default WithContext(withRouter(Create))

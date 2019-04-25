@@ -1,6 +1,7 @@
 import React from 'react'
 import {AsyncTypeahead, Token} from 'react-bootstrap-typeahead'
-import WithContext from '../context'
+import {FormGroup, FormFeedback} from 'reactstrap'
+import {WithContext, InputLabel, InputHelpText, message_toast} from 'reactstrap-toolbox'
 
 const render_option = o => o.name ? `${o.name} <${o.email}>` : o.email
 const token = (option, props, index) => (
@@ -58,7 +59,7 @@ class Participants extends React.Component {
         this.onChange(this.props.value.concat(addresses))
       }
       if (bad_count) {
-        this.props.ctx.setMessage({icon: 'times', message: `Skipped ${bad_count} invalid addresses while pasting`})
+        message_toast({icon: 'times', message: `Skipped ${bad_count} invalid addresses while pasting`})
       }
     }
   }
@@ -66,7 +67,7 @@ class Participants extends React.Component {
   onChange = addresses => {
     const existing_participants = this.props.existing_participants || 0
     if (existing_participants + addresses.length > max_participants) {
-      this.props.ctx.setMessage({icon: 'times', message: `Maximum ${max_participants} participants permitted`})
+      message_toast({icon: 'times', message: `Maximum ${max_participants} participants permitted`})
     } else {
       this.props.onChange(addresses)
     }
@@ -93,4 +94,21 @@ class Participants extends React.Component {
   }
 }
 
-export default WithContext(Participants)
+const ParticipantsWithContext = WithContext(Participants)
+
+export default ({className, field, disabled, error, value, onChange, existing_participants}) => (
+  <FormGroup className={className || field.className}>
+    <InputLabel field={field}/>
+    <ParticipantsWithContext
+      value={value || []}
+      disabled={disabled}
+      name={field.name}
+      id={field.name}
+      required={field.required}
+      existing_participants={existing_participants || 0}
+      onChange={onChange}
+    />
+    {error && <FormFeedback>{error}</FormFeedback>}
+    <InputHelpText field={field}/>
+  </FormGroup>
+)

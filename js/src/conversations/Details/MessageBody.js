@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
-import {sleep} from '../../lib'
-import {make_url} from '../../lib/requests'
+import {sleep} from 'reactstrap-toolbox'
+import {make_url} from '../../utils/network'
 
 
 

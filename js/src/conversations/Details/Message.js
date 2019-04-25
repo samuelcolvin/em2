@@ -1,8 +1,8 @@
 import React from 'react'
 import {Button, Tooltip, ListGroup, ListGroupItem} from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
-import {format_ts} from '../../lib'
-import {make_url} from '../../lib/requests'
+import {format_ts} from '../../utils/dt'
+import {make_url} from '../../utils/network'
 import MessageBody from './MessageBody'
 import file_icon from './file_icons'
 

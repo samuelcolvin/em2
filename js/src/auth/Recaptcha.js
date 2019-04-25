@@ -1,5 +1,5 @@
 import React from 'react'
-import {load_script} from '../lib'
+import {load_script} from 'reactstrap-toolbox'
 
 const element_id = 'google-recaptcha'
 const load_callback = 'google_recaptcha_load_callback'

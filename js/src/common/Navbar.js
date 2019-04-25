@@ -15,9 +15,9 @@ import {
   DropdownMenu,
   DropdownItem,
 } from 'reactstrap'
-import {statuses} from '../lib'
+import {statuses} from '../utils/network'
 
-const StatusBar = ({title, message, conn_status, user, show_tooltip, toggle_tooltip}) => {
+const StatusBar = ({title, conn_status, user, show_tooltip, toggle_tooltip}) => {
   const class_name = ['extra-menu', 'fixed-top']
   let connection_status_text, connection_status_icon
   if (!conn_status || conn_status === statuses.connecting) {
@@ -36,15 +36,7 @@ const StatusBar = ({title, message, conn_status, user, show_tooltip, toggle_tool
   return (
     <div className={class_name.join(' ')}>
       <div className="container">
-        <span>
-          {title}
-          {message && (
-            <span className="ml-3 message">
-              {message.icon && <FontAwesomeIcon icon={message.icon} className="mr-2"/>}
-              {message.message || message.toString()}
-            </span>
-          )}
-        </span>
+        {title}
         <span>
           <FontAwesomeIcon id="status-icon" icon={connection_status_icon}/>
           <Tooltip placement="top" isOpen={show_tooltip}
