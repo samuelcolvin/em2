@@ -1,7 +1,7 @@
 import React from 'react'
 import {AsyncTypeahead, Token} from 'react-bootstrap-typeahead'
 import {FormGroup, FormFeedback} from 'reactstrap'
-import {WithContext, form} from 'reactstrap-toolbox'
+import {WithContext, InputLabel, InputHelpText} from 'reactstrap-toolbox'
 
 const render_option = o => o.name ? `${o.name} <${o.email}>` : o.email
 const token = (option, props, index) => (
@@ -95,12 +95,10 @@ class Participants_ extends React.Component {
 }
 
 export const Participants = WithContext(Participants_)
-const Label = form.inputs.Label
-const HelpText = form.inputs.HelpText
 
 export const ParticipantsInput = ({className, field, disabled, error, value, onChange}) => (
   <FormGroup className={className || field.className}>
-    <Label field={field}/>
+    <InputLabel field={field}/>
     <Participants
       value={value || []}
       disabled={disabled}
@@ -110,6 +108,6 @@ export const ParticipantsInput = ({className, field, disabled, error, value, onC
       onChange={onChange}
     />
     {error && <FormFeedback>{error}</FormFeedback>}
-    <HelpText field={field}/>
+    <InputHelpText field={field}/>
   </FormGroup>
 )

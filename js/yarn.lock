@@ -8665,10 +8665,10 @@ react-app-polyfill@^1.0.0:
     regenerator-runtime "0.13.2"
     whatwg-fetch "3.0.0"
 
-react-app-rewired@^2.1.2:
-  version "2.1.2"
-  resolved "https://registry.yarnpkg.com/react-app-rewired/-/react-app-rewired-2.1.2.tgz#7c9f65f9aca896986fe9bf289687a1f1871282c0"
-  integrity sha512-cMyXvK310EiROrt8RuL86ae+Wf8PJpRBy8YjtKi1O27eYRvzPqtwAxon5aHef6jbhx3MI/nFRXqZ62CRXAT3iA==
+react-app-rewired@^2.1.3:
+  version "2.1.3"
+  resolved "https://registry.yarnpkg.com/react-app-rewired/-/react-app-rewired-2.1.3.tgz#5ae8583ecc9f9f968d40b735d2abbe871378a52f"
+  integrity sha512-NXC2EsQrnEMV7xD70rHcBq0B4PSEzjY/K2m/e+GRgit2jZO/uZApnpCZSKvIX2leLRN69Sqf2id0VXZ1F62CDw==
   dependencies:
     cross-spawn "^6.0.5"
     dotenv "^6.2.0"
@@ -8898,10 +8898,10 @@ react@^16.8.6:
     prop-types "^15.6.2"
     scheduler "^0.13.6"
 
-reactstrap-toolbox@^0.0.11:
-  version "0.0.11"
-  resolved "https://registry.yarnpkg.com/reactstrap-toolbox/-/reactstrap-toolbox-0.0.11.tgz#1f19fe215d68648377bef8d9cd3ade17d06145a0"
-  integrity sha512-J+F79nnw0MDY2FLuZmVgorz3S8BCF8i/rH3CZPMQYlkiaCH1AW+CZt3VSSdNmdic/nrLvGpAWV7bkX/oigq9uQ==
+reactstrap-toolbox@^0.0.13:
+  version "0.0.13"
+  resolved "https://registry.yarnpkg.com/reactstrap-toolbox/-/reactstrap-toolbox-0.0.13.tgz#de47a98f3b705c55d58857f3b23efb6972c9ca3e"
+  integrity sha512-a3VRu8MHREUvHuRd2J6kbfZI13D9cL8etKgdN4VL5cEkebVl9hIsZnPwlaeHoyMwW3DL8XPrVa0nyrBd6Gf3QA==
   dependencies:
     "@babel/runtime" "^7.4.3"
     dev "^0.1.3"
