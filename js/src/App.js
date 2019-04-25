@@ -1,10 +1,12 @@
 import React from 'react'
 import {Route, Switch, withRouter} from 'react-router-dom'
+import {Row, Col} from 'reactstrap'
 import {GlobalContext, Error, NotFound, Notify} from 'reactstrap-toolbox'
 
 import {statuses} from './utils/network'
 import Worker from './run_worker'
 import Navbar from './common/Navbar'
+import LeftMenu from './common/LeftMenu'
 import Login from './auth/Login'
 import Logout from './auth/Logout'
 import SwitchSession from './auth/SwitchSession'
@@ -107,7 +109,14 @@ class App extends React.Component {
       <GlobalContext.Provider value={ctx}>
         <Navbar app_state={this.state} location={this.props.location}/>
         <main className="container" id="main">
-          <Main app_state={this.state}/>
+          <Row>
+            <Col md="3">
+              <LeftMenu/>
+            </Col>
+            <Col md="9">
+              <Main app_state={this.state}/>
+            </Col>
+          </Row>
         </main>
       </GlobalContext.Provider>
     )

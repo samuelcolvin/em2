@@ -1,7 +1,7 @@
 @import 'variables';
 
 body {
-  padding-top: 7rem;
+  padding-top: 5.5rem;
   background-color: $body-back;
   padding-bottom: 3rem;
   overflow-y: scroll;
@@ -98,6 +98,10 @@ $stripe-width: 10px;
     color: red;
     padding-right: 2px;
   }
+}
+
+#search {
+  width: 100%;
 }
 
 .login {
