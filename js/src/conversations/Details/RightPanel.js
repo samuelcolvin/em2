@@ -4,22 +4,27 @@ import {WithContext} from 'reactstrap-toolbox'
 import ParticipantsInput from '../ParticipantsInput'
 
 
-const ScrollSpy = ({scroll_threshold, fixed_top, children}) => {
+const ScrollSpy = ({children}) => {
   const scroll_ref = React.createRef()
-  let styled = false
+  let fixed = false
+
+  const scroll_threshold = 108
+  const fixed_top = '103px'
 
   const set_fixed = () => {
-    if (!styled && window.scrollY > scroll_threshold) {
-      styled = true
+    if (!fixed && window.scrollY > scroll_threshold) {
+      fixed = true
       if (scroll_ref.current) {
         scroll_ref.current.style.position = 'fixed'
-        scroll_ref.current.style.top = fixed_top + 'px'
-        scroll_ref.current.style.width = document.getElementById('main').offsetWidth / 3 - 30 + 'px'
+        scroll_ref.current.style.top = fixed_top
+        scroll_ref.current.style.width = document.getElementById('main').offsetWidth / 4 - 30 + 'px'
       }
-    } else if (styled && window.scrollY <= scroll_threshold) {
-      styled = false
+    } else if (fixed && window.scrollY <= scroll_threshold) {
+      fixed = false
       if (scroll_ref.current) {
-        scroll_ref.current.style.position = 'static'
+        scroll_ref.current.style.position = null
+        scroll_ref.current.style.top = null
+        scroll_ref.current.style.width = null
       }
     }
   }
@@ -34,7 +39,7 @@ const ScrollSpy = ({scroll_threshold, fixed_top, children}) => {
 
 
 const RightPanel = ({conv_state, set_participants, add_participants}) => (
-  <ScrollSpy scroll_threshold={45} fixed_top={103}>
+  <ScrollSpy>
     <div className="box">
       {Object.keys(conv_state.conv.participants).map((p, i) => (
         <div key={i}>{p}</div>
