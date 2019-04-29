@@ -1,10 +1,17 @@
 import React from 'react'
+import {Link} from 'react-router-dom'
+import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {
   InputGroup,
   Input,
   InputGroupAddon,
   Button,
   FormFeedback,
+  ButtonGroup,
+  UncontrolledButtonDropdown,
+  DropdownToggle,
+  DropdownMenu,
+  DropdownItem,
 } from 'reactstrap'
 import {WithContext, AsModal} from 'reactstrap-toolbox'
 
@@ -65,7 +72,43 @@ class EditSubject_ extends React.Component {
 
 const EditSubject = AsModal(WithContext(EditSubject_))
 
+export default ({conv_state, lock_subject, set_subject, release_subject}) => (
+  <div>
+    <div className="box d-flex justify-content-between">
+      <div className="align-self-center">
+        <h2 className="conv-title">{conv_state.conv.subject}</h2>
+      </div>
+      <div>
+        <ButtonGroup>
+          <Button color="primary"
+                  tag={Link}
+                  to="./edit-subject/"
+                  disabled={!!(conv_state.locked || conv_state.comment_parent || conv_state.new_message)}>
+            Edit Subject
+          </Button>
 
-export default ({...props}) => (
-  <EditSubject {...props} title="Edit Subject" regex={/edit-subject\/$/} className="simplified-modal"/>
+          <UncontrolledButtonDropdown>
+            <DropdownToggle color="primary" caret>
+              More
+            </DropdownToggle>
+            <DropdownMenu>
+              <DropdownItem>Thing one</DropdownItem>
+              <DropdownItem>Thing two</DropdownItem>
+              <DropdownItem>Thing three</DropdownItem>
+            </DropdownMenu>
+          </UncontrolledButtonDropdown>
+        </ButtonGroup>
+      </div>
+  </div>
+
+  <EditSubject
+    subject={conv_state.conv.subject}
+    set_subject={set_subject}
+    lock_subject={lock_subject}
+    release_subject={release_subject}
+    title="Edit Subject"
+    regex={/edit-subject\/$/}
+    className="simplified-modal"
+  />
+  </div>
 )

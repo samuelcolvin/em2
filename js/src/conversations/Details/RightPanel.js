@@ -1,14 +1,5 @@
 import React from 'react'
-import {Link} from 'react-router-dom'
-import {
-  Button,
-  ButtonGroup,
-  UncontrolledButtonDropdown,
-  DropdownToggle,
-  DropdownMenu,
-  DropdownItem,
-} from 'reactstrap'
-import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+import {Button} from 'reactstrap'
 import {WithContext} from 'reactstrap-toolbox'
 import ParticipantsInput from '../ParticipantsInput'
 
@@ -44,20 +35,6 @@ const ScrollSpy = ({scroll_threshold, fixed_top, children}) => {
 
 const RightPanel = ({conv_state, set_participants, add_participants}) => (
   <ScrollSpy scroll_threshold={45} fixed_top={103}>
-    <ButtonGroup vertical className="btn-group-box">
-      <Button color="box" tag={Link} to="./edit-subject/">Edit Subject</Button>
-
-      <UncontrolledButtonDropdown direction="right">
-        <DropdownToggle color="box" className="border-top">
-          More <FontAwesomeIcon icon="caret-right"/>
-        </DropdownToggle>
-        <DropdownMenu>
-          <DropdownItem>Thing one</DropdownItem>
-          <DropdownItem>Thing two</DropdownItem>
-          <DropdownItem>Thing three</DropdownItem>
-        </DropdownMenu>
-      </UncontrolledButtonDropdown>
-    </ButtonGroup>
     <div className="box">
       {Object.keys(conv_state.conv.participants).map((p, i) => (
         <div key={i}>{p}</div>

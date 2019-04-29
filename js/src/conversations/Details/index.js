@@ -5,7 +5,7 @@ import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {WithContext, sleep, Loading} from 'reactstrap-toolbox'
 import Message from './Message'
 import RightPanel from './RightPanel'
-import EditSubject from './EditSubject'
+import Subject from './Subject'
 
 const DraftButtons = ({state, add_msg, publish}) => (
   <ButtonGroup>
@@ -155,7 +155,9 @@ class ConvDetailsView extends React.Component {
     const Buttons = this.state.conv.published ? PublishedButtons : DraftButtons
     return (
       <div>
-        <div className="h5">
+        <Subject conv_state={this.state} lock_subject={this.lock_subject}
+                 set_subject={this.set_subject} release_subject={this.release_subject}/>
+        <div className="h5 mb-3">
           {!this.state.conv.published && <span className="badge badge-dark mr-2">Draft</span>}
           <span className="badge badge-success mr-2">TODO Labels</span>
         </div>
@@ -197,12 +199,6 @@ class ConvDetailsView extends React.Component {
             />
           </Col>
         </Row>
-        <EditSubject
-          subject={this.state.conv.subject}
-          set_subject={this.set_subject}
-          lock_subject={this.lock_subject}
-          release_subject={this.release_subject}
-        />
       </div>
     )
   }
