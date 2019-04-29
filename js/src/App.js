@@ -68,7 +68,6 @@ class App extends React.Component {
   componentDidUpdate (prevProps) {
     document.title = this.state.title ? this.state.title : 'em2'
     if (this.props.location !== prevProps.location) {
-      console.log('location changed to', this.props.location.pathname)
       this.state.error && this.setState({error: null})
     }
     if (!this.state.user && this.state.conn_status && this.props.location.pathname !== '/login/') {
@@ -109,7 +108,7 @@ class App extends React.Component {
       <GlobalContext.Provider value={ctx}>
         <Navbar app_state={this.state} location={this.props.location}/>
         <main className="container" id="main">
-            <Main app_state={this.state}/>
+          <Main app_state={this.state}/>
         </main>
       </GlobalContext.Provider>
     )

@@ -5,8 +5,8 @@ import {WithContext, Loading, message_toast} from 'reactstrap-toolbox'
 
 const Logout = ({ctx}) => {
   const [finished, set_finished] = React.useState(false)
+
   React.useEffect(() => {
-    console.log('useEffect', ctx.user)
     ctx.worker.call('logout').then(() => {
       message_toast({
         icon: 'user',
@@ -20,11 +20,7 @@ const Logout = ({ctx}) => {
     })
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (finished) {
-    return <Redirect to="/login/"/>
-  } else {
-    return <Loading/>
-  }
+  return finished ? <Redirect to="/login/"/> : <Loading/>
 }
 
 export default WithContext(Logout)

@@ -54,46 +54,44 @@ const AccountSummary = ({conn_status, user}) => {
   )
 }
 
+const NavbarUser = ({app_state}) => (
+  <div className="d-flex w-100">
+    <NavbarBrand tag={Link} to="/" className="custom-nav-item d-none d-sm-block">
+      em2
+    </NavbarBrand>
+    <form className="form-inline custom-nav-item flex-grow-1">
+      <input id="search" className="form-control" type="text" placeholder="Search"/>
+    </form>
+    <Nav navbar className="custom-nav-item ml-2">
+      <UncontrolledDropdown nav inNavbar className="ml-auto">
+        <DropdownToggle nav>
+          <AccountSummary {...app_state}/>
+        </DropdownToggle>
+        <DropdownMenu right className="navbar-dropdown">
+          {app_state.other_sessions.map(s => (
+            <DropdownItem key={s.session_id} href={`/switch/${s.session_id}/`}
+                          target="_blank">
+              Switch to <b>{s.name}</b>
+            </DropdownItem>
+          ))}
+          {app_state.other_sessions.length ? <DropdownItem divider/> : null}
+          <DropdownItem href="/login/" target="_blank">
+            Login to another account
+          </DropdownItem>
+          <DropdownItem divider/>
+          <DropdownItem tag={Link} to="/logout/">
+            Logout
+          </DropdownItem>
+        </DropdownMenu>
+      </UncontrolledDropdown>
+    </Nav>
+  </div>
+)
+
 export default ({app_state}) => (
   <NavbarBootstrap color="dark" dark fixed="top" expand="md">
     <div className="container">
-      {app_state.user ? (
-        <div className="d-flex w-100">
-          <NavbarBrand tag={Link} to="/" className="custom-nav-item d-none d-sm-block">
-            em2
-          </NavbarBrand>
-          <form className="form-inline custom-nav-item flex-grow-1">
-            <input id="search" className="form-control" type="text" placeholder="Search"/>
-          </form>
-          <Nav navbar className="custom-nav-item ml-2">
-            <UncontrolledDropdown nav inNavbar className="ml-auto">
-              <DropdownToggle nav>
-                <AccountSummary {...app_state}/>
-              </DropdownToggle>
-              <DropdownMenu right className="navbar-dropdown">
-                {app_state.other_sessions.map(s => (
-                  <DropdownItem key={s.session_id} href={`/switch/${s.session_id}/`}
-                                target="_blank">
-                    Switch to <b>{s.name}</b>
-                  </DropdownItem>
-                ))}
-                {app_state.other_sessions.length ? <DropdownItem divider/> : null}
-                <DropdownItem href="/login/" target="_blank">
-                  Login to another account
-                </DropdownItem>
-                <DropdownItem divider/>
-                <DropdownItem tag={Link} to="/logout/">
-                  Logout
-                </DropdownItem>
-              </DropdownMenu>
-            </UncontrolledDropdown>
-          </Nav>
-        </div>
-      ) : (
-        <NavbarBrand tag={Link} to="/" className="w-33">
-          em2
-        </NavbarBrand>
-      )}
+      {app_state.user ? <NavbarUser app_state={app_state}/> : <NavbarBrand tag={Link} to="/">em2</NavbarBrand>}
     </div>
   </NavbarBootstrap>
 )
