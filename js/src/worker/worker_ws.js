@@ -80,16 +80,23 @@ export default class Websocket {
     const data = JSON.parse(event.data)
     console.debug('ws message:', data)
 
+    let clear_cache = false
     if (data.actions) {
       await apply_actions(data, session.current.email)
+      if (data.user_v - session.current.user_v !== 1) {
+        // user_v has increased by more than one, we must have missed actions, everything could have changed
+        clear_cache = true
+      }
     } else if (data.user_v === session.current.user_v) {
       // just connecting and nothing has changed
       return
+    } else {
+      // just connecting but user_v has increased, everything could have changed
+      clear_cache = true
     }
 
     const session_update = {user_v: data.user_v}
-    if (data.user_v - session.current.user_v !== 1) {
-      // user_v has increased by more than one, we must have missed actions, everything could have changed
+    if (clear_cache) {
       session_update.cache = new Set()
     }
     await session.update(session_update)

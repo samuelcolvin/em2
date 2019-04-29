@@ -53,7 +53,7 @@ class Client:
         if not self.convs:
             await self.get_convs()
             if not self.convs:
-                print('no conversations')
+                print('no conversations, creating one...')
                 await self.create()
                 return
 
@@ -74,7 +74,7 @@ class Client:
             print(f'adding message to {conv_key:.10}, format: {msg_format}...')
             actions = [dict(act='message:add', msg_format=msg_format, body=msg_body)]
             response = await self._post_json(self._make_url('ui:act', conv=conv_key), actions=actions)
-        devtools.debug(response)
+        # devtools.debug(response)
 
     async def create(self, *, publish=None):
         print('creating a conv...')
@@ -97,8 +97,12 @@ class Client:
         msg_format = 'markdown'
         msg_body = f'New message at {datetime.now():%H:%M:%S}.\n\n{lorem.paragraph()}'
         if html_path.exists():
-            if 'html' in sys.argv or random() > 0.5:
+            if 'html' in sys.argv:
                 msg_format = 'html'
+            elif 'markdown' not in sys.argv and random() > 0.5:
+                msg_format = 'html'
+
+            if msg_format == 'html':
                 msg_body = html_path.read_text()
         else:
             print(f'email html not found at "{html_path}", forced to use markdown message')
