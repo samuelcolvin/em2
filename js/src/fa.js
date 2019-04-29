@@ -12,4 +12,5 @@ library.add(
   fas.faUsers,
   fas.faUser,
   fas.faCaretRight,
+  fas.faCaretDown,
 )

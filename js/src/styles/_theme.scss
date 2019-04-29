@@ -1,81 +1,24 @@
 @import 'variables';
 
 body {
-  padding-top: 7rem;
+  padding-top: 5.5rem;
   background-color: $body-back;
   padding-bottom: 3rem;
   overflow-y: scroll;
 }
 
-$stripe-width: 10px;
-@mixin stripes($colour1, $lighten, $angle: 45deg) {
-  background: repeating-linear-gradient(
-    $angle,
-    $colour1,
-    $colour1 $stripe-width,
-    lighten($colour1, $lighten) $stripe-width,
-    lighten($colour1, $lighten) 2 * $stripe-width
-  );
-}
+.navbar {
+  box-shadow: 0 0 0.2rem rgba(0,0,0,.1), 0 0.2rem 0.4rem rgba(0,0,0,.2);
 
-//$stripe-size: $stripe-width * 2.8284;  // sqrt(2) * 2
-//@keyframes anim_back {
-//  from {
-//    background-position-x: 0;
-//  }
-//  50% {
-//    background-position-x: $stripe-size;
-//  }
-//  to {
-//    background-position-x: 0;
-//  }
-//}
-// to use:
-//  background-size: $stripe-size $stripe-size;
-//  background-position-x: 0;
-//  animation: anim_back 500ms ease-out;
+  @include media-breakpoint-up(md) {
+    .custom-nav-item {
+      flex-grow: 1;
+      flex-basis: 0;
+    }
+  }
 
-@keyframes hide_msg {
-  from {
-    opacity: 1;
-    top: 0;
-  }
-  90% {
-    opacity: 1;
-    top: 0;
-  }
-  to {
-    opacity: 0;
-    top: -5px;
-  }
-}
-
-.extra-menu {
-  top: 56px;
-  height: 35px;
-  transition: all 500ms ease;
-  overflow: hidden;
-  color: white;
-  padding: 4px 0;
-  z-index: 1020; // so nav dropdown menus appear on top of this
-  @include stripes(#009688, 3%);
-
-  .container {
-    display: flex;
-    justify-content: space-between;
-  }
-  &.anon {
-    filter: brightness(70%);
-  }
-  &.offline {
-    filter: brightness(85%);
-  }
-  &.connecting {
-    filter: brightness(95%);
-  }
-  .message {
-    position: relative;
-    animation: hide_msg 8s;
+  .navbar-nav .navbar-dropdown {
+    position: absolute;
   }
 }
 
@@ -98,6 +41,10 @@ $stripe-width: 10px;
     color: red;
     padding-right: 2px;
   }
+}
+
+#search {
+  width: 100%;
 }
 
 .login {
@@ -183,6 +130,12 @@ $stripe-width: 10px;
       border-radius: $border-radius $border-radius 0 0;
     }
   }
+}
+
+.conv-title {
+  font-size: 1.3rem;
+  font-weight: 500;
+  margin: 0;
 }
 
 .msg-details {
