@@ -4,6 +4,7 @@ Robot user of em2 that connects and does common stuff.
 """
 import asyncio
 import json
+import pickle
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -27,10 +28,11 @@ other_users = [{'email': 'testing@example.com'}, {'email': 'different@remote.com
 
 
 class Client:
-    def __init__(self, session: ClientSession, main_app):
+    def __init__(self, session: ClientSession, main_app, em2_session_id):
         self.session = session
         self._make_path = MakeUrl(main_app)
         self.convs = []
+        self.em2_session_id = em2_session_id
 
     async def run(self):
         while True:
@@ -43,8 +45,9 @@ class Client:
     async def login(self):
         print('logging in...')
         h = {'Origin': 'null', 'Referer': None}
-        data = await self._post_json('auth:login', email=email, password=password, headers_=h)
-        await self._post_json('ui:auth-token', auth_token=data['auth_token'])
+        data = await self._post_json('auth:login', inc_session_id_=False, email=email, password=password, headers_=h)
+        await self._post_json('ui:auth-token', inc_session_id_=False, auth_token=data['auth_token'])
+        self.em2_session_id = data['session']['session_id']
 
     async def act(self, *, newest=False, seen=None):
         if not self.convs:
@@ -119,7 +122,7 @@ class Client:
                 raise RuntimeError(f'unexpected response {r.status}')
             return await r.json()
 
-    async def _post_json(self, view_name, *, headers_=None, **request_data):
+    async def _post_json(self, view_name, *, headers_=None, inc_session_id_=True, **request_data):
         # TODO origin will need to be fixed for non local host usage
         headers = {
             'Content-Type': 'application/json',
@@ -130,7 +133,7 @@ class Client:
             headers.update(headers_)
         headers = {k: v for k, v in headers.items() if v is not None}
 
-        url = self._make_url(view_name)
+        url = self._make_url(view_name, inc_session_id_=inc_session_id_)
         async with self.session.post(url, data=json.dumps(request_data), headers=headers) as r:
             if r.status not in {200, 201}:
                 try:
@@ -141,11 +144,12 @@ class Client:
                 raise RuntimeError(f'unexpected response {r.status}')
             return await r.json()
 
-    def _make_url(self, view_name, *, query=None, **kwargs):
+    def _make_url(self, view_name, *, query=None, inc_session_id_=True, **kwargs):
         if view_name.startswith('http'):
             return view_name
         assert not host.endswith('/'), f'host must not end with "/": "{host}"'
-
+        if inc_session_id_:
+            kwargs['session_id'] = self.em2_session_id
         path = self._make_path(view_name, query=query, **kwargs)
         app = view_name.split(':', 1)[0]
 
@@ -159,13 +163,18 @@ async def main():
     main_app = await create_app()
     cookie_path = Path(__file__).parent.resolve() / './robot_cookies.pkl'
     cookies = CookieJar()
+    em2_session_id = None
     if cookie_path.exists():
-        cookies.load(cookie_path)
+        with cookie_path.open(mode='rb') as f:
+            data = pickle.load(f)
+        cookies._cookies = data['cookies']
+        em2_session_id = data['em2_session_id']
     async with ClientSession(timeout=ClientTimeout(total=5), cookie_jar=cookies) as session:
+        client = Client(session, main_app, em2_session_id)
         try:
-            client = Client(session, main_app)
-            if not cookie_path.exists():
+            if client.em2_session_id is None:
                 await client.login()
+
             if 'act' in sys.argv:
                 await client.act(newest=True)
             elif 'seen' in sys.argv:
@@ -177,7 +186,9 @@ async def main():
             else:
                 await client.run()
         finally:
-            session.cookie_jar.save(cookie_path)
+            with cookie_path.open(mode='wb') as f:
+                data = {'cookies': session.cookie_jar._cookies, 'em2_session_id': client.em2_session_id}
+                pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
 
 
 if __name__ == '__main__':

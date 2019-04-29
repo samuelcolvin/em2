@@ -37,3 +37,4 @@ yarn-error.log*
 /tests/robot_cookies.pkl
 /js/src/.update.js
 /tests/email.html
+/.auto-format

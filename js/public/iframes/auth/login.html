@@ -37,7 +37,7 @@
         const error_details = {
           message,
           details: {
-            error: error.toString(), origin, status, xhr_response: xhr.responseText,
+            error: error && error.toString(), origin, status, xhr_response: xhr.responseText,
             method: form.method, action: form.action
           },
         }
@@ -54,7 +54,7 @@
             form.action = event.data.login_url
             check_grecaptcha(event.data.login_url)
           } else if (event.data.grecaptcha_token) {
-            grecaptcha_token = data.grecaptcha_token
+            grecaptcha_token = event.data.grecaptcha_token
             user_error.innerText = ''
           }
         }
@@ -139,6 +139,13 @@
         xhr.send(post_data)
       }
       form.addEventListener('submit', on_submit, true)
+      window.onerror = (message, source, lineno, colno) => {
+        const error_details = {
+          message,
+          details: {source, lineno, colno},
+        }
+        window.parent.postMessage({error: error_details}, origin)
+      }
     </script>
   </body>
 </html>
