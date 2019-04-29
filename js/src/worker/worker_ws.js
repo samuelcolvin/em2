@@ -35,6 +35,10 @@ export default class Websocket {
   }
 
   _connect = () => {
+    if (!session) {
+      console.warn('session null, not connecting to ws')
+      return
+    }
     let ws_url = make_url('ui', `/${session.id}/ws/`).replace('http', 'ws')
     let socket
     try {
@@ -92,12 +96,12 @@ export default class Websocket {
   }
 
   _on_close = async e => {
-    if (e.code === 1000 && e.target.manually_closing) {
+    clearInterval(this._clear_reconnect)
+    if (e.code === 1000 && e.target && e.target.manually_closing) {
       this._disconnects = 0
       console.debug('websocket closed intentionally')
       return
     }
-    clearInterval(this._clear_reconnect)
     this._socket = null
     const reconnect_in = Math.min(20000, 2 ** this._disconnects * 500)
     this._disconnects += 1

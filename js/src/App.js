@@ -1,12 +1,11 @@
 import React from 'react'
 import {Route, Switch, withRouter} from 'react-router-dom'
-import {Row, Col} from 'reactstrap'
 import {GlobalContext, Error, NotFound, Notify} from 'reactstrap-toolbox'
 
 import {statuses} from './utils/network'
 import Worker from './run_worker'
 import Navbar from './common/Navbar'
-import LeftMenu from './common/LeftMenu'
+import WithMenu from './common/LeftMenu'
 import Login from './auth/Login'
 import Logout from './auth/Logout'
 import SwitchSession from './auth/SwitchSession'
@@ -31,12 +30,12 @@ const Main = ({app_state}) => {
   } else {
     return (
       <Switch>
-        <Route exact path="/" component={ListConversations}/>
-        <Route exact path="/create/" component={CreateConversation}/>
+        <Route exact path="/" render={WithMenu(ListConversations, 'all')}/>
+        <Route exact path="/create/" render={WithMenu(CreateConversation, 'create')}/>
         <Route exact path="/login/" component={Login}/>
         <Route exact path="/logout/" component={Logout}/>
         <Route exact path="/switch/:id(\d+)/" component={SwitchSession}/>
-        <Route path="/:key([a-f0-9]{10,64})/" component={ConversationDetails}/> {/* TODO could be exact */}
+        <Route exact path="/:key([a-f0-9]{10,64})/" render={WithMenu(ConversationDetails, 'all')}/> {/* TODO could be exact */}
         <Route component={NotFound}/>
       </Switch>
     )
@@ -69,6 +68,7 @@ class App extends React.Component {
   componentDidUpdate (prevProps) {
     document.title = this.state.title ? this.state.title : 'em2'
     if (this.props.location !== prevProps.location) {
+      console.log('location changed to', this.props.location.pathname)
       this.state.error && this.setState({error: null})
     }
     if (!this.state.user && this.state.conn_status && this.props.location.pathname !== '/login/') {
@@ -109,14 +109,7 @@ class App extends React.Component {
       <GlobalContext.Provider value={ctx}>
         <Navbar app_state={this.state} location={this.props.location}/>
         <main className="container" id="main">
-          <Row>
-            <Col md="3">
-              <LeftMenu/>
-            </Col>
-            <Col md="9">
-              <Main app_state={this.state}/>
-            </Col>
-          </Row>
+            <Main app_state={this.state}/>
         </main>
       </GlobalContext.Provider>
     )

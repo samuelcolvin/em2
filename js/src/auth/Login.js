@@ -9,7 +9,7 @@ import Recaptcha from './Recaptcha'
 function next_url (location) {
   const match = location.search.match('next=([^&]+)')
   const next = match ? decodeURIComponent(match[1]) : null
-  return next === '/logout/' || next === null ? null : next
+  return (next === '/logout/' || next === null) ? null : next
 }
 
 

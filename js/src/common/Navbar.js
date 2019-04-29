@@ -2,9 +2,7 @@ import React from 'react'
 import {Link} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import {
-  Collapse,
   Navbar as NavbarBootstrap,
-  NavbarToggler,
   NavbarBrand,
   Nav,
   Tooltip,
@@ -15,7 +13,9 @@ import {
 } from 'reactstrap'
 import {statuses} from '../utils/network'
 
-const AccountSummary = ({conn_status, user, show_tooltip, toggle_tooltip}) => {
+const AccountSummary = ({conn_status, user}) => {
+  const [show_tooltip, set_tooltip] = React.useState(false)
+
   let connection_status_text, connection_status_icon
   if (!conn_status || conn_status === statuses.connecting) {
     // no connection status yet
@@ -36,70 +36,64 @@ const AccountSummary = ({conn_status, user, show_tooltip, toggle_tooltip}) => {
                trigger="hover"
                target="status-icon"
                delay={0}
-               toggle={toggle_tooltip}>
+               toggle={() => set_tooltip(t => !t)}>
         {connection_status_text}
       </Tooltip>
-      {user && <span className="ml-2">{user.name}</span>}
+      {user ? (
+        <span className="ml-2">
+          <span className="d-none d-sm-inline-block">
+            {user.name}
+            <FontAwesomeIcon icon="caret-down" className="ml-2"/>
+          </span>
+          <span className="d-inline-block d-sm-none">
+            <span className="navbar-toggler-icon"/>
+          </span>
+        </span>
+      ): null}
     </span>
   )
 }
 
-export default class Navbar extends React.Component {
-  constructor (props) {
-    super(props)
-    this.state = {is_open: false}
-  }
-
-  close = () => this.state.is_open && this.setState({is_open: false})
-
-  toggle_tooltip = () => this.setState(s => ({show_tooltip: !s.show_tooltip}))
-
-  render () {
-    return (
-      <NavbarBootstrap color="dark" dark fixed="top" expand="md">
-        <div className="container">
-          <NavbarToggler onClick={() => this.setState({is_open: !this.state.is_open})}/>
-          {this.props.app_state.user && (
-            <Collapse isOpen={this.state.is_open} navbar>
-              <div className="d-flex width-full">
-                <NavbarBrand tag={Link} onClick={this.close} to="/" className="width-third">
-                  em2
-                </NavbarBrand>
-                <form className="form-inline ml-2 width-third">
-                  <input id="search" className="form-control" type="text" placeholder="Search"/>
-                </form>
-                <Nav navbar className="width-third">
-                  <UncontrolledDropdown nav inNavbar className="ml-auto">
-                    <DropdownToggle nav caret>
-                      <AccountSummary
-                        {...this.props.app_state}
-                        show_tooltip={this.state.show_tooltip}
-                        toggle_tooltip={this.toggle_tooltip}
-                      />
-                    </DropdownToggle>
-                    <DropdownMenu right>
-                      {this.props.app_state.other_sessions.map(s => (
-                        <DropdownItem key={s.session_id} onClick={this.close} href={`/switch/${s.session_id}/`}
-                                      target="_blank">
-                          Switch to <b>{s.name}</b>
-                        </DropdownItem>
-                      ))}
-                      {this.props.app_state.other_sessions.length ? <DropdownItem divider/> : null}
-                      <DropdownItem onClick={this.close} href="/login/" target="_blank">
-                        Login to another account
-                      </DropdownItem>
-                      <DropdownItem divider/>
-                      <DropdownItem tag={Link} onClick={this.close} to="/logout/">
-                        Logout
-                      </DropdownItem>
-                    </DropdownMenu>
-                  </UncontrolledDropdown>
-                </Nav>
-              </div>
-            </Collapse>
-          )}
+export default ({app_state}) => (
+  <NavbarBootstrap color="dark" dark fixed="top" expand="md">
+    <div className="container">
+      {app_state.user ? (
+        <div className="d-flex w-100">
+          <NavbarBrand tag={Link} to="/" className="custom-nav-item d-none d-sm-block">
+            em2
+          </NavbarBrand>
+          <form className="form-inline custom-nav-item flex-grow-1">
+            <input id="search" className="form-control" type="text" placeholder="Search"/>
+          </form>
+          <Nav navbar className="custom-nav-item ml-2">
+            <UncontrolledDropdown nav inNavbar className="ml-auto">
+              <DropdownToggle nav>
+                <AccountSummary {...app_state}/>
+              </DropdownToggle>
+              <DropdownMenu right className="navbar-dropdown">
+                {app_state.other_sessions.map(s => (
+                  <DropdownItem key={s.session_id} href={`/switch/${s.session_id}/`}
+                                target="_blank">
+                    Switch to <b>{s.name}</b>
+                  </DropdownItem>
+                ))}
+                {app_state.other_sessions.length ? <DropdownItem divider/> : null}
+                <DropdownItem href="/login/" target="_blank">
+                  Login to another account
+                </DropdownItem>
+                <DropdownItem divider/>
+                <DropdownItem tag={Link} to="/logout/">
+                  Logout
+                </DropdownItem>
+              </DropdownMenu>
+            </UncontrolledDropdown>
+          </Nav>
         </div>
-      </NavbarBootstrap>
-    )
-  }
-}
+      ) : (
+        <NavbarBrand tag={Link} to="/" className="w-33">
+          em2
+        </NavbarBrand>
+      )}
+    </div>
+  </NavbarBootstrap>
+)
