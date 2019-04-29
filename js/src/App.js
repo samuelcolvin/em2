@@ -35,7 +35,7 @@ const Main = ({app_state}) => {
         <Route exact path="/login/" component={Login}/>
         <Route exact path="/logout/" component={Logout}/>
         <Route exact path="/switch/:id(\d+)/" component={SwitchSession}/>
-        <Route path="/:key([a-f0-9]{10,64})/" render={WithMenu(ConversationDetails, 'all')}/> {/* TODO could be exact */}
+        <Route path="/:key([a-f0-9]{10,64})/" render={WithMenu(ConversationDetails, 'all')}/>
         <Route component={NotFound}/>
       </Switch>
     )
