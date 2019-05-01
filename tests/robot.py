@@ -6,7 +6,7 @@ import asyncio
 import json
 import pickle
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from random import choice, random
 
@@ -24,7 +24,7 @@ host = 'localhost:8000'
 email = 'robot@example.com'
 password = 'testing'
 
-other_users = [{'email': 'testing@example.com'}, {'email': 'different@remote.com'}]
+other_users = [{'email': 'testing@imber.io'}, {'email': 'different@remote.com'}]
 
 
 class Client:
@@ -169,31 +169,33 @@ async def main():
     cookie_path = Path(__file__).parent.resolve() / './robot_cookies.pkl'
     cookies = CookieJar()
     em2_session_id = None
+
     if cookie_path.exists():
-        with cookie_path.open(mode='rb') as f:
-            data = pickle.load(f)
-        cookies._cookies = data['cookies']
-        em2_session_id = data['em2_session_id']
+        age = datetime.now() - datetime.fromtimestamp(cookie_path.stat().st_mtime)
+        if age < timedelta(hours=12):
+            with cookie_path.open(mode='rb') as f:
+                data = pickle.load(f)
+            cookies._cookies = data['cookies']
+            em2_session_id = data['em2_session_id']
     async with ClientSession(timeout=ClientTimeout(total=5), cookie_jar=cookies) as session:
         client = Client(session, main_app, em2_session_id)
-        try:
-            if client.em2_session_id is None:
-                await client.login()
 
-            if 'act' in sys.argv:
-                await client.act(newest=True)
-            elif 'seen' in sys.argv:
-                await client.act(newest=True, seen=True)
-            elif 'message' in sys.argv:
-                await client.act(newest=True, seen=False)
-            elif 'create' in sys.argv:
-                await client.create(publish=True)
-            else:
-                await client.run()
-        finally:
+        if client.em2_session_id is None:
+            await client.login()
             with cookie_path.open(mode='wb') as f:
                 data = {'cookies': session.cookie_jar._cookies, 'em2_session_id': client.em2_session_id}
                 pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
+
+        if 'act' in sys.argv:
+            await client.act(newest=True)
+        elif 'seen' in sys.argv:
+            await client.act(newest=True, seen=True)
+        elif 'message' in sys.argv:
+            await client.act(newest=True, seen=False)
+        elif 'create' in sys.argv:
+            await client.create(publish=True)
+        else:
+            await client.run()
 
 
 if __name__ == '__main__':

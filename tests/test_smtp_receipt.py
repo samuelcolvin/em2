@@ -19,15 +19,19 @@ async def test_clean_email(fake_request, db_conn, create_email, send_to_remote):
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     msg = create_email(
         html_body="""
-        <div dir="ltr">this is a reply<br clear="all"/>
-        <div class="gmail_signature">this is a signature</div>
-        <div class="gmail_quote">
-          <div class="gmail_attr" dir="ltr">On Fri, 15 Mar 2019 at 17:00, &lt;<a
-                  href="mailto:testing@imber.io">testing@imber.io</a>&gt; wrote:<br/></div>
-          <blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;padding-left:1ex">
-            <p>whatever</p>
-          </blockquote>
-        </div>
+        outside body
+        <body>
+          <style>body {color: red}</style>
+          <div dir="ltr">this is a reply<br clear="all"/>
+          <div class="gmail_signature">this is a signature</div>
+          <div class="gmail_quote">
+            <div class="gmail_attr" dir="ltr">On Fri, 15 Mar 2019 at 17:00, &lt;<a
+                    href="mailto:testing@imber.io">testing@imber.io</a>&gt; wrote:<br/></div>
+            <blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;padding-left:1ex">
+              <p>whatever</p>
+            </blockquote>
+          </div>
+        </body>
         """,
         headers={'In-Reply-To': message_id},
     )
@@ -35,9 +39,12 @@ async def test_clean_email(fake_request, db_conn, create_email, send_to_remote):
     assert 2 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     body = await db_conn.fetchval("select body from actions where act='message:add' order by pk desc limit 1")
     assert body == (
+        'outside body\n'
+        '        <body>\n'
+        '<style>body {color: red}</style>\n'
         '<div dir="ltr">this is a reply<br clear="all"/>\n'
         '<div class="gmail_signature">this is a signature</div>\n'
-        '</div>'
+        '</div></body>'
     )
     assert await db_conn.fetchval("select details->>'prev' from conversations") == 'this is a reply'
 
