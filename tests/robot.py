@@ -75,6 +75,7 @@ class Client:
             actions = [dict(act='message:add', msg_format=msg_format, body=msg_body)]
             response = await self._post_json(self._make_url('ui:act', conv=conv_key), actions=actions)
         # devtools.debug(response)
+        assert response
 
     async def create(self, *, publish=None):
         print('creating a conv...')
