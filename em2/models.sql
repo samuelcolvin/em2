@@ -9,6 +9,17 @@ create table users (
 );
 create index user_type on users using btree (user_type);
 
+create table labels (
+  id bigserial primary key,
+  user_id bigint not null references users on delete cascade,
+  -- TODO add team and make either team or user but not both required
+  name varchar(255),
+  ordering float,
+  description varchar(1027),
+  colour varchar(31)
+);
+create index labels_user_id on labels using btree (user_id);
+
 create table conversations (
   id bigserial primary key,
   key varchar(64) unique,
@@ -28,11 +39,25 @@ create table participants (
   id bigserial primary key,
   conv bigint not null references conversations on delete cascade,
   user_id bigint not null references users on delete restrict,
-  seen boolean not null default false,  -- aka unread
-  -- todo permissions, hidden, status, has_seen/unread
+  seen boolean,
+  inbox boolean default true,
+  deleted boolean,
+  spam boolean,
+  -- todo permissions, hidden
   unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id
 );
 create index participants_user_id on participants using btree (user_id);
+create index participants_seen on participants using btree (seen);
+create index participants_inbox on participants using btree (inbox);
+create index participants_deleted on participants using btree (deleted);
+create index participants_spam on participants using btree (spam);
+
+create table conv_labels (
+  id bigserial primary key,
+  conv bigint not null references conversations on delete cascade,
+  label bigint not null references labels on delete cascade
+);
+create index conv_labels_composite on conv_labels using btree (conv, label);
 
 -- see core.ActionTypes enum which matches this
 create type ActionTypes as enum (

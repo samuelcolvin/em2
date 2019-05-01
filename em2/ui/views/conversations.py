@@ -3,6 +3,8 @@ from typing import Any, Dict, List
 
 from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
 from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
+from buildpg import V, funcs
+from buildpg.clauses import Where
 from pydantic import BaseModel, validator
 
 from em2.background import push_all, push_multiple
@@ -32,25 +34,61 @@ class ConvList(View):
       'conversations', conversations
     ) from (
       select count(*) from conversations as c
-        join participants as p on c.id = p.conv
-        where p.user_id=$1
+        join participants p on c.id = p.conv
+        :where1
         limit 999
-    ) as count, (
-      select coalesce(array_to_json(array_agg(row_to_json(t)), true), '[]') as conversations
+    ) count, (
+      select coalesce(array_to_json(array_agg(row_to_json(t2)), true), '[]') as conversations
       from (
-        select key, created_ts, updated_ts, publish_ts, last_action_id, p.seen as seen, details
-        from conversations as c
-        join participants as p on c.id = p.conv
-        where p.user_id=$1 and (publish_ts is not null or creator=$1)
-        order by c.created_ts, c.id desc
+        select * from (
+          select c.key, c.created_ts, c.updated_ts, c.publish_ts, c.last_action_id, c.details,
+            p.seen is true seen, p.inbox is true inbox, p.deleted is true deleted, p.spam is true spam,
+            array_remove(array_agg(l.id), null) as labels
+          from conversations c
+          join participants p on c.id = p.conv
+          left join conv_labels cl on c.id = cl.conv
+          left join labels l on cl.label = l.id
+          :where1
+          group by c.id, p.id
+          order by c.created_ts, c.id desc
+        ) t1
+        :where2
         limit 50
-        offset $2
-      ) t
-    ) as conversations
+        offset :offset
+      ) t2
+    ) conversations
     """
 
+    class QueryModel(BaseModel):
+        seen: bool = None
+        inbox: bool = None
+        deleted: bool = None
+        spam: bool = None
+        # TODO and/or on multiple labels
+        label: int = None
+
     async def call(self):
-        raw_json = await self.conn.fetchval(self.sql, self.session.user_id, get_offset(self.request, paginate_by=50))
+        where1 = funcs.AND(
+            V('p.user_id') == self.session.user_id,
+            funcs.OR(V('publish_ts') != V('null'), V('creator') == self.session.user_id),
+        )
+
+        query_data = parse_request_query(self.request, self.QueryModel)
+        for f in ('seen', 'inbox', 'deleted', 'spam'):
+            v = getattr(query_data, f)
+            if v is True:
+                where1 &= V(f'p.{f}') == V('true')
+            elif v is False:
+                # to work with null
+                where1 &= V(f'p.{f}') != V('true')
+
+        if query_data.label:
+            where2 = Where(V('labels').contains([query_data.label]))
+        else:
+            where2 = V('')
+        raw_json = await self.conn.fetchval_b(
+            self.sql, where1=Where(where1), where2=where2, offset=get_offset(self.request, paginate_by=50)
+        )
         return raw_json_response(raw_json)
 
 

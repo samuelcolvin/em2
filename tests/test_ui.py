@@ -3,6 +3,7 @@ from asyncio import TimeoutError
 
 import pytest
 from aiohttp import WSMsgType
+from buildpg import Values, MultipleValues
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
 from em2.core import construct_conv
@@ -148,6 +149,10 @@ async def test_conv_list(cli, factory: Factory, db_conn):
                 'publish_ts': None,
                 'last_action_id': 3,
                 'seen': True,
+                'inbox': True,
+                'deleted': False,
+                'spam': False,
+                'labels': [],
                 'details': {
                     'act': 'conv:create',
                     'sub': 'Test Subject',
@@ -159,6 +164,27 @@ async def test_conv_list(cli, factory: Factory, db_conn):
             }
         ],
     }
+
+
+async def test_labels_conv_list(cli, factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+    assert 1 == await db_conn.fetchval('select count(*) from conversations')
+    result = await db_conn.fetch_b(
+        'insert into labels (:values__names) values :values returning id',
+        values=MultipleValues(Values(user_id=user.id, name='Testing 1'), Values(user_id=user.id, name='Testing 2')),
+    )
+    label_ids = [r[0] for r in result]
+    await db_conn.execute_b(
+        'insert into conv_labels (:values__names) values :values',
+        values=MultipleValues(*[Values(conv=conv.id, label=l) for l in label_ids]),
+    )
+
+    r = await cli.get(factory.url('ui:list'))
+    assert r.status == 200, await r.text()
+    obj = await r.json()
+    assert len(obj['conversations']) == 1
+    assert obj['conversations'][0]['labels'] == label_ids
 
 
 async def test_conv_actions(cli, factory: Factory, db_conn):

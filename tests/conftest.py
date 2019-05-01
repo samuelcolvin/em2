@@ -178,9 +178,9 @@ class Factory:
         password_hash = mk_password(pw, self.settings)
         auth_user_id = await self.conn.fetchval(
             """
-            INSERT INTO auth_users (email, first_name, last_name, password_hash, account_status)
-            VALUES ($1, $2, $3, $4, 'active')
-            ON CONFLICT (email) DO NOTHING RETURNING id
+            insert into auth_users (email, first_name, last_name, password_hash, account_status)
+            values ($1, $2, $3, $4, 'active')
+            on conflict (email) do nothing returning id
             """,
             email,
             first_name,

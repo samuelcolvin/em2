@@ -362,3 +362,27 @@ I guess these special actions should require a version number equal or more rece
 on that component
 
 Other actions shouldn't care at all what order they happen in
+
+# Labels
+
+Special labels:
+* inbox
+* draft
+* deleted
+* spam
+* sent eg. created by me
+
+everything without one of those is archive except sent which is also archive,
+
+Team labels are just labels that can be seen by everyone in a team. Does not apply to special labels.
+
+if one member of a team adds a label it can be seen by all.
+
+User Label fields:
+* name
+* machine-name
+* ordering (for left menu)
+* description
+* colour
+* user
+* team - either team or user must be set
