@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import Any, Dict, List
 
 from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
-from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
-from buildpg import V, funcs
+from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
+from buildpg import SetValues, V, funcs
+from buildpg.asyncpg import BuildPgConnection
 from buildpg.logic import Operator
 from pydantic import BaseModel, validator
 
@@ -19,6 +21,7 @@ from em2.core import (
     get_conv_for_user,
     update_conv_users,
 )
+from em2.ui.middleware import Session
 from em2.utils.datetime import utcnow
 from em2.utils.db import or404
 from em2.utils.smtp import CopyToTemp
@@ -81,13 +84,13 @@ class ConvList(View):
                 where &= V(f'p.{f}').operate(op, true)
 
         if query_data.archive:
-            # "is true" or "is not true" to work with null
             where &= V('p.inbox').is_not(true) & V('p.deleted').is_not(true) & V('p.spam').is_not(true)
 
         if query_data.labels_all:
             where &= V('p.label_ids').contains(query_data.labels_all)
         elif query_data.labels_any:
             where &= V('p.label_ids').overlap(query_data.labels_any)
+
         raw_json = await self.conn.fetchval_b(self.sql, where=where, offset=get_offset(self.request, paginate_by=50))
         return raw_json_response(raw_json)
 
@@ -213,6 +216,57 @@ class ConvPublish(ExecView):
         )
         for msg in msg_info.get('children', []):
             await self.add_msg(msg, conv_id, ts, pk)
+
+
+class States(str, Enum):
+    archive = 'archive'
+    inbox = 'inbox'
+    delete = 'delete'
+    restore = 'restore'
+    spam = 'spam'
+    ham = 'ham'
+
+
+async def set_conv_state(request):
+    state = States(request.match_info['state'])
+    conv_prefix = request.match_info['conv']
+    conn: BuildPgConnection = request['conn']
+    session: Session = request['session']
+    conv_id, _ = await get_conv_for_user(conn, session.user_id, conv_prefix)
+    async with conn.transaction():
+        participant_id, inbox, deleted, spam = await conn.fetchrow(
+            'select id, inbox, deleted, spam from participants where conv=$1 and user_id=$2 for no key update',
+            conv_id,
+            session.user_id,
+        )
+        if state is States.archive:
+            if not inbox:
+                raise JsonErrors.HTTPBadRequest('conversation not in inbox')
+            values = SetValues(inbox=None)
+        elif state is States.inbox:
+            if inbox:
+                raise JsonErrors.HTTPBadRequest('conversation already in in inbox')
+            values = SetValues(inbox=True)
+        elif state is States.delete:
+            if deleted:
+                raise JsonErrors.HTTPBadRequest('conversation already deleted')
+            values = SetValues(deleted=True)
+        elif state is States.restore:
+            if not deleted:
+                raise JsonErrors.HTTPBadRequest('conversation not deleted')
+            values = SetValues(deleted=None)
+        elif state is States.spam:
+            if spam:
+                raise JsonErrors.HTTPBadRequest('conversation already spam')
+            values = SetValues(spam=True)
+        else:
+            assert state is States.ham, state
+            if not spam:
+                raise JsonErrors.HTTPBadRequest('conversation not spam')
+            values = SetValues(spam=None)
+
+        await conn.execute_b('update participants set :values where id=:id', values=values, id=participant_id)
+    return json_response(status='ok')
 
 
 class GetFile(View):

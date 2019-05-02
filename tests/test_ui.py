@@ -481,3 +481,86 @@ async def test_act_multiple(cli, factory: Factory, db_conn):
     obj = await r.json()
     assert obj == {'action_ids': [4, 5, 6]}
     assert 3 == await db_conn.fetchval('select v from users where id=$1', user.id)
+
+
+@pytest.fixture(name='conv')
+async def _fix_conv(cli, factory: Factory, db_conn):
+    await factory.create_user()
+    conv = await factory.create_conv()
+    assert 1 == await db_conn.fetchval('select count(*) from participants')
+    return conv
+
+
+async def test_conv_set_state_inbox(cli, factory: Factory, db_conn, conv):
+    assert await db_conn.fetchval('select inbox from participants') is True
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='foobar'))
+    assert r.status == 404, await r.text()
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='archive'))
+    assert r.status == 200, await r.text()
+    assert await r.json() == {'status': 'ok'}
+    assert await db_conn.fetchval('select inbox from participants') is None
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='archive'))
+    assert r.status == 400, await r.text()
+    assert await r.json() == {'message': 'conversation not in inbox'}
+    assert await db_conn.fetchval('select inbox from participants') is None
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='inbox'))
+    assert r.status == 200, await r.text()
+    assert await r.json() == {'status': 'ok'}
+    assert await db_conn.fetchval('select inbox from participants') is True
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='inbox'))
+    assert r.status == 400, await r.text()
+    assert await r.json() == {'message': 'conversation already in in inbox'}
+    assert await db_conn.fetchval('select inbox from participants') is True
+
+
+async def test_conv_set_state_deleted(cli, factory: Factory, db_conn, conv):
+    assert await db_conn.fetchval('select deleted from participants') is None
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='delete'))
+    assert r.status == 200, await r.text()
+    assert await r.json() == {'status': 'ok'}
+    assert await db_conn.fetchval('select deleted from participants') is True
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='delete'))
+    assert r.status == 400, await r.text()
+    assert await r.json() == {'message': 'conversation already deleted'}
+    assert await db_conn.fetchval('select deleted from participants') is True
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='restore'))
+    assert r.status == 200, await r.text()
+    assert await r.json() == {'status': 'ok'}
+    assert await db_conn.fetchval('select deleted from participants') is None
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='restore'))
+    assert r.status == 400, await r.text()
+    assert await r.json() == {'message': 'conversation not deleted'}
+    assert await db_conn.fetchval('select deleted from participants') is None
+
+
+async def test_conv_set_state_spam(cli, factory: Factory, db_conn, conv):
+    assert await db_conn.fetchval('select spam from participants') is None
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='spam'))
+    assert r.status == 200, await r.text()
+    assert await r.json() == {'status': 'ok'}
+    assert await db_conn.fetchval('select spam from participants') is True
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='spam'))
+    assert r.status == 400, await r.text()
+    assert await r.json() == {'message': 'conversation already spam'}
+    assert await db_conn.fetchval('select spam from participants') is True
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='ham'))
+    assert r.status == 200, await r.text()
+    assert await r.json() == {'status': 'ok'}
+    assert await db_conn.fetchval('select spam from participants') is None
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, state='ham'))
+    assert r.status == 400, await r.text()
+    assert await r.json() == {'message': 'conversation not spam'}
+    assert await db_conn.fetchval('select spam from participants') is None
