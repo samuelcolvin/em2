@@ -4,7 +4,6 @@ from typing import Any, Dict, List
 from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
 from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
 from buildpg import V, funcs
-from buildpg.clauses import Where
 from buildpg.logic import Operator
 from pydantic import BaseModel, validator
 
@@ -85,7 +84,6 @@ class ConvList(View):
             # "is true" or "is not true" to work with null
             where &= V('p.inbox').is_not(true) & V('p.deleted').is_not(true) & V('p.spam').is_not(true)
 
-        debug(where)
         if query_data.labels_all:
             where &= V('p.label_ids').contains(query_data.labels_all)
         elif query_data.labels_any:

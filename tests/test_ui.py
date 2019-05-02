@@ -3,7 +3,7 @@ from asyncio import TimeoutError
 
 import pytest
 from aiohttp import WSMsgType
-from buildpg import Values, MultipleValues
+from buildpg import MultipleValues, Values
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
 from em2.core import construct_conv
