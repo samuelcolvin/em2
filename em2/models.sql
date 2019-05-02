@@ -43,6 +43,7 @@ create table participants (
   inbox boolean default true,
   deleted boolean,
   spam boolean,
+  label_ids int[],
   -- todo permissions, hidden
   unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id
 );
@@ -51,13 +52,7 @@ create index participants_seen on participants using btree (seen);
 create index participants_inbox on participants using btree (inbox);
 create index participants_deleted on participants using btree (deleted);
 create index participants_spam on participants using btree (spam);
-
-create table conv_labels (
-  id bigserial primary key,
-  conv bigint not null references conversations on delete cascade,
-  label bigint not null references labels on delete cascade
-);
-create index conv_labels_composite on conv_labels using btree (conv, label);
+create index participants_label_ids on participants using btree (label_ids);
 
 -- see core.ActionTypes enum which matches this
 create type ActionTypes as enum (

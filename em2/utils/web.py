@@ -80,7 +80,7 @@ class MakeUrl:
         assert None not in kwargs.values(), f'invalid kwargs, includes None: {kwargs}'
         url = r.url_for(**{k: str(v) for k, v in kwargs.items()})
         if query:
-            url = url.with_query(**query)
+            url = url.with_query(query)
         return url
 
 
