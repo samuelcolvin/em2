@@ -14,11 +14,12 @@ create table labels (
   user_id bigint not null references users on delete cascade,
   -- TODO add team and make either team or user but not both required
   name varchar(255),
-  ordering float,
+  ordering float not null default 0,
   description varchar(1027),
-  colour varchar(31)
+  color varchar(31)
 );
 create index labels_user_id on labels using btree (user_id);
+create index labels_ordering on labels using btree (ordering);
 
 create table conversations (
   id bigserial primary key,

@@ -17,6 +17,7 @@ from arq import ArqRedis, Worker
 from atoolbox.db.helpers import SimplePgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
 from PIL import Image, ImageDraw
+from buildpg import Values
 
 from em2.auth.utils import mk_password
 from em2.background import push_multiple
@@ -234,6 +235,13 @@ class Factory:
         conv = Conv(conv_key, conv_id)
         self.conv = self.conv or conv
         return conv
+
+    async def create_label(self, name='Test Label', *, user_id=None, ordering=None, color=None, description=None):
+        val = dict(name=name, user_id=user_id or self.user.id, ordering=ordering, color=color, description=description)
+        values = Values(**{k: v for k, v in val.items() if v is not None})
+        return await self.conn.fetchval_b(
+            'insert into labels (:values__names) values :values returning id', values=values
+        )
 
     async def act(self, actor_user_id: int, conv_id: int, action: ActionModel) -> List[int]:
         conv_id, action_ids = await apply_actions(self.conn, self.settings, actor_user_id, conv_id, [action])

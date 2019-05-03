@@ -1,10 +1,8 @@
 import json
-import urllib.parse
 from asyncio import TimeoutError
 
 import pytest
 from aiohttp import WSMsgType
-from buildpg import MultipleValues, Values
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
 from em2.core import construct_conv
@@ -168,13 +166,10 @@ async def test_conv_list(cli, factory: Factory, db_conn):
 
 
 async def test_labels_conv_list(cli, factory: Factory, db_conn):
-    user = await factory.create_user()
+    await factory.create_user()
     conv = await factory.create_conv()
-    result = await db_conn.fetch_b(
-        'insert into labels (:values__names) values :values returning id',
-        values=MultipleValues(Values(user_id=user.id, name='Testing 1'), Values(user_id=user.id, name='Testing 2')),
-    )
-    label_ids = [r[0] for r in result]
+
+    label_ids = [await factory.create_label('Label 1'), await factory.create_label('Label 2')]
     await db_conn.execute('update participants set label_ids=$1 where conv=$2', label_ids, conv.id)
 
     r = await cli.get(factory.url('ui:list'))
@@ -182,61 +177,6 @@ async def test_labels_conv_list(cli, factory: Factory, db_conn):
     obj = await r.json()
     assert len(obj['conversations']) == 1
     assert obj['conversations'][0]['labels'] == label_ids
-
-
-def query_display(v):
-    try:
-        return urllib.parse.urlencode(v)
-    except TypeError:
-        return ','.join(v)
-
-
-@pytest.mark.parametrize(
-    'query, expected',
-    [
-        ({}, ['anne', 'ben', 'charlie', 'dave']),
-        ({'labels_all': 'label1'}, ['ben', 'dave']),
-        ([('labels_all', 'label1'), ('labels_all', 'label2')], ['dave']),
-        ([('labels_any', 'label1'), ('labels_any', 'label2')], ['ben', 'charlie', 'dave']),
-        ({'inbox': 'true'}, ['charlie']),
-        ({'spam': 'true'}, ['anne']),
-        ({'spam': 'false'}, ['ben', 'charlie', 'dave']),
-        ({'archive': 'true'}, ['ben']),
-        ({'seen': 'true'}, ['anne', 'ben', 'dave']),
-        ({'deleted': 'true'}, ['dave']),
-    ],
-    ids=query_display,
-)
-async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, expected):
-    user = await factory.create_user()
-
-    result = await db_conn.fetch_b(
-        'insert into labels (:values__names) values :values returning id',
-        values=MultipleValues(Values(user_id=user.id, name='Label 1'), Values(user_id=user.id, name='Label 2')),
-    )
-    label1, label2 = [r[0] for r in result]
-
-    conv_anne = await factory.create_conv(subject='anne')
-    await db_conn.execute('update participants set spam=true where conv=$1', conv_anne.id)
-
-    conv_ben = await factory.create_conv(subject='ben')
-    await db_conn.execute('update participants set label_ids=$1, inbox=false where conv=$2', [label1], conv_ben.id)
-
-    conv_charlie = await factory.create_conv(subject='charlie')
-    await db_conn.execute('update participants set label_ids=$1, seen=false where conv=$2', [label2], conv_charlie.id)
-
-    conv_dave = await factory.create_conv(subject='dave')
-    await db_conn.execute(
-        'update participants set label_ids=$1, deleted=true where conv=$2', [label1, label2], conv_dave.id
-    )
-
-    assert 4 == await db_conn.fetchval('select count(*) from conversations')
-
-    url = str(factory.url('ui:list', query=query)).replace('label1', str(label1)).replace('label2', str(label2))
-    r = await cli.get(url)
-    assert r.status == 200, await r.text()
-    response = [c['details']['sub'] for c in (await r.json())['conversations']]
-    assert response == expected, f'url: {url}, response: {response}'
 
 
 async def test_conv_actions(cli, factory: Factory, db_conn):
