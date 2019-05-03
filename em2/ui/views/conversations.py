@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any, Dict, List
 
 from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
-from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
+from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
 from buildpg import SetValues, V, funcs
 from buildpg.asyncpg import BuildPgConnection
 from buildpg.logic import Operator
@@ -227,12 +227,15 @@ class States(str, Enum):
     ham = 'ham'
 
 
+class StateQueryModel(BaseModel):
+    state: States
+
+
 async def set_conv_state(request):
-    state = States(request.match_info['state'])
-    conv_prefix = request.match_info['conv']
+    state = parse_request_query(request, StateQueryModel).state
     conn: BuildPgConnection = request['conn']
     session: Session = request['session']
-    conv_id, _ = await get_conv_for_user(conn, session.user_id, conv_prefix)
+    conv_id, _ = await get_conv_for_user(conn, session.user_id, request.match_info['conv'])
     async with conn.transaction():
         participant_id, inbox, deleted, spam = await conn.fetchrow(
             'select id, inbox, deleted, spam from participants where conv=$1 and user_id=$2 for no key update',
@@ -241,32 +244,76 @@ async def set_conv_state(request):
         )
         if state is States.archive:
             if not inbox:
-                raise JsonErrors.HTTPBadRequest('conversation not in inbox')
+                raise JsonErrors.HTTPConflict('conversation not in inbox')
             values = SetValues(inbox=None)
         elif state is States.inbox:
             if inbox:
-                raise JsonErrors.HTTPBadRequest('conversation already in in inbox')
+                raise JsonErrors.HTTPConflict('conversation already in in inbox')
             values = SetValues(inbox=True)
         elif state is States.delete:
             if deleted:
-                raise JsonErrors.HTTPBadRequest('conversation already deleted')
+                raise JsonErrors.HTTPConflict('conversation already deleted')
             values = SetValues(deleted=True)
         elif state is States.restore:
             if not deleted:
-                raise JsonErrors.HTTPBadRequest('conversation not deleted')
+                raise JsonErrors.HTTPConflict('conversation not deleted')
             values = SetValues(deleted=None)
         elif state is States.spam:
             if spam:
-                raise JsonErrors.HTTPBadRequest('conversation already spam')
+                raise JsonErrors.HTTPConflict('conversation already spam')
             values = SetValues(spam=True)
         else:
             assert state is States.ham, state
             if not spam:
-                raise JsonErrors.HTTPBadRequest('conversation not spam')
+                raise JsonErrors.HTTPConflict('conversation not spam')
             values = SetValues(spam=None)
 
         await conn.execute_b('update participants set :values where id=:id', values=values, id=participant_id)
-    return json_response(status='ok')
+    return raw_json_response('{"status": "ok"}')
+
+
+class AddRemove(str, Enum):
+    add = 'add'
+    remove = 'remove'
+
+
+class AddRemoveQueryModel(BaseModel):
+    action: AddRemove
+    label_id: int
+
+
+async def add_remove_label(request):
+    m = parse_request_query(request, AddRemoveQueryModel)
+    conn: BuildPgConnection = request['conn']
+    session: Session = request['session']
+    if not await conn.fetchval('select 1 from labels where id=$1 and user_id=$2', m.label_id, session.user_id):
+        raise JsonErrors.HTTPBadRequest('you do not have this label')
+
+    conv_id, _ = await get_conv_for_user(conn, session.user_id, request.match_info['conv'])
+    async with conn.transaction():
+        participant_id, has_label = await conn.fetchrow(
+            'select id, label_ids @> $1 from participants where conv=$2 and user_id=$3 for no key update',
+            [m.label_id],
+            conv_id,
+            session.user_id,
+        )
+        if m.action == AddRemove.add:
+            if has_label:
+                raise JsonErrors.HTTPConflict('conversation already has this label')
+            await conn.execute(
+                'update participants set label_ids = array_append(label_ids, $1) where id=$2',
+                m.label_id,
+                participant_id,
+            )
+        else:
+            if not has_label:
+                raise JsonErrors.HTTPConflict('conversation does not have this label')
+            await conn.execute(
+                'update participants set label_ids = array_remove(label_ids, $1) where id=$2',
+                m.label_id,
+                participant_id,
+            )
+    return raw_json_response('{"status": "ok"}')
 
 
 class GetFile(View):

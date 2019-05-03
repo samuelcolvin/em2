@@ -52,7 +52,7 @@ create index participants_seen on participants using btree (seen);
 create index participants_inbox on participants using btree (inbox);
 create index participants_deleted on participants using btree (deleted);
 create index participants_spam on participants using btree (spam);
-create index participants_label_ids on participants using btree (label_ids);
+create index participants_label_ids on participants using gin (label_ids);
 
 -- see core.ActionTypes enum which matches this
 create type ActionTypes as enum (

@@ -20,7 +20,7 @@ from .views.conversations import (
     ConvList,
     ConvPublish,
     GetFile,
-    States,
+    add_remove_label,
     set_conv_state,
 )
 from .views.ws import websocket
@@ -41,7 +41,6 @@ async def create_app_ui(settings=None):
     settings = settings or Settings()
     conv_match = r'{conv:[a-f0-9]{10,64}}'
     s = r'/{session_id:\d+}/'
-    states = '|'.join(States.__members__.keys())
     routes = [
         web.get('/online/', online, name='online'),
         web.get(s + 'conv/list/', ConvList.view(), name='list'),
@@ -49,7 +48,8 @@ async def create_app_ui(settings=None):
         web.get(s + f'conv/{conv_match}/', ConvActions.view(), name='get'),
         web.post(s + f'conv/{conv_match}/act/', ConvAct.view(), name='act'),
         web.post(s + f'conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),
-        web.post(s + f'conv/{conv_match}/set/{{state:({states})}}/', set_conv_state, name='set-conv-state'),
+        web.post(s + f'conv/{conv_match}/set-state/', set_conv_state, name='set-conv-state'),
+        web.post(s + fr'conv/{conv_match}/set-label/', add_remove_label, name='add-remove-label'),
         # no trailing slash so we capture everything and deal with weird/ugly content ids
         web.get(s + fr'img/{conv_match}/{{content_id:.*}}', GetFile.view(), name='get-file'),
         web.get(s + 'ws/', websocket, name='websocket'),
