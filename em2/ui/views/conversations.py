@@ -49,7 +49,6 @@ class ConvList(View):
         from conversations c
         join participants p on c.id = p.conv
         where :where
-        group by c.id, p.id
         order by c.created_ts, c.id desc
         limit 50
         offset :offset
@@ -58,8 +57,8 @@ class ConvList(View):
     """
 
     class QueryModel(BaseModel):
-        seen: bool = None
         inbox: bool = None
+        seen: bool = None
         deleted: bool = None
         spam: bool = None
         archive: bool = None
@@ -67,24 +66,29 @@ class ConvList(View):
         labels_any: List[int] = None
 
     async def call(self):
+        query_data = parse_request_query(self.request, self.QueryModel)
         where = funcs.AND(
             V('p.user_id') == self.session.user_id,
             funcs.OR(V('publish_ts') != V('null'), V('creator') == self.session.user_id),
         )
-
-        query_data = parse_request_query(self.request, self.QueryModel)
         # SQL true
         true = V('true')
+        # "is true" or "is not true" to work with null
 
-        for f in ('seen', 'inbox', 'deleted', 'spam'):
-            v = getattr(query_data, f)
-            if v is not None:
-                op = Operator.is_ if v else Operator.is_not
-                # "is true" or "is not true" to work with null
-                where &= V(f'p.{f}').operate(op, true)
+        if query_data.seen is not None:
+            where &= V('p.seen').operate(Operator.is_ if query_data.seen else Operator.is_not, true)
 
-        if query_data.archive:
+        # inbox and archive false doesn't do anything
+        if query_data.inbox:
+            where &= V('p.inbox').is_(true) & V('p.deleted').is_not(true) & V('p.spam').is_not(true)
+        elif query_data.archive:
             where &= V('p.inbox').is_not(true) & V('p.deleted').is_not(true) & V('p.spam').is_not(true)
+        else:
+            if query_data.deleted is not None:
+                where &= V('p.deleted').operate(Operator.is_ if query_data.deleted else Operator.is_not, true)
+
+            if query_data.spam is not None:
+                where &= V('p.spam').operate(Operator.is_ if query_data.spam else Operator.is_not, true)
 
         if query_data.labels_all:
             where &= V('p.label_ids').contains(query_data.labels_all)
@@ -231,7 +235,7 @@ class StateQueryModel(BaseModel):
     state: States
 
 
-async def set_conv_state(request):
+async def set_conv_state(request):  # noqa: 901
     state = parse_request_query(request, StateQueryModel).state
     conn: BuildPgConnection = request['conn']
     session: Session = request['session']
@@ -243,12 +247,14 @@ async def set_conv_state(request):
             session.user_id,
         )
         if state is States.archive:
-            if not inbox:
+            if not inbox or deleted or spam:
                 raise JsonErrors.HTTPConflict('conversation not in inbox')
             values = SetValues(inbox=None)
         elif state is States.inbox:
             if inbox:
-                raise JsonErrors.HTTPConflict('conversation already in in inbox')
+                raise JsonErrors.HTTPConflict('conversation already in inbox')
+            elif deleted or spam:
+                raise JsonErrors.HTTPConflict('deleted or spam conversation cannot be moved to inbox')
             values = SetValues(inbox=True)
         elif state is States.delete:
             if deleted:

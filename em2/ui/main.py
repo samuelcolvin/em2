@@ -49,7 +49,7 @@ async def create_app_ui(settings=None):
         web.post(s + f'conv/{conv_match}/act/', ConvAct.view(), name='act'),
         web.post(s + f'conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),
         web.post(s + f'conv/{conv_match}/set-state/', set_conv_state, name='set-conv-state'),
-        web.post(s + fr'conv/{conv_match}/set-label/', add_remove_label, name='add-remove-label'),
+        web.post(s + f'conv/{conv_match}/set-label/', add_remove_label, name='add-remove-label'),
         # no trailing slash so we capture everything and deal with weird/ugly content ids
         web.get(s + fr'img/{conv_match}/{{content_id:.*}}', GetFile.view(), name='get-file'),
         web.get(s + 'ws/', websocket, name='websocket'),

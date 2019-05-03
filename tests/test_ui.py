@@ -1,4 +1,5 @@
 import json
+import urllib.parse
 from asyncio import TimeoutError
 
 import pytest
@@ -183,6 +184,13 @@ async def test_labels_conv_list(cli, factory: Factory, db_conn):
     assert obj['conversations'][0]['labels'] == label_ids
 
 
+def query_display(v):
+    try:
+        return urllib.parse.urlencode(v)
+    except TypeError:
+        return ','.join(v)
+
+
 @pytest.mark.parametrize(
     'query, expected',
     [
@@ -190,12 +198,14 @@ async def test_labels_conv_list(cli, factory: Factory, db_conn):
         ({'labels_all': 'label1'}, ['ben', 'dave']),
         ([('labels_all', 'label1'), ('labels_all', 'label2')], ['dave']),
         ([('labels_any', 'label1'), ('labels_any', 'label2')], ['ben', 'charlie', 'dave']),
-        ({'inbox': 'true'}, ['anne', 'charlie', 'dave']),
-        ({'inbox': 'false'}, ['ben']),
+        ({'inbox': 'true'}, ['charlie']),
         ({'spam': 'true'}, ['anne']),
         ({'spam': 'false'}, ['ben', 'charlie', 'dave']),
         ({'archive': 'true'}, ['ben']),
+        ({'seen': 'true'}, ['anne', 'ben', 'dave']),
+        ({'deleted': 'true'}, ['dave']),
     ],
+    ids=query_display,
 )
 async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, expected):
     user = await factory.create_user()
@@ -213,10 +223,12 @@ async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, ex
     await db_conn.execute('update participants set label_ids=$1, inbox=false where conv=$2', [label1], conv_ben.id)
 
     conv_charlie = await factory.create_conv(subject='charlie')
-    await db_conn.execute('update participants set label_ids=$1 where conv=$2', [label2], conv_charlie.id)
+    await db_conn.execute('update participants set label_ids=$1, seen=false where conv=$2', [label2], conv_charlie.id)
 
     conv_dave = await factory.create_conv(subject='dave')
-    await db_conn.execute('update participants set label_ids=$1 where conv=$2', [label1, label2], conv_dave.id)
+    await db_conn.execute(
+        'update participants set label_ids=$1, deleted=true where conv=$2', [label1, label2], conv_dave.id
+    )
 
     assert 4 == await db_conn.fetchval('select count(*) from conversations')
 
@@ -514,8 +526,14 @@ async def test_conv_set_state_inbox(cli, factory: Factory, db_conn, conv):
 
     r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, query=dict(state='inbox')))
     assert r.status == 409, await r.text()
-    assert await r.json() == {'message': 'conversation already in in inbox'}
+    assert await r.json() == {'message': 'conversation already in inbox'}
     assert await db_conn.fetchval('select inbox from participants') is True
+
+    await db_conn.execute('update participants set inbox=false, deleted=true')
+
+    r = await cli.post_json(factory.url('ui:set-conv-state', conv=conv.key, query=dict(state='inbox')))
+    assert r.status == 409, await r.text()
+    assert await r.json() == {'message': 'deleted or spam conversation cannot be moved to inbox'}
 
 
 async def test_conv_set_state_deleted(cli, factory: Factory, db_conn, conv):
@@ -599,3 +617,9 @@ async def test_add_remove_label(cli, factory: Factory, db_conn):
     assert r.status == 200, await r.text()
     assert await r.json() == {'status': 'ok'}
     assert await db_conn.fetchval('select label_ids from participants') == []
+
+    r = await cli.post_json(
+        factory.url('ui:add-remove-label', conv=conv.key, query={'action': 'remove', 'label_id': -1})
+    )
+    assert r.status == 400, await r.text()
+    assert await r.json() == {'message': 'you do not have this label'}
