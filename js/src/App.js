@@ -30,7 +30,9 @@ const Main = ({app_state}) => {
   } else {
     return (
       <Switch>
-        <Route exact path="/" render={WithMenu(ListConversations, 'all')}/>
+        <Route exact path="/" render={WithMenu(ListConversations, 'inbox')}/>
+        <Route exact path="/:state(sent|archive|all|spam|deleted)/"
+               render={WithMenu(ListConversations, app_state.menu_item)}/>
         <Route exact path="/create/" render={WithMenu(CreateConversation, 'create')}/>
         <Route exact path="/login/" component={Login}/>
         <Route exact path="/logout/" component={Logout}/>
@@ -49,6 +51,7 @@ class App extends React.Component {
     user: null,
     other_sessions: [],
     conn_status: null,
+    menu_item: null,
   }
 
   constructor (props) {
@@ -101,6 +104,7 @@ class App extends React.Component {
     const ctx = {
       setError: error => this.setError(error),
       setTitle: title => this.setState({title}),
+      setMenuItem: menu_item => this.setState({menu_item}),
       user: this.state.user,
       worker: this.worker,
     }

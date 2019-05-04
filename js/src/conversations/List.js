@@ -57,11 +57,14 @@ class ConvListView extends React.Component {
 
   async componentDidMount () {
     this.mounted = true
-    if (this.props.ctx.user) {
-      this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
-    }
     this.update()
     this.remove_listener = this.props.ctx.worker.add_listener('change', this.update)
+  }
+
+  componentDidUpdate(prevProps) {
+    if (this.props.location !== prevProps.location) {
+      this.update()
+    }
   }
 
   componentWillUnmount () {
@@ -74,6 +77,11 @@ class ConvListView extends React.Component {
   }
 
   update = async () => {
+    if (!this.props.ctx.user) {
+      return
+    }
+    this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
+    this.props.ctx.setMenuItem(this.props.match.params.state || 'inbox')
     this.setState(await this.props.ctx.worker.call('list-conversations', {page: this.get_page()}))
   }
 
