@@ -16,8 +16,8 @@ from aioredis import create_redis
 from arq import ArqRedis, Worker
 from atoolbox.db.helpers import SimplePgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
-from PIL import Image, ImageDraw
 from buildpg import Values
+from PIL import Image, ImageDraw
 
 from em2.auth.utils import mk_password
 from em2.background import push_multiple

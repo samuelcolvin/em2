@@ -21,6 +21,17 @@ create table labels (
 create index labels_user_id on labels using btree (user_id);
 create index labels_ordering on labels using btree (ordering);
 
+create or replace function remove_labels_on_delete() returns trigger as $$
+  begin
+    update participants
+    set label_ids = array_remove(label_ids, old.id)
+    where user_id=old.user_id and label_ids @> array[old.id];
+    return null;
+  end;
+$$ language plpgsql;
+
+create trigger remove_labels after delete on labels for each row execute procedure remove_labels_on_delete();
+
 create table conversations (
   id bigserial primary key,
   key varchar(64) unique,
@@ -44,15 +55,14 @@ create table participants (
   inbox boolean default true,
   deleted boolean,
   spam boolean,
-  label_ids int[],
+  label_ids bigint[],
   -- todo permissions, hidden
   unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id
 );
-create index participants_user_id on participants using btree (user_id);
-create index participants_seen on participants using btree (seen);
-create index participants_inbox on participants using btree (inbox);
-create index participants_deleted on participants using btree (deleted);
-create index participants_spam on participants using btree (spam);
+create index participants_user_seen on participants using btree (user_id, seen);
+create index participants_user_inbox on participants using btree (user_id, inbox);
+create index participants_user_deleted on participants using btree (user_id, deleted);
+create index participants_user_spam on participants using btree (user_id, spam);
 create index participants_label_ids on participants using gin (label_ids);
 
 -- see core.ActionTypes enum which matches this

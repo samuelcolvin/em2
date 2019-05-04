@@ -5,7 +5,6 @@ from typing import Any, Dict, List
 from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
 from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
 from buildpg import SetValues, V, funcs
-from buildpg.asyncpg import BuildPgConnection
 from buildpg.logic import Operator
 from pydantic import BaseModel, validator
 
@@ -21,7 +20,6 @@ from em2.core import (
     get_conv_for_user,
     update_conv_users,
 )
-from em2.ui.middleware import Session
 from em2.utils.datetime import utcnow
 from em2.utils.db import or404
 from em2.utils.smtp import CopyToTemp
@@ -237,18 +235,16 @@ class SetConvState(View):
 
     async def call(self):
         state = parse_request_query(self.request, self.StateQueryModel).state
-        conn: BuildPgConnection = self.request['conn']
-        session: Session = self.request['session']
-        conv_id, _ = await get_conv_for_user(conn, session.user_id, self.request.match_info['conv'])
-        async with conn.transaction():
-            participant_id, inbox, deleted, spam = await conn.fetchrow(
+        conv_id, _ = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
+        async with self.conn.transaction():
+            participant_id, inbox, deleted, spam = await self.conn.fetchrow(
                 'select id, inbox, deleted, spam from participants where conv=$1 and user_id=$2 for no key update',
                 conv_id,
-                session.user_id,
+                self.session.user_id,
             )
 
             values = self.get_update_values(state, inbox, deleted, spam)
-            await conn.execute_b('update participants set :values where id=:id', values=values, id=participant_id)
+            await self.conn.execute_b('update participants set :values where id=:id', values=values, id=participant_id)
         return raw_json_response('{"status": "ok"}')
 
     @staticmethod  # noqa: 901
@@ -280,49 +276,6 @@ class SetConvState(View):
             if not spam:
                 raise JsonErrors.HTTPConflict('conversation not spam')
             return SetValues(spam=None)
-
-
-class AddRemoveLabel(View):
-    class AddRemoveQueryModel(BaseModel):
-        class AddRemove(str, Enum):
-            add = 'add'
-            remove = 'remove'
-
-        action: AddRemove
-        label_id: int
-
-    async def call(self):
-        m = parse_request_query(self.request, self.AddRemoveQueryModel)
-        conn: BuildPgConnection = self.request['conn']
-        session: Session = self.request['session']
-        if not await conn.fetchval('select 1 from labels where id=$1 and user_id=$2', m.label_id, session.user_id):
-            raise JsonErrors.HTTPBadRequest('you do not have this label')
-
-        conv_id, _ = await get_conv_for_user(conn, session.user_id, self.request.match_info['conv'])
-        async with conn.transaction():
-            participant_id, has_label = await conn.fetchrow(
-                'select id, label_ids @> $1 from participants where conv=$2 and user_id=$3 for no key update',
-                [m.label_id],
-                conv_id,
-                session.user_id,
-            )
-            if m.action == self.AddRemoveQueryModel.AddRemove.add:
-                if has_label:
-                    raise JsonErrors.HTTPConflict('conversation already has this label')
-                await conn.execute(
-                    'update participants set label_ids = array_append(label_ids, $1) where id=$2',
-                    m.label_id,
-                    participant_id,
-                )
-            else:
-                if not has_label:
-                    raise JsonErrors.HTTPConflict('conversation does not have this label')
-                await conn.execute(
-                    'update participants set label_ids = array_remove(label_ids, $1) where id=$2',
-                    m.label_id,
-                    participant_id,
-                )
-        return raw_json_response('{"status": "ok"}')
 
 
 class GetFile(View):

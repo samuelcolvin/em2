@@ -57,16 +57,84 @@ async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, ex
     assert response == expected, f'url: {url}, response: {response}'
 
 
-async def test_list_labels(cli, factory: Factory):
+async def test_bread_list(cli, factory: Factory):
     await factory.create_user()
 
     label1 = await factory.create_label('Label 1', ordering=10, color='red')
     label2 = await factory.create_label('Label 2', color='green', description='foobar')
-    r = await cli.get(factory.url('ui:get-labels'))
+    r = await cli.get(factory.url('ui:labels-browse'))
     assert r.status == 200, await r.text()
     assert await r.json() == {
-        'labels': [
-            {'id': label2, 'name': 'Label 2', 'description': 'foobar', 'color': 'green'},
-            {'id': label1, 'name': 'Label 1', 'description': None, 'color': 'red'},
-        ]
+        'items': [
+            {'id': label2, 'name': 'Label 2', 'color': 'green', 'description': 'foobar'},
+            {'id': label1, 'name': 'Label 1', 'color': 'red', 'description': None},
+        ],
+        'count': 2,
+        'pages': 1,
     }
+
+
+async def test_bread_add(cli, factory: Factory, db_conn):
+    user = await factory.create_user()
+
+    assert 0 == await db_conn.fetchval('select count(*) from labels')
+    r = await cli.post_json(factory.url('ui:labels-add'), data={'name': 'Test Label'})
+    assert r.status == 201, await r.text()
+    assert 1 == await db_conn.fetchval('select count(*) from labels')
+    label = dict(await db_conn.fetchrow('select user_id, name, color, description, ordering from labels'))
+    assert label == {'user_id': user.id, 'name': 'Test Label', 'color': None, 'description': None, 'ordering': 0}
+
+
+async def test_bread_edit(cli, factory: Factory, db_conn):
+    user = await factory.create_user()
+
+    label = await factory.create_label('Label 1')
+    r = await cli.post_json(factory.url('ui:labels-edit', pk=label), data={'color': 'red', 'ordering': 666})
+    assert r.status == 200, await r.text()
+    label = dict(await db_conn.fetchrow('select user_id, name, color, description, ordering from labels'))
+    assert label == {'user_id': user.id, 'name': 'Label 1', 'color': 'red', 'description': None, 'ordering': 0}
+    assert 1 == await db_conn.fetchval('select count(*) from labels')
+
+
+async def test_bread_delete(cli, factory: Factory, db_conn):
+    await factory.create_user()
+
+    label = await factory.create_label('Label 1')
+
+    conv1 = await factory.create_conv(subject='conv1')
+    await db_conn.execute('update participants set label_ids=$1 where conv=$2', [label], conv1.id)
+    conv2 = await factory.create_conv(subject='conv2')
+    await db_conn.execute('update participants set label_ids=$1 where conv=$2', [label], conv2.id)
+    assert 2 == await db_conn.fetchval('select count(*) from participants where label_ids @> $1', [label])
+
+    assert 1 == await db_conn.fetchval('select count(*) from labels')
+    r = await cli.post_json(factory.url('ui:labels-delete', pk=label))
+    assert r.status == 200, await r.text()
+    assert 0 == await db_conn.fetchval('select count(*) from labels')
+    assert 0 == await db_conn.fetchval('select count(*) from participants where label_ids @> $1', [label])
+
+
+async def test_bread_edit_other_user(cli, factory: Factory, db_conn):
+    await factory.create_user()
+
+    user2 = await factory.create_user()
+    assert user2.id
+    label = await factory.create_label('Label 1', user_id=user2.id)
+    assert await db_conn.fetchval('select user_id from labels') == user2.id
+
+    r = await cli.post_json(factory.url('ui:labels-edit', pk=label), data={'color': 'red'})
+    assert r.status == 404, await r.text()
+    assert await db_conn.fetchval('select color from labels') is None
+
+
+async def test_bread_delete_other_user(cli, factory: Factory, db_conn):
+    await factory.create_user()
+
+    user2 = await factory.create_user()
+    assert user2.id
+    label = await factory.create_label('Label 1', user_id=user2.id)
+    assert await db_conn.fetchval('select user_id from labels') == user2.id
+
+    r = await cli.post_json(factory.url('ui:labels-delete', pk=label))
+    assert r.status == 404, await r.text()
+    assert 1 == await db_conn.fetchval('select count(*) from labels')

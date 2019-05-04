@@ -6,7 +6,6 @@ from cryptography import fernet
 
 from em2.background import Background
 from em2.settings import Settings
-from em2.ui.views.labels import GetLabels
 from em2.utils.middleware import csrf_middleware
 from em2.utils.web import add_access_control, build_index
 
@@ -14,16 +13,8 @@ from .middleware import user_middleware
 from .views import online
 from .views.auth import AuthExchangeToken, logout
 from .views.contacts import ContactSearch
-from .views.conversations import (
-    ConvAct,
-    ConvActions,
-    ConvCreate,
-    ConvList,
-    ConvPublish,
-    GetFile,
-    AddRemoveLabel,
-    SetConvState,
-)
+from .views.conversations import ConvAct, ConvActions, ConvCreate, ConvList, ConvPublish, GetFile, SetConvState
+from .views.labels import AddRemoveLabel, LabelBread
 from .views.ws import websocket
 
 
@@ -51,7 +42,7 @@ async def create_app_ui(settings=None):
         web.post(s + f'conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),
         web.post(s + f'conv/{conv_match}/set-state/', SetConvState.view(), name='set-conv-state'),
         web.post(s + f'conv/{conv_match}/set-label/', AddRemoveLabel.view(), name='add-remove-label'),
-        web.get(s + f'labels/', GetLabels.view(), name='get-labels'),
+        *LabelBread.routes(s + 'labels/', name='labels'),
         # no trailing slash so we capture everything and deal with weird/ugly content ids
         web.get(s + fr'img/{conv_match}/{{content_id:.*}}', GetFile.view(), name='get-file'),
         web.get(s + 'ws/', websocket, name='websocket'),
