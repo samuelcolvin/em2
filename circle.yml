@@ -5,12 +5,8 @@ jobs:
       docker_layer_caching: true
     steps:
       - checkout
-      - run: |
-          set -ex
-          pwd
-          ls -la
-          docker version
-          make build
+      - run: docker version
+      - run: make build
 
 workflows:
   version: 2

@@ -39,7 +39,7 @@ class AddRemoveLabel(View):
                 if has_label:
                     raise JsonErrors.HTTPConflict('conversation already has this label')
                 await self.conn.execute(
-                    'update participants set label_ids = array_append(label_ids, $1) where id=$2',
+                    'update participants set label_ids = label_ids || $1::bigint where id=$2',
                     m.label_id,
                     participant_id,
                 )
