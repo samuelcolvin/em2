@@ -1,11 +1,11 @@
 from enum import Enum
 
-from atoolbox import JsonErrors, parse_request_query, raw_json_response
-from atoolbox.bread import Bread
 from buildpg import V
 from buildpg.clauses import Where
 from pydantic import BaseModel, constr
 
+from atoolbox import JsonErrors, parse_request_query, raw_json_response
+from atoolbox.bread import Bread
 from em2.core import get_conv_for_user
 from em2.ui.middleware import Session
 from em2.ui.views.utils import View
@@ -57,7 +57,7 @@ class AddRemoveLabel(View):
 class LabelBread(Bread):
     class Model(BaseModel):
         name: constr(max_length=63)
-        # TODO I guess this should a choice so we don't have to have any inline css for csp
+        # TODO I guess this should be a choice so we don't have to have any inline css for csp
         color: constr(max_length=20) = None
         description: constr(max_length=1000) = None
 
