@@ -64,6 +64,7 @@ create table participants (
 create index participants_user_seen on participants using btree (user_id, seen);
 create index participants_user_inbox on participants using btree (user_id, inbox);
 create index participants_user_deleted on participants using btree (user_id, deleted);
+create index participants_deleted_ts on participants using btree (deleted_ts);
 create index participants_user_spam on participants using btree (user_id, spam);
 create index participants_label_ids on participants using gin (label_ids);
 

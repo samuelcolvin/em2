@@ -43,6 +43,7 @@ class ConvList(View):
       from (
         select c.key, c.created_ts, c.updated_ts, c.publish_ts, c.last_action_id, c.details,
           p.seen is true seen, p.inbox is true inbox, p.deleted is true deleted, p.spam is true spam,
+          c.publish_ts is null draft, c.publish_ts is not null and c.creator = p.user_id sent,
           coalesce(p.label_ids, '{}') labels
         from conversations c
         join participants p on c.id = p.conv
@@ -93,9 +94,7 @@ class ConvList(View):
         elif query_data.labels_any:
             where &= V('p.label_ids').overlap(query_data.labels_any)
 
-        raw_json = await self.conn.fetchval_b(
-            self.sql, where=where, offset=get_offset(self.request, paginate_by=50), print_=True
-        )
+        raw_json = await self.conn.fetchval_b(self.sql, where=where, offset=get_offset(self.request, paginate_by=50))
         return raw_json_response(raw_json)
 
 
