@@ -31,7 +31,7 @@ const Main = ({app_state}) => {
     return (
       <Switch>
         <Route exact path="/" render={WithMenu(ListConversations, 'inbox')}/>
-        <Route exact path="/:state(sent|archive|all|spam|deleted)/"
+        <Route exact path="/:state(draft|sent|archive|all|spam|deleted)/"
                render={WithMenu(ListConversations, app_state.menu_item)}/>
         <Route exact path="/create/" render={WithMenu(CreateConversation, 'create')}/>
         <Route exact path="/login/" component={Login}/>

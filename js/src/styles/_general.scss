@@ -20,12 +20,29 @@
   height: 150px !important;
 }
 
+.w-20 {
+  width: 20px !important;
+}
+
 .dropright .dropdown-menu {
   margin-left: 5px;
 }
 
+@keyframes start-loading {
+  from {
+    opacity: 0;
+  }
+  25% {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .loading {
-  width: 60px;
+  animation-name: start-loading;
+  animation-duration: 1000ms;
 }
 
 %box-border {

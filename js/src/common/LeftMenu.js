@@ -22,22 +22,25 @@ const LeftMenu = ({s}) => (
     <div className="box no-pad">
       <ListGroup>
         <ListGroupItem tag={Link} to="/" active={s === 'inbox'} action>
-          <FontAwesomeIcon icon={fas.faInbox} className="mr-1"/> Inbox
+          <FontAwesomeIcon icon={fas.faInbox} className="w-20 mr-1"/> Inbox
+        </ListGroupItem>
+        <ListGroupItem tag={Link} to="/draft/" active={s === 'draft'} action>
+          <FontAwesomeIcon icon={fas.faFileAlt} className="w-20 mr-1"/> Drafts
         </ListGroupItem>
         <ListGroupItem tag={Link} to="/sent/" active={s === 'sent'} action>
-          <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/> Sent
+          <FontAwesomeIcon icon={fas.faPaperPlane} className="w-20 mr-1"/> Sent
         </ListGroupItem>
         <ListGroupItem tag={Link} to="/archive/" active={s === 'archive'} action>
-          <FontAwesomeIcon icon={fas.faArchive} className="mr-1"/> Archive
+          <FontAwesomeIcon icon={fas.faArchive} className="w-20 mr-1"/> Archive
         </ListGroupItem>
         <ListGroupItem tag={Link} to="/all/" active={s === 'all'} action>
-          <FontAwesomeIcon icon={fas.faGlobe} className="mr-1"/> All
+          <FontAwesomeIcon icon={fas.faGlobe} className="w-20 mr-1"/> All
         </ListGroupItem>
         <ListGroupItem tag={Link} to="/spam/" active={s === 'spam'} action>
-          <FontAwesomeIcon icon={fas.faMinusCircle} className="mr-1"/> Spam
+          <FontAwesomeIcon icon={fas.faRadiation} className="w-20 mr-1"/> Spam
         </ListGroupItem>
         <ListGroupItem tag={Link} to="/deleted/" active={s === 'deleted'} action>
-          <FontAwesomeIcon icon={fas.faTrash} className="mr-1"/> Deleted
+          <FontAwesomeIcon icon={fas.faTrash} className="w-20 mr-1"/> Deleted
         </ListGroupItem>
       </ListGroup>
     </div>
@@ -45,7 +48,7 @@ const LeftMenu = ({s}) => (
     <div className="box no-pad">
       <ListGroup>
         <ListGroupItem tag={Link} to="/settings/" active={s === 'settings'} action>
-          <FontAwesomeIcon icon={fas.faCog} className="mr-1"/> Settings
+          <FontAwesomeIcon icon={fas.faCog} className="w-20 mr-1"/> Settings
         </ListGroupItem>
       </ListGroup>
     </div>

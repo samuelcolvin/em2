@@ -61,7 +61,7 @@ class ConvListView extends React.Component {
     this.remove_listener = this.props.ctx.worker.add_listener('change', this.update)
   }
 
-  componentDidUpdate(prevProps) {
+  componentDidUpdate (prevProps) {
     if (this.props.location !== prevProps.location) {
       this.update()
     }
@@ -77,12 +77,11 @@ class ConvListView extends React.Component {
   }
 
   update = async () => {
-    if (!this.props.ctx.user) {
-      return
+    if (this.props.ctx.user) {
+      this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
+      this.props.ctx.setMenuItem(this.props.match.params.state || 'inbox')
+      this.setState(await this.props.ctx.worker.call('list-conversations', {page: this.get_page()}))
     }
-    this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
-    this.props.ctx.setMenuItem(this.props.match.params.state || 'inbox')
-    this.setState(await this.props.ctx.worker.call('list-conversations', {page: this.get_page()}))
   }
 
   get_page = () => get_page(this.props.location.search)
