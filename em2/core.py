@@ -706,7 +706,9 @@ async def create_conv(
         participants = set(p.email for p in conv.participants)
         part_users = await get_create_multiple_users(conn, participants)
 
-        await conn.execute('insert into participants (conv, user_id, seen) (select $1, $2, true)', conv_id, creator_id)
+        await conn.execute(
+            'insert into participants (conv, user_id, seen, inbox) (select $1, $2, true, false)', conv_id, creator_id
+        )
         other_user_ids = list(part_users.values())
         await conn.execute(
             'insert into participants (conv, user_id) (select $1, unnest($2::int[]))', conv_id, other_user_ids

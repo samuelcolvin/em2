@@ -67,7 +67,7 @@ class ConvList(View):
         query_data = parse_request_query(self.request, self.QueryModel)
         where = funcs.AND(
             V('p.user_id') == self.session.user_id,
-            funcs.OR(V('publish_ts') != V('null'), V('creator') == self.session.user_id),
+            funcs.OR(V('publish_ts').is_not(V('null')), V('creator') == self.session.user_id),
         )
         # SQL true
         true = V('true')
@@ -93,7 +93,9 @@ class ConvList(View):
         elif query_data.labels_any:
             where &= V('p.label_ids').overlap(query_data.labels_any)
 
-        raw_json = await self.conn.fetchval_b(self.sql, where=where, offset=get_offset(self.request, paginate_by=50))
+        raw_json = await self.conn.fetchval_b(
+            self.sql, where=where, offset=get_offset(self.request, paginate_by=50), print_=True
+        )
         return raw_json_response(raw_json)
 
 
@@ -262,11 +264,11 @@ class SetConvState(View):
         elif state is States.delete:
             if deleted:
                 raise JsonErrors.HTTPConflict('conversation already deleted')
-            return SetValues(deleted=True)
+            return SetValues(deleted=True, deleted_ts=funcs.now())
         elif state is States.restore:
             if not deleted:
                 raise JsonErrors.HTTPConflict('conversation not deleted')
-            return SetValues(deleted=None)
+            return SetValues(deleted=None, deleted_ts=None)
         elif state is States.spam:
             if spam:
                 raise JsonErrors.HTTPConflict('conversation already spam')
@@ -276,6 +278,52 @@ class SetConvState(View):
             if not spam:
                 raise JsonErrors.HTTPConflict('conversation not spam')
             return SetValues(spam=None)
+
+
+class GetConvCounts(View):
+    sql = """
+    select json_build_object(
+      'states', states,
+      'labels', labels
+    ) from (
+      select coalesce(row_to_json(t), '{}') states
+      from (
+        select
+          count(*) filter (where inbox is true and deleted is not true and spam is not true) as inbox,
+          count(*) filter (where inbox is true and seen is not true and deleted is not true and spam is not true)
+            as inbox_unseen,
+
+          count(*) filter (where c.creator = $1 and publish_ts is null and deleted is not true) as draft,
+          count(*) filter (where c.creator = $1 and publish_ts is not null and deleted is not true) as sent,
+          count(*) filter (
+            where inbox is not true and deleted is not true and spam is not true and publish_ts is not null
+          ) as archive,
+          count(*) as "all",
+          count(*) filter (where spam is true and deleted is not true) as spam,
+          count(*) filter (where spam is true and deleted is not true and seen is not true) as spam_unseen,
+          count(*) filter (where deleted is true) as deleted
+        from participants p
+        join conversations c on p.conv = c.id
+        where user_id = $1
+        limit 20000
+      ) t
+    ) states, (
+      select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as labels
+      from (
+        select l.id, l.name, l.color, count(p.*) as count
+        from labels l
+        join participants p on label_ids @> array[l.id]
+        where l.user_id = $1
+        group by l.id
+        order by l.ordering, l.id
+      ) t
+    ) labels
+    """
+
+    async def call(self):
+        # TODO cache these results
+        raw_json = await self.conn.fetchval(self.sql, self.session.user_id)
+        return raw_json_response(raw_json)
 
 
 class GetFile(View):

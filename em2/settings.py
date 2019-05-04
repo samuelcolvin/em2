@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     create_app = 'em2.main.create_app'
     worker_func = 'em2.protocol.worker.run_worker'
     patch_paths = ['em2.auth.patches']
-    em2_auth_key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa='
+    auth_key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa='
 
     domain: str = 'localhost'  # currently used as a proxy for development mode, should probably be changed
     any_origin: bool = False  # WARNING: this is dangerous, only use when testing

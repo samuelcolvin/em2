@@ -54,7 +54,9 @@ create table participants (
   seen boolean,
   inbox boolean default true,
   deleted boolean,
+  deleted_ts timestamptz,
   spam boolean,
+  -- TODO maybe cache sent and draft here for simpler queries
   label_ids bigint[],
   -- todo permissions, hidden
   unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id

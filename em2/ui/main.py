@@ -13,7 +13,16 @@ from .middleware import user_middleware
 from .views import online
 from .views.auth import AuthExchangeToken, logout
 from .views.contacts import ContactSearch
-from .views.conversations import ConvAct, ConvActions, ConvCreate, ConvList, ConvPublish, GetFile, SetConvState
+from .views.conversations import (
+    ConvAct,
+    ConvActions,
+    ConvCreate,
+    ConvList,
+    ConvPublish,
+    GetConvCounts,
+    GetFile,
+    SetConvState,
+)
 from .views.labels import AddRemoveLabel, LabelBread
 from .views.ws import websocket
 
@@ -37,6 +46,7 @@ async def create_app_ui(settings=None):
         web.get('/online/', online, name='online'),
         web.get(s + 'conv/list/', ConvList.view(), name='list'),
         web.route('*', s + 'conv/create/', ConvCreate.view(), name='create'),
+        web.get(s + 'conv/counts/', GetConvCounts.view(), name='conv-counts'),
         web.get(s + f'conv/{conv_match}/', ConvActions.view(), name='get'),
         web.post(s + f'conv/{conv_match}/act/', ConvAct.view(), name='act'),
         web.post(s + f'conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),
