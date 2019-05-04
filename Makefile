@@ -63,7 +63,7 @@ build: BT="$(shell date)"
 build:
 	@find em2 -name '*.py[co]' -delete
 	@find em2 -name '__pycache__' -delete
-	docker build em2 -f docker/Dockerfile -t em2 --build-arg COMMIT=$(C) --build-arg BUILD_TIME=$(BT)
+	docker build em2 -t em2 --build-arg COMMIT=$(C) --build-arg BUILD_TIME=$(BT)
 
 .PHONY: docker-dev
 docker-dev: build

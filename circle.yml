@@ -1,6 +1,6 @@
 version: 2.1
 jobs:
-  build-docker-image:
+  build:
     machine:
       docker_layer_caching: true
     steps:
@@ -9,10 +9,11 @@ jobs:
           set -ex
           pwd
           ls -la
+          docker version
           make build
 
 workflows:
   version: 2
   build-and-test:
     jobs:
-      - build-docker-image
+      - build
