@@ -1,0 +1,15 @@
+version: 2.1
+jobs:
+  build:
+    machine:
+      docker_layer_caching: true
+    steps:
+      - checkout
+      - run: docker version
+      - run: make build
+
+workflows:
+  version: 2
+  build-and-test:
+    jobs:
+      - build

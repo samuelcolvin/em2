@@ -6,7 +6,6 @@ addons:
 services:
 - postgresql
 - redis-server
-- docker
 
 python:
 - '3.7'
@@ -31,6 +30,5 @@ install:
 
 script:
 - make lint
-- make test && bash <(curl -s https://codecov.io/bash)
-- make build
-- ls -lha
+- make test
+- bash <(curl -s https://codecov.io/bash)

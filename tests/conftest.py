@@ -16,6 +16,7 @@ from aioredis import create_redis
 from arq import ArqRedis, Worker
 from atoolbox.db.helpers import SimplePgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
+from buildpg import Values
 from PIL import Image, ImageDraw
 
 from em2.auth.utils import mk_password
@@ -178,9 +179,9 @@ class Factory:
         password_hash = mk_password(pw, self.settings)
         auth_user_id = await self.conn.fetchval(
             """
-            INSERT INTO auth_users (email, first_name, last_name, password_hash, account_status)
-            VALUES ($1, $2, $3, $4, 'active')
-            ON CONFLICT (email) DO NOTHING RETURNING id
+            insert into auth_users (email, first_name, last_name, password_hash, account_status)
+            values ($1, $2, $3, $4, 'active')
+            on conflict (email) do nothing returning id
             """,
             email,
             first_name,
@@ -234,6 +235,13 @@ class Factory:
         conv = Conv(conv_key, conv_id)
         self.conv = self.conv or conv
         return conv
+
+    async def create_label(self, name='Test Label', *, user_id=None, ordering=None, color=None, description=None):
+        val = dict(name=name, user_id=user_id or self.user.id, ordering=ordering, color=color, description=description)
+        values = Values(**{k: v for k, v in val.items() if v is not None})
+        return await self.conn.fetchval_b(
+            'insert into labels (:values__names) values :values returning id', values=values
+        )
 
     async def act(self, actor_user_id: int, conv_id: int, action: ActionModel) -> List[int]:
         conv_id, action_ids = await apply_actions(self.conn, self.settings, actor_user_id, conv_id, [action])

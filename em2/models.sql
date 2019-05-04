@@ -9,6 +9,29 @@ create table users (
 );
 create index user_type on users using btree (user_type);
 
+create table labels (
+  id bigserial primary key,
+  user_id bigint not null references users on delete cascade,
+  -- TODO add team and make either team or user but not both required
+  name varchar(255),
+  ordering float not null default 0,
+  description varchar(1027),
+  color varchar(31)
+);
+create index labels_user_id on labels using btree (user_id);
+create index labels_ordering on labels using btree (ordering);
+
+create or replace function remove_labels_on_delete() returns trigger as $$
+  begin
+    update participants
+    set label_ids = array_remove(label_ids, old.id)
+    where user_id=old.user_id and label_ids @> array[old.id];
+    return null;
+  end;
+$$ language plpgsql;
+
+create trigger remove_labels after delete on labels for each row execute procedure remove_labels_on_delete();
+
 create table conversations (
   id bigserial primary key,
   key varchar(64) unique,
@@ -28,11 +51,19 @@ create table participants (
   id bigserial primary key,
   conv bigint not null references conversations on delete cascade,
   user_id bigint not null references users on delete restrict,
-  seen boolean not null default false,  -- aka unread
-  -- todo permissions, hidden, status, has_seen/unread
+  seen boolean,
+  inbox boolean default true,
+  deleted boolean,
+  spam boolean,
+  label_ids bigint[],
+  -- todo permissions, hidden
   unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id
 );
-create index participants_user_id on participants using btree (user_id);
+create index participants_user_seen on participants using btree (user_id, seen);
+create index participants_user_inbox on participants using btree (user_id, inbox);
+create index participants_user_deleted on participants using btree (user_id, deleted);
+create index participants_user_spam on participants using btree (user_id, spam);
+create index participants_label_ids on participants using gin (label_ids);
 
 -- see core.ActionTypes enum which matches this
 create type ActionTypes as enum (

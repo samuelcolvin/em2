@@ -13,7 +13,8 @@ from .middleware import user_middleware
 from .views import online
 from .views.auth import AuthExchangeToken, logout
 from .views.contacts import ContactSearch
-from .views.conversations import ConvAct, ConvActions, ConvCreate, ConvList, ConvPublish, GetFile
+from .views.conversations import ConvAct, ConvActions, ConvCreate, ConvList, ConvPublish, GetFile, SetConvState
+from .views.labels import AddRemoveLabel, LabelBread
 from .views.ws import websocket
 
 
@@ -39,6 +40,9 @@ async def create_app_ui(settings=None):
         web.get(s + f'conv/{conv_match}/', ConvActions.view(), name='get'),
         web.post(s + f'conv/{conv_match}/act/', ConvAct.view(), name='act'),
         web.post(s + f'conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),
+        web.post(s + f'conv/{conv_match}/set-state/', SetConvState.view(), name='set-conv-state'),
+        web.post(s + f'conv/{conv_match}/set-label/', AddRemoveLabel.view(), name='add-remove-label'),
+        *LabelBread.routes(s + 'labels/', name='labels'),
         # no trailing slash so we capture everything and deal with weird/ugly content ids
         web.get(s + fr'img/{conv_match}/{{content_id:.*}}', GetFile.view(), name='get-file'),
         web.get(s + 'ws/', websocket, name='websocket'),

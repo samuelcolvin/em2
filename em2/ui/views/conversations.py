@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import Any, Dict, List
 
 from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
 from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
+from buildpg import SetValues, V, funcs
+from buildpg.logic import Operator
 from pydantic import BaseModel, validator
 
 from em2.background import push_all, push_multiple
@@ -32,25 +35,65 @@ class ConvList(View):
       'conversations', conversations
     ) from (
       select count(*) from conversations as c
-        join participants as p on c.id = p.conv
-        where p.user_id=$1
+        join participants p on c.id = p.conv
+        where :where
         limit 999
-    ) as count, (
-      select coalesce(array_to_json(array_agg(row_to_json(t)), true), '[]') as conversations
+    ) count, (
+      select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
       from (
-        select key, created_ts, updated_ts, publish_ts, last_action_id, p.seen as seen, details
-        from conversations as c
-        join participants as p on c.id = p.conv
-        where p.user_id=$1 and (publish_ts is not null or creator=$1)
+        select c.key, c.created_ts, c.updated_ts, c.publish_ts, c.last_action_id, c.details,
+          p.seen is true seen, p.inbox is true inbox, p.deleted is true deleted, p.spam is true spam,
+          coalesce(p.label_ids, '{}') labels
+        from conversations c
+        join participants p on c.id = p.conv
+        where :where
         order by c.created_ts, c.id desc
         limit 50
-        offset $2
+        offset :offset
       ) t
-    ) as conversations
+    ) conversations
     """
 
+    class QueryModel(BaseModel):
+        inbox: bool = None
+        seen: bool = None
+        deleted: bool = None
+        spam: bool = None
+        archive: bool = None
+        labels_all: List[int] = None
+        labels_any: List[int] = None
+
     async def call(self):
-        raw_json = await self.conn.fetchval(self.sql, self.session.user_id, get_offset(self.request, paginate_by=50))
+        query_data = parse_request_query(self.request, self.QueryModel)
+        where = funcs.AND(
+            V('p.user_id') == self.session.user_id,
+            funcs.OR(V('publish_ts') != V('null'), V('creator') == self.session.user_id),
+        )
+        # SQL true
+        true = V('true')
+        # "is true" or "is not true" to work with null
+
+        if query_data.seen is not None:
+            where &= V('p.seen').operate(Operator.is_ if query_data.seen else Operator.is_not, true)
+
+        # inbox and archive false doesn't do anything
+        if query_data.inbox:
+            where &= V('p.inbox').is_(true) & V('p.deleted').is_not(true) & V('p.spam').is_not(true)
+        elif query_data.archive:
+            where &= V('p.inbox').is_not(true) & V('p.deleted').is_not(true) & V('p.spam').is_not(true)
+        else:
+            if query_data.deleted is not None:
+                where &= V('p.deleted').operate(Operator.is_ if query_data.deleted else Operator.is_not, true)
+
+            if query_data.spam is not None:
+                where &= V('p.spam').operate(Operator.is_ if query_data.spam else Operator.is_not, true)
+
+        if query_data.labels_all:
+            where &= V('p.label_ids').contains(query_data.labels_all)
+        elif query_data.labels_any:
+            where &= V('p.label_ids').overlap(query_data.labels_any)
+
+        raw_json = await self.conn.fetchval_b(self.sql, where=where, offset=get_offset(self.request, paginate_by=50))
         return raw_json_response(raw_json)
 
 
@@ -175,6 +218,64 @@ class ConvPublish(ExecView):
         )
         for msg in msg_info.get('children', []):
             await self.add_msg(msg, conv_id, ts, pk)
+
+
+class States(str, Enum):
+    archive = 'archive'
+    inbox = 'inbox'
+    delete = 'delete'
+    restore = 'restore'
+    spam = 'spam'
+    ham = 'ham'
+
+
+class SetConvState(View):
+    class StateQueryModel(BaseModel):
+        state: States
+
+    async def call(self):
+        state = parse_request_query(self.request, self.StateQueryModel).state
+        conv_id, _ = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
+        async with self.conn.transaction():
+            participant_id, inbox, deleted, spam = await self.conn.fetchrow(
+                'select id, inbox, deleted, spam from participants where conv=$1 and user_id=$2 for no key update',
+                conv_id,
+                self.session.user_id,
+            )
+
+            values = self.get_update_values(state, inbox, deleted, spam)
+            await self.conn.execute_b('update participants set :values where id=:id', values=values, id=participant_id)
+        return raw_json_response('{"status": "ok"}')
+
+    @staticmethod  # noqa: 901
+    def get_update_values(state: States, inbox: bool, deleted: bool, spam: bool) -> SetValues:
+        if state is States.archive:
+            if not inbox or deleted or spam:
+                raise JsonErrors.HTTPConflict('conversation not in inbox')
+            return SetValues(inbox=None)
+        elif state is States.inbox:
+            if inbox:
+                raise JsonErrors.HTTPConflict('conversation already in inbox')
+            elif deleted or spam:
+                raise JsonErrors.HTTPConflict('deleted or spam conversation cannot be moved to inbox')
+            return SetValues(inbox=True)
+        elif state is States.delete:
+            if deleted:
+                raise JsonErrors.HTTPConflict('conversation already deleted')
+            return SetValues(deleted=True)
+        elif state is States.restore:
+            if not deleted:
+                raise JsonErrors.HTTPConflict('conversation not deleted')
+            return SetValues(deleted=None)
+        elif state is States.spam:
+            if spam:
+                raise JsonErrors.HTTPConflict('conversation already spam')
+            return SetValues(spam=True)
+        else:
+            assert state is States.ham, state
+            if not spam:
+                raise JsonErrors.HTTPConflict('conversation not spam')
+            return SetValues(spam=None)
 
 
 class GetFile(View):
