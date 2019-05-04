@@ -309,9 +309,9 @@ class GetConvCounts(View):
     ) states, (
       select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as labels
       from (
-        select l.id, l.name, l.color, count(p.*) as count
+        select l.id, name, color, description, count(p) as count
         from labels l
-        join participants p on label_ids @> array[l.id]
+        left join participants p on label_ids @> array[l.id]
         where l.user_id = $1
         group by l.id
         order by l.ordering, l.id

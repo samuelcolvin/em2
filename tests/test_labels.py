@@ -66,6 +66,7 @@ async def test_label_counts(cli, factory: Factory, db_conn):
     label1 = await factory.create_label('Label 1')
     label2 = await factory.create_label('Label 2', ordering=1)
     label3 = await factory.create_label('Label 3')
+    label4 = await factory.create_label('Label 4')
 
     await factory.create_conv(subject='anne')
 
@@ -82,9 +83,10 @@ async def test_label_counts(cli, factory: Factory, db_conn):
     assert r.status == 200, await r.text()
     obj = await r.json()
     assert obj['labels'] == [
-        {'id': label1, 'name': 'Label 1', 'color': None, 'count': 3},
-        {'id': label3, 'name': 'Label 3', 'color': None, 'count': 1},
-        {'id': label2, 'name': 'Label 2', 'color': None, 'count': 2},
+        {'id': label1, 'name': 'Label 1', 'color': None, 'description': None, 'count': 3},
+        {'id': label3, 'name': 'Label 3', 'color': None, 'description': None, 'count': 1},
+        {'id': label4, 'name': 'Label 4', 'color': None, 'description': None, 'count': 0},
+        {'id': label2, 'name': 'Label 2', 'color': None, 'description': None, 'count': 2},
     ]
 
 
