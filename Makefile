@@ -1,6 +1,6 @@
 .DEFAULT_GOAL:=all
 isort = isort -rc -w 120 em2 tests
-black = black -S -l 120 --py36 em2 tests
+black = black -S -l 120 --target-version py37 em2 tests
 heroku ?= em2-demo
 REACT_APP_DOMAIN ?= imber.io
 

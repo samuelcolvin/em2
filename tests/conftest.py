@@ -226,9 +226,11 @@ class Factory:
         assert len(self.cli.session.cookie_jar) == 1
         return r1, r2
 
-    async def create_conv(self, subject='Test Subject', message='Test Message', participants=[], publish=False) -> Conv:
+    async def create_conv(
+        self, subject='Test Subject', message='Test Message', session_id=None, participants=[], publish=False
+    ) -> Conv:
         data = {'subject': subject, 'message': message, 'publish': publish, 'participants': participants}
-        r = await self.cli.post_json(self.url('ui:create'), data)
+        r = await self.cli.post_json(self.url('ui:create', session_id=session_id or self.user.session_id), data)
         assert r.status == 201, await r.text()
         conv_key = (await r.json())['key']
         conv_id = await self.conn.fetchval('select id from conversations where key=$1', conv_key)
