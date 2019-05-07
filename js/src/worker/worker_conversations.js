@@ -159,8 +159,14 @@ async function list_conversations (data) {
   }
 }
 
+async function conv_counts () {
+  const r = await requests.get('ui', `/${session.id}/conv/counts/`)
+  return r.data
+}
+
 export default function () {
   add_listener('list-conversations', list_conversations)
+  add_listener('conv-counts', conv_counts)
 
   add_listener('get-conversation', get_conversation)
 
