@@ -118,7 +118,11 @@ class ConvCreate(ExecView):
 
     async def execute(self, conv: CreateConvModel):
         conv_id, conv_key = await create_conv(
-            conn=self.conn, creator_email=self.session.email, creator_id=self.session.user_id, conv=conv
+            conn=self.conn,
+            redis=self.redis,
+            creator_email=self.session.email,
+            creator_id=self.session.user_id,
+            conv=conv,
         )
 
         await push_all(self.conn, self.app['redis'], conv_id)
@@ -131,7 +135,7 @@ class ConvAct(ExecView):
 
     async def execute(self, m: Model):
         conv_id, action_ids = await apply_actions(
-            self.conn, self.settings, self.session.user_id, self.request.match_info['conv'], m.actions
+            self.conn, self.redis, self.settings, self.session.user_id, self.request.match_info['conv'], m.actions
         )
 
         if action_ids:

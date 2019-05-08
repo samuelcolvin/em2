@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import re
@@ -529,7 +530,12 @@ class ConvFolders(str, Enum):
 
 
 async def apply_actions(
-    conn: BuildPgConnection, settings: Settings, actor_user_id: int, conv_ref: StrInt, actions: List[ActionModel]
+    conn: BuildPgConnection,
+    redis: Redis,
+    settings: Settings,
+    actor_user_id: int,
+    conv_ref: StrInt,
+    actions: List[ActionModel],
 ) -> Tuple[int, List[int]]:
     """
     Apply actions and return their ids.
@@ -538,6 +544,7 @@ async def apply_actions(
     """
     action_ids = []
     act_cls = _Act(conn, settings, actor_user_id)
+    from_deleted, from_archive, already_inbox = [], [], []
     async with conn.transaction():
         # IMPORTANT we do nothing that could be slow (eg. networking) inside this transaction,
         # as the conv is locked for update from prepare onwards
@@ -553,10 +560,53 @@ async def apply_actions(
             await conn.execute('update participants set seen=true where conv=$1 and user_id=$2', conv_id, actor_user_id)
             # everyone else hasn't seen this action if it's "worth seeing"
             if any(a.act not in _meta_action_types for a in actions):
-                await conn.execute(
-                    'update participants set seen=false where conv=$1 and user_id!=$2', conv_id, actor_user_id
+                # TODO we'll also need to exclude muted conversations from being moved, while still setting seen=false
+                # we could exclude no local users from some of this
+                from_deleted, from_archive, already_inbox = await conn.fetchrow(
+                    """
+                    with conv_prts as (
+                      select p.id from participants p where conv=$1 and user_id!=$2
+                    ),
+                    from_deleted as (
+                      -- user had previously deleted the conversation, move it back to the inbox
+                      update participants p set seen=false, inbox=true, deleted=null from conv_prts where
+                      conv_prts.id=p.id and p.spam is not true and inbox is not true and p.deleted is true
+                      returning p.user_id
+                    ),
+                    from_archive as (
+                      -- conversation was previously in the archive for these users, move it back to the inbox
+                      update participants p set seen=false, inbox=true from conv_prts where
+                      conv_prts.id=p.id and p.spam is not true and inbox is not true and p.deleted is not true
+                      returning p.user_id
+                    ),
+                    already_inbox as (
+                      -- conversation was already in the inbox, just mark it as unseen
+                      update participants p set seen=false from conv_prts where
+                      conv_prts.id=p.id and p.spam is not true and inbox is true
+                      returning p.user_id
+                    ),
+                    is_spam as (
+                      -- conversation is marked as spam, just set it to unseen
+                      update participants p set seen=false from conv_prts where
+                      conv_prts.id=p.id and p.spam is true
+                      returning p.user_id
+                    )
+                    select from_deleted, from_archive, already_inbox
+                    from (select coalesce(array_agg(user_id), '{}') from_deleted from from_deleted) from_deleted,
+                         (select coalesce(array_agg(user_id), '{}') from_archive from from_archive) from_archive,
+                         (select coalesce(array_agg(user_id), '{}') already_inbox from already_inbox) already_inbox
+                    """,
+                    conv_id,
+                    actor_user_id,
                 )
             await update_conv_users(conn, conv_id)
+
+    coros = [update_conv_folders(u_id, ConvFolders.deleted, -1, redis=redis) for u_id in from_deleted]
+    for user_ids in (from_deleted, from_archive):
+        coros += [update_conv_folders(u_id, ConvFolders.inbox, 1, redis=redis) for u_id in user_ids]
+    for user_ids in (from_deleted, from_archive, already_inbox):
+        coros += [update_conv_folders(u_id, ConvFolders.unseen, 1, redis=redis) for u_id in user_ids]
+    await asyncio.gather(*coros)
     return conv_id, action_ids
 
 
@@ -692,6 +742,7 @@ class CreateConvModel(BaseModel):
 async def create_conv(
     *,
     conn: BuildPgConnection,
+    redis: Redis,
     creator_email: str,
     creator_id: int,
     conv: CreateConvModel,
@@ -763,6 +814,13 @@ async def create_conv(
         )
         await update_conv_users(conn, conv_id)
 
+    coros = (
+        update_conv_folders(creator_id, ConvFolders.sent, 1, redis=redis),
+        update_conv_folders(creator_id, ConvFolders.draft, -1, redis=redis),
+        *(update_conv_folders(u_id, ConvFolders.inbox, 1, redis=redis) for u_id in other_user_ids),
+        *(update_conv_folders(u_id, ConvFolders.unseen, 1, redis=redis) for u_id in other_user_ids),
+    )
+    await asyncio.gather(*coros)
     return conv_id, conv_key
 
 
@@ -857,3 +915,9 @@ async def get_conv_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> 
             tr.expire(label_key, 86400)
             await tr.execute()
     return folders, labels
+
+
+async def update_conv_folders(user_id, folder: ConvFolders, incr: int, *, redis: Redis):
+    key = f'conv-counts-folder-{user_id}'
+    if await redis.exists(key):
+        await redis.hincrby(key, folder.value, incr)

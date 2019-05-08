@@ -246,7 +246,9 @@ class Factory:
         )
 
     async def act(self, actor_user_id: int, conv_id: int, action: ActionModel) -> List[int]:
-        conv_id, action_ids = await apply_actions(self.conn, self.settings, actor_user_id, conv_id, [action])
+        conv_id, action_ids = await apply_actions(
+            self.conn, self.redis, self.settings, actor_user_id, conv_id, [action]
+        )
 
         if action_ids:
             await push_multiple(self.conn, self.redis, conv_id, action_ids)
