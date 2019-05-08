@@ -33,11 +33,13 @@ class ConstStates(str, Enum):
     draft = 'draft'
     sent = 'sent'
     archive = 'archive'
-    spam = 'spam'
+    all = 'all'
     deleted = 'deleted'
+    spam = 'spam'
 
 
 class ConvList(View):
+    # FIXME we can remove counts
     sql = """
     select json_build_object(
       'count', count,
@@ -264,6 +266,7 @@ class SetConvState(View):
 
             values = self.get_update_values(state, inbox, deleted, spam)
             await self.conn.execute_b('update participants set :values where id=:id', values=values, id=participant_id)
+        # TODO return new states so js can update the local db
         return raw_json_response('{"status": "ok"}')
 
     @staticmethod  # noqa: 901

@@ -35,21 +35,30 @@ const main_menu_items = [
   {to: '/draft/', name: 'draft', icon: fas.faFileAlt},
   {to: '/sent/', name: 'sent', icon: fas.faPaperPlane},
   {to: '/archive/', name: 'archive', icon: fas.faArchive},
-  {to: '/all/', name: 'all', icon: fas.faGlobe},
-  {to: '/spam/', name: 'spam', icon: fas.faRadiation},
+  // {to: '/all/', name: 'all', icon: fas.faGlobe},
   {to: '/deleted/', name: 'deleted', icon: fas.faTrash},
+  {to: '/spam/', name: 'spam', icon: fas.faRadiation},
 ]
 
 class LeftMenu_ extends React.Component {
-  state = {counts: {}}
+  state = {states: {}}
 
   componentDidMount () {
+    this.mounted = true
     this.update()
+    this.remove_listener = this.props.ctx.worker.add_listener('states-change', this.update)
+  }
+
+  componentWillUnmount () {
+    this.mounted = false
+    this.remove_listener && this.remove_listener()
   }
 
   update = async () => {
-    const r = await this.props.ctx.worker.call('conv-counts')
-    this.setState({counts: r.states, labels: r.labels})
+    if (this.mounted) {
+      const r = await this.props.ctx.worker.call('conv-counts')
+      this.setState({states: r.states, labels: r.labels})
+    }
   }
 
   render () {
@@ -76,8 +85,8 @@ class LeftMenu_ extends React.Component {
                 active={this.props.ctx.menu_item === m.name}
                 icon={m.icon}
                 title={as_title(m.name)}
-                count={this.state.counts[m.name]}
-                count_unseen={this.state.counts[m.name + '_unseen']}
+                count={this.state.states[m.name]}
+                count_unseen={this.state.states[m.name + '_unseen']}
               />
             ))}
           </ListGroup>

@@ -1,7 +1,7 @@
 import {sleep} from 'reactstrap-toolbox'
 import {make_url, statuses} from '../utils/network'
 import {session} from './worker_db'
-import {unix_ms, window_call, set_conn_status} from './worker_utils'
+import {unix_ms, window_call, set_conn_status, bool_int} from './worker_utils'
 
 const meta_action_types = new Set([
   'seen',
@@ -143,43 +143,75 @@ async function apply_actions (data, session_email) {
   const other_actor = Boolean(actions.find(a => a.actor !== session_email))
   const real_act = Boolean(actions.find(a => !meta_action_types.has(a.act)))
   let notify_details = null
+  const new_states = {}
   if (conv) {
     const update = {
       last_action_id: action.id,
       details: data.conv_details,
-      spam: data.spam || false,
+      spam: bool_int(data.spam),
       label_ids: data.label_ids || [],
     }
-    if (!data.spam) {
-      update.inbox = true
-      update.deleted = false
+    const unseen = other_actor && real_act
+    const now_unseen = unseen && conv.seen
+    if (now_unseen) {
+      update.seen = 0
     }
+    if (unseen && !data.spam) {
+      notify_details = conv.details
+    }
+
     if (real_act) {
       update.updated_ts = action.ts
+      if (data.spam) {
+        new_states.spam = session.current.states.spam + 1
+        if (now_unseen) {
+          new_states.spam_unseen = session.current.states.spam_unseen + 1
+        }
+      } else {
+        if (!conv.inbox) {
+          update.inbox = 1
+          new_states.inbox = session.current.states.inbox + 1
+          if (now_unseen) {
+            new_states.inbox_unseen = session.current.states.inbox_unseen + 1
+          }
+        }
+        if (conv.deleted) {
+          update.deleted = 0
+          new_states.deleted = session.current.states.deleted - 1
+        }
+      }
     }
     if (publish_action) {
       update.publish_ts = publish_action.ts
     }
-    if (other_actor && real_act && !data.spam) {
-      update.seen = false
-      notify_details = conv.details
-    }
     await session.db.conversations.update(action.conv, update)
   } else {
-    const unseen = other_actor && real_act
-    await session.db.conversations.add({
+    const conv_data = {
       key: action.conv,
       created_ts: actions[0].ts,
       updated_ts: action.ts,
       publish_ts: publish_action ? publish_action.ts : null,
       last_action_id: action.id,
       details: data.conv_details,
-      inbox: !data.spam,
-      spam: data.spam || false,
-      seen: !unseen,
+      inbox: bool_int(!data.spam),
+      spam: bool_int(data.spam),
+      seen: bool_int(!(other_actor && real_act)),
       label_ids: data.label_ids || [],
-    })
-    if (unseen && !data.spam) {
+    }
+    await session.db.conversations.add(conv_data)
+    if (conv_data.inbox) {
+      new_states.inbox = session.current.states.inbox + 1
+      if (!conv_data.seen) {
+        new_states.inbox_unseen = session.current.states.inbox_unseen + 1
+      }
+    } else if (conv_data.spam) {
+      new_states.spam = session.current.states.spam + 1
+      if (!conv_data.seen) {
+        new_states.spam_unseen = session.current.states.spam_unseen + 1
+      }
+    }
+
+    if (!conv_data.seen && !data.spam) {
       notify_details = data.conv_details
     }
     const old_conv = await session.db.conversations.get({new_key: action.conv})
@@ -189,6 +221,11 @@ async function apply_actions (data, session_email) {
     }
   }
   window_call('change', {conv: action.conv})
+
+  if (Object.keys(new_states).length) {
+    await session.update({states: Object.assign({}, session.current.states, new_states)})
+    window_call('states-change', await session.conv_counts())
+  }
 
   if (notify_details) {
     // TODO better summary of action

@@ -76,11 +76,14 @@ class ConvListView extends React.Component {
     this.mounted && super.setState(state, callback)
   }
 
+  conv_state = () => this.props.match.params.state || 'inbox'
+
   update = async () => {
     if (this.props.ctx.user) {
       this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
-      this.props.ctx.setMenuItem(this.props.match.params.state || 'inbox')
-      this.setState(await this.props.ctx.worker.call('list-conversations', {page: this.get_page()}))
+      this.props.ctx.setMenuItem(this.conv_state())
+      const args = {page: this.get_page(), state: this.conv_state()}
+      this.setState(await this.props.ctx.worker.call('list-conversations', args))
     }
   }
 
@@ -89,11 +92,11 @@ class ConvListView extends React.Component {
   on_pagination_click = async e => {
     const link = e.target.getAttribute('href')
     e.preventDefault()
-    const next_page = get_page(link)
-    if (next_page === this.get_page()) {
+    const page = get_page(link)
+    if (page === this.get_page()) {
       return
     }
-    const r = await this.props.ctx.worker.call('list-conversations', {page: next_page})
+    const r = await this.props.ctx.worker.call('list-conversations', {page, state: this.conv_state()})
     if (r.conversations.length) {
       this.setState(r)
       this.props.history.push(link)
@@ -114,7 +117,7 @@ class ConvListView extends React.Component {
           No Conversations found
         </div>
       )
-  }
+    }
     return (
       <div>
         <div className="box conv-list">
