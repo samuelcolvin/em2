@@ -368,9 +368,9 @@ Other actions shouldn't care at all what order they happen in
 States are system labels
 
 * `inbox`: has "inbox", doesn't have "deleted" or "spam"
-* `draft`: created by me and not published
-* `sent`: created by me and published
-* `archive`: doesn't have "inbox", "spam" or "deleted" set - isn't created by me
+* `draft`: created by me and not published and not deleted
+* `sent`: created by me and published and not deleted
+* `archive`: doesn't have "inbox", "spam" or "deleted" set, isn't created by me
 * `spam`: has "spam" set but not "deleted"
 * `deleted`: has "deleted" set
 

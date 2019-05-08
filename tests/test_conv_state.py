@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 import pytest
 from pytest_toolbox.comparison import CloseToNow
 
@@ -131,7 +133,7 @@ async def test_conv_set_state_counts_creator(cli, factory: Factory):
             'inbox_unseen': 0,
             'draft': 1,
             'sent': 1,
-            'archive': 1,
+            'archive': 0,
             'all': 2,
             'spam': 0,
             'spam_unseen': 0,
@@ -144,6 +146,7 @@ async def test_conv_set_state_counts_creator(cli, factory: Factory):
 async def test_conv_set_state_counts(cli, factory: Factory, db_conn):
     await factory.create_user()
 
+    await factory.create_conv()
     conv_inbox_unseen = await factory.create_conv(publish=True)
     conv_inbox_seen = await factory.create_conv(publish=True)
     conv_inbox_seen2 = await factory.create_conv(publish=True)
@@ -179,4 +182,82 @@ async def test_conv_set_state_counts(cli, factory: Factory, db_conn):
             'deleted': 1,
         },
         'labels': [],
+    }
+
+
+def query_display(v):
+    try:
+        return urlencode(v)
+    except TypeError:
+        return ','.join(v)
+
+
+@pytest.mark.parametrize(
+    'query, expected',
+    [
+        ({}, ['anne', 'ben', 'charlie', 'dave', 'ed', 'fred']),
+        ({'state': 'inbox'}, ['charlie']),
+        ({'state': 'spam'}, ['anne']),
+        ({'state': 'archive'}, ['ben']),
+        ({'seen': 'false'}, ['anne', 'ben', 'dave']),
+        ({'seen': 'true'}, ['charlie', 'ed', 'fred']),
+        ({'state': 'deleted'}, ['dave']),
+        ({'state': 'draft'}, ['ed']),
+        ({'state': 'sent'}, ['fred']),
+    ],
+    ids=query_display,
+)
+async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, expected):
+    await factory.create_user()
+    test_user = await factory.create_user()
+
+    prts = [{'email': test_user.email}]
+
+    conv_anne = await factory.create_conv(subject='anne', participants=prts, publish=True)
+    await db_conn.execute('update participants set spam=true where conv=$1', conv_anne.id)
+
+    conv_ben = await factory.create_conv(subject='ben', participants=prts, publish=True)
+    await db_conn.execute('update participants set inbox=false where conv=$1', conv_ben.id)
+
+    conv_charlie = await factory.create_conv(subject='charlie', participants=prts, publish=True)
+    await db_conn.execute('update participants set seen=true where conv=$1', conv_charlie.id)
+
+    conv_dave = await factory.create_conv(subject='dave', participants=prts, publish=True)
+    await db_conn.execute('update participants set deleted=true where conv=$1', conv_dave.id)
+
+    await factory.create_conv(subject='ed', session_id=test_user.session_id)
+    await factory.create_conv(subject='fred', session_id=test_user.session_id, publish=True)
+
+    assert 6 == await db_conn.fetchval('select count(*) from conversations')
+    assert 6 == await db_conn.fetchval('select count(*) from participants where user_id=$1', test_user.id)
+
+    url = factory.url('ui:list', session_id=test_user.session_id, query=query)
+    r = await cli.get(url)
+    assert r.status == 200, await r.text()
+    data = await r.json()
+    response = [c['details']['sub'] for c in data['conversations']]
+    assert response == expected, f'url: {url}, response: {response}'
+
+    if query:
+        return
+    # all case check results
+    assert data['count'] == 6
+    d = {
+        c['details']['sub']: {
+            'seen': c['seen'],
+            'inbox': c['inbox'],
+            'deleted': c['deleted'],
+            'spam': c['spam'],
+            'draft': c['draft'],
+            'sent': c['sent'],
+        }
+        for c in data['conversations']
+    }
+    assert d == {
+        'anne': {'seen': False, 'inbox': False, 'deleted': False, 'spam': True, 'draft': False, 'sent': False},
+        'ben': {'seen': False, 'inbox': False, 'deleted': False, 'spam': False, 'draft': False, 'sent': False},
+        'charlie': {'seen': True, 'inbox': True, 'deleted': False, 'spam': False, 'draft': False, 'sent': False},
+        'dave': {'seen': False, 'inbox': False, 'deleted': True, 'spam': False, 'draft': False, 'sent': False},
+        'ed': {'seen': True, 'inbox': False, 'deleted': False, 'spam': False, 'draft': True, 'sent': False},
+        'fred': {'seen': True, 'inbox': False, 'deleted': False, 'spam': False, 'draft': False, 'sent': True},
     }

@@ -28,6 +28,15 @@ from em2.utils.storage import S3, parse_storage_uri
 from .utils import ExecView, View
 
 
+class ConstStates(str, Enum):
+    inbox = 'inbox'
+    draft = 'draft'
+    sent = 'sent'
+    archive = 'archive'
+    spam = 'spam'
+    deleted = 'deleted'
+
+
 class ConvList(View):
     sql = """
     select json_build_object(
@@ -42,8 +51,12 @@ class ConvList(View):
       select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
       from (
         select c.key, c.created_ts, c.updated_ts, c.publish_ts, c.last_action_id, c.details,
-          p.seen is true seen, p.inbox is true inbox, p.deleted is true deleted, p.spam is true spam,
-          c.publish_ts is null draft, c.publish_ts is not null and c.creator = p.user_id sent,
+          p.seen is true seen,
+          (p.inbox is true and p.deleted is not true and p.spam is not true) inbox,
+          p.deleted is true deleted,
+          p.spam is true spam,
+          c.publish_ts is null draft,
+          c.publish_ts is not null and c.creator = p.user_id sent,
           coalesce(p.label_ids, '{}') labels
         from conversations c
         join participants p on c.id = p.conv
@@ -56,46 +69,51 @@ class ConvList(View):
     """
 
     class QueryModel(BaseModel):
-        inbox: bool = None
         seen: bool = None
-        deleted: bool = None
-        spam: bool = None
-        archive: bool = None
+        state: ConstStates = None
         labels_all: List[int] = None
         labels_any: List[int] = None
 
     async def call(self):
-        query_data = parse_request_query(self.request, self.QueryModel)
+        where = self.where_clause()
+        raw_json = await self.conn.fetchval_b(self.sql, where=where, offset=get_offset(self.request, paginate_by=50))
+        return raw_json_response(raw_json)
+
+    def where_clause(self):
         where = funcs.AND(
             V('p.user_id') == self.session.user_id,
             funcs.OR(V('publish_ts').is_not(V('null')), V('creator') == self.session.user_id),
         )
+
+        query_data = parse_request_query(self.request, self.QueryModel)
         # SQL true
         true = V('true')
         # "is true" or "is not true" to work with null
+        not_deleted = V('p.deleted').is_not(true)
+        not_spam = V('p.spam').is_not(true)
 
         if query_data.seen is not None:
             where &= V('p.seen').operate(Operator.is_ if query_data.seen else Operator.is_not, true)
 
-        # inbox and archive false doesn't do anything
-        if query_data.inbox:
-            where &= V('p.inbox').is_(true) & V('p.deleted').is_not(true) & V('p.spam').is_not(true)
-        elif query_data.archive:
-            where &= V('p.inbox').is_not(true) & V('p.deleted').is_not(true) & V('p.spam').is_not(true)
-        else:
-            if query_data.deleted is not None:
-                where &= V('p.deleted').operate(Operator.is_ if query_data.deleted else Operator.is_not, true)
-
-            if query_data.spam is not None:
-                where &= V('p.spam').operate(Operator.is_ if query_data.spam else Operator.is_not, true)
+        if query_data.state is ConstStates.inbox:
+            where &= V('p.inbox').is_(true) & not_deleted & not_spam
+        elif query_data.state is ConstStates.draft:
+            where &= (V('c.creator') == V('p.user_id')) & V('c.publish_ts').is_(V('null')) & not_deleted
+        elif query_data.state is ConstStates.sent:
+            where &= (V('c.creator') == V('p.user_id')) & V('c.publish_ts').is_not(V('null')) & not_deleted
+        elif query_data.state is ConstStates.archive:
+            where &= (V('c.creator') != V('p.user_id')) & V('p.inbox').is_not(true) & not_deleted & not_spam
+        elif query_data.state is ConstStates.spam:
+            where &= V('p.spam').is_(true) & not_deleted
+        elif query_data.state is ConstStates.deleted:
+            where &= V('p.deleted').is_(true)
 
         if query_data.labels_all:
             where &= V('p.label_ids').contains(query_data.labels_all)
         elif query_data.labels_any:
             where &= V('p.label_ids').overlap(query_data.labels_any)
 
-        raw_json = await self.conn.fetchval_b(self.sql, where=where, offset=get_offset(self.request, paginate_by=50))
-        return raw_json_response(raw_json)
+        return where
 
 
 class ConvActions(View):
@@ -289,13 +307,13 @@ class GetConvCounts(View):
       from (
         select
           count(*) filter (where inbox is true and deleted is not true and spam is not true) as inbox,
-          count(*) filter (where inbox is true and seen is not true and deleted is not true and spam is not true)
+          count(*) filter (where inbox is true and deleted is not true and spam is not true and seen is not true)
             as inbox_unseen,
 
           count(*) filter (where c.creator = $1 and publish_ts is null and deleted is not true) as draft,
           count(*) filter (where c.creator = $1 and publish_ts is not null and deleted is not true) as sent,
           count(*) filter (
-            where inbox is not true and deleted is not true and spam is not true and publish_ts is not null
+            where inbox is not true and deleted is not true and spam is not true and c.creator != $1
           ) as archive,
           count(*) as "all",
           count(*) filter (where spam is true and deleted is not true) as spam,
@@ -303,7 +321,7 @@ class GetConvCounts(View):
           count(*) filter (where deleted is true) as deleted
         from participants p
         join conversations c on p.conv = c.id
-        where user_id = $1
+        where user_id = $1 and (c.publish_ts is not null or c.creator = $1)
         limit 20000
       ) t
     ) states, (
