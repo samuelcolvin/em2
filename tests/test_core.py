@@ -429,6 +429,7 @@ async def test_seen(factory: Factory, db_conn):
     assert json.loads(details) == {
         'act': 'participant:add',
         'sub': 'Test Subject',
+        'creator': 'testing-1@example.com',
         'email': 'testing-1@example.com',
         'prev': 'Test Message',
         'prts': 2,
@@ -448,6 +449,7 @@ async def test_seen(factory: Factory, db_conn):
     assert json.loads(details) == {
         'act': 'participant:add',
         'sub': 'Test Subject',
+        'creator': 'testing-1@example.com',
         'email': 'testing-1@example.com',
         'prev': 'Test Message',
         'prts': 2,

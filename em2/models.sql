@@ -113,6 +113,7 @@ create or replace function action_insert() returns trigger as $$
   declare
     -- todo add actor name when we have it, could add attachment count etc. here too
     old_details_ json;
+    creator_ varchar(255);
     details_ json;
     subject_ats ActionTypes[] = array['conv:publish', 'conv:create', 'subject:modify'];
     add_del_msg_ats ActionTypes[] = array['message:add', 'message:delete'];
@@ -124,11 +125,16 @@ create or replace function action_insert() returns trigger as $$
         where id=new.conv
         returning last_action_id into new.id;
     else
-      select details into old_details_ from conversations where id=new.conv;
+      select details, u.email into old_details_, creator_
+      from conversations c
+      join users u on u.id = c.creator
+      where c.id=new.conv;
+
       details_ := json_build_object(
         'act', new.act,
         'sub', case when new.act=any(subject_ats) then new.body else old_details_->>'sub' end,
         'email', (select email from users where id=new.actor),
+        'creator', creator_,
         'prev', left(coalesce(new.preview, old_details_->>'prev'), 140),
         'prts', (select count(*) from participants where conv=new.conv),
         'msgs', (
