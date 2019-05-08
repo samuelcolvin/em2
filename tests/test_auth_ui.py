@@ -29,7 +29,7 @@ async def test_login(cli, url, factory: Factory):
     # check it all works
     r = await cli.get(url('ui:list', session_id=session_id))
     assert r.status == 200, await r.text()
-    assert await r.json() == {'count': 0, 'conversations': []}
+    assert await r.json() == {'conversations': []}
 
 
 async def test_logout(cli, db_conn, factory: Factory):
@@ -126,11 +126,11 @@ async def test_login_multiple(cli, url, factory: Factory):
     r = await cli.get(url('ui:list', session_id=user1.session_id))
     assert r.status == 200, await r.text()
     obj = await r.json()
-    assert obj['count'] == 1
+    assert len(obj['conversations']) == 1
 
     r = await cli.get(url('ui:list', session_id=user2.session_id))
     assert r.status == 200, await r.text()
-    assert await r.json() == {'count': 0, 'conversations': []}
+    assert await r.json() == {'conversations': []}
 
     r = await cli.post_json(url('ui:auth-logout', session_id=user1.session_id), '')
     assert r.status == 200, await r.text()
@@ -138,7 +138,7 @@ async def test_login_multiple(cli, url, factory: Factory):
 
     r = await cli.get(url('ui:list', session_id=user2.session_id))
     assert r.status == 200, await r.text()
-    assert await r.json() == {'count': 0, 'conversations': []}
+    assert await r.json() == {'conversations': []}
 
     r = await cli.get(url('ui:list', session_id=user1.session_id))
     assert r.status == 401, await r.text()

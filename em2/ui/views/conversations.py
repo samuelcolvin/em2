@@ -3,20 +3,21 @@ from enum import Enum
 from typing import Any, Dict, List
 
 from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
-from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
+from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
 from buildpg import SetValues, V, funcs
-from buildpg.logic import Operator
 from pydantic import BaseModel, validator
 
 from em2.background import push_all, push_multiple
 from em2.core import (
     ActionModel,
+    ConvFolders,
     CreateConvModel,
     apply_actions,
     construct_conv,
     conv_actions_json,
     create_conv,
     generate_conv_key,
+    get_conv_counts,
     get_conv_for_user,
     update_conv_users,
 )
@@ -28,28 +29,12 @@ from em2.utils.storage import S3, parse_storage_uri
 from .utils import ExecView, View
 
 
-class ConstStates(str, Enum):
-    inbox = 'inbox'
-    draft = 'draft'
-    sent = 'sent'
-    archive = 'archive'
-    all = 'all'
-    deleted = 'deleted'
-    spam = 'spam'
-
-
 class ConvList(View):
     # FIXME we can remove counts
     sql = """
     select json_build_object(
-      'count', count,
       'conversations', conversations
     ) from (
-      select count(*) from conversations as c
-        join participants p on c.id = p.conv
-        where :where
-        limit 999
-    ) count, (
       select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
       from (
         select c.key, c.created_ts, c.updated_ts, c.publish_ts, c.last_action_id, c.details,
@@ -71,8 +56,7 @@ class ConvList(View):
     """
 
     class QueryModel(BaseModel):
-        seen: bool = None
-        state: ConstStates = None
+        folder: ConvFolders = None
         labels_all: List[int] = None
         labels_any: List[int] = None
 
@@ -94,20 +78,19 @@ class ConvList(View):
         not_deleted = V('p.deleted').is_not(true)
         not_spam = V('p.spam').is_not(true)
 
-        if query_data.seen is not None:
-            where &= V('p.seen').operate(Operator.is_ if query_data.seen else Operator.is_not, true)
-
-        if query_data.state is ConstStates.inbox:
+        if query_data.folder is ConvFolders.inbox:
             where &= V('p.inbox').is_(true) & not_deleted & not_spam
-        elif query_data.state is ConstStates.draft:
+        if query_data.folder is ConvFolders.unseen:
+            where &= V('p.inbox').is_(true) & not_deleted & not_spam & V('p.seen').is_not(true)
+        elif query_data.folder is ConvFolders.draft:
             where &= (V('c.creator') == V('p.user_id')) & V('c.publish_ts').is_(V('null')) & not_deleted
-        elif query_data.state is ConstStates.sent:
+        elif query_data.folder is ConvFolders.sent:
             where &= (V('c.creator') == V('p.user_id')) & V('c.publish_ts').is_not(V('null')) & not_deleted
-        elif query_data.state is ConstStates.archive:
+        elif query_data.folder is ConvFolders.archive:
             where &= (V('c.creator') != V('p.user_id')) & V('p.inbox').is_not(true) & not_deleted & not_spam
-        elif query_data.state is ConstStates.spam:
+        elif query_data.folder is ConvFolders.spam:
             where &= V('p.spam').is_(true) & not_deleted
-        elif query_data.state is ConstStates.deleted:
+        elif query_data.folder is ConvFolders.deleted:
             where &= V('p.deleted').is_(true)
 
         if query_data.labels_all:
@@ -301,49 +284,22 @@ class SetConvState(View):
 
 
 class GetConvCounts(View):
-    sql = """
-    select json_build_object(
-      'states', states,
-      'labels', labels
-    ) from (
-      select coalesce(row_to_json(t), '{}') states
-      from (
-        select
-          count(*) filter (where inbox is true and deleted is not true and spam is not true) as inbox,
-          count(*) filter (where inbox is true and deleted is not true and spam is not true and seen is not true)
-            as inbox_unseen,
-
-          count(*) filter (where c.creator = $1 and publish_ts is null and deleted is not true) as draft,
-          count(*) filter (where c.creator = $1 and publish_ts is not null and deleted is not true) as sent,
-          count(*) filter (
-            where inbox is not true and deleted is not true and spam is not true and c.creator != $1
-          ) as archive,
-          count(*) as "all",
-          count(*) filter (where spam is true and deleted is not true) as spam,
-          count(*) filter (where spam is true and deleted is not true and seen is not true) as spam_unseen,
-          count(*) filter (where deleted is true) as deleted
-        from participants p
-        join conversations c on p.conv = c.id
-        where user_id = $1 and (c.publish_ts is not null or c.creator = $1)
-        limit 20000
-      ) t
-    ) states, (
-      select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as labels
-      from (
-        select l.id, name, color, description, count(p) as count
-        from labels l
-        left join participants p on label_ids @> array[l.id]
-        where l.user_id = $1
-        group by l.id
-        order by l.ordering, l.id
-      ) t
-    ) labels
+    labels_sql = """
+    select l.id, name, color, description
+    from labels l
+    left join participants p on label_ids @> array[l.id]
+    where l.user_id = $1
+    group by l.id
+    order by l.ordering, l.id
     """
 
     async def call(self):
-        # TODO cache these results
-        raw_json = await self.conn.fetchval(self.sql, self.session.user_id)
-        return raw_json_response(raw_json)
+        folders, label_counts = await get_conv_counts(self.session.user_id, conn=self.conn, redis=self.redis)
+        labels = [
+            dict(id=r[0], name=r[1], color=r[2], description=r[3], count=label_counts[str(r[0])])
+            for r in await self.conn.fetch(self.labels_sql, self.session.user_id)
+        ]
+        return json_response(folders=folders, labels=labels)
 
 
 class GetFile(View):

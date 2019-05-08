@@ -82,7 +82,7 @@ export default class Websocket {
 
     let clear_cache = false
     if (data.actions) {
-      await apply_actions(data, session.current.email)
+      await apply_actions(data)
       if (data.user_v - session.current.user_v !== 1) {
         // user_v has increased by more than one, we must have missed actions, everything could have changed
         clear_cache = true
@@ -132,7 +132,8 @@ export default class Websocket {
   }
 }
 
-async function apply_actions (data, session_email) {
+async function apply_actions (data) {
+  console.log('actions:', data)
   const actions = data.actions.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
 
   await session.db.actions.bulkPut(actions)
@@ -140,9 +141,12 @@ async function apply_actions (data, session_email) {
   const conv = await session.db.conversations.get(action.conv)
   const publish_action = actions.find(a => a.act === 'conv:publish')
 
-  const other_actor = Boolean(actions.find(a => a.actor !== session_email))
+  const other_actor = Boolean(actions.find(a => a.actor !== session.current.email))
+  const self_creator = data.conv_details.creator === session.current.email
   const real_act = Boolean(actions.find(a => !meta_action_types.has(a.act)))
   let notify_details = null
+
+  // FIXME all these counts might be wrong as we're assuming the conversation is actually new which it might not be
   const new_states = {}
   if (conv) {
     const update = {
@@ -162,7 +166,8 @@ async function apply_actions (data, session_email) {
 
     if (real_act) {
       update.updated_ts = action.ts
-      if (data.spam) {
+      if (data.spam && !conv.spam) {
+        update.spam = bool_int(data.spam)
         new_states.spam = session.current.states.spam + 1
         if (now_unseen) {
           new_states.spam_unseen = session.current.states.spam_unseen + 1
@@ -181,8 +186,12 @@ async function apply_actions (data, session_email) {
         }
       }
     }
-    if (publish_action) {
+    if (publish_action && !conv.publish_ts) {
       update.publish_ts = publish_action.ts
+      update.draft = 0
+      update.sent = 1
+      new_states.draft = session.current.states.draft - 1
+      new_states.sent = session.current.states.sent + 1
     }
     await session.db.conversations.update(action.conv, update)
   } else {
@@ -193,13 +202,18 @@ async function apply_actions (data, session_email) {
       publish_ts: publish_action ? publish_action.ts : null,
       last_action_id: action.id,
       details: data.conv_details,
-      inbox: bool_int(!data.spam),
+      sent: bool_int(self_creator && publish_action),
+      draft: bool_int(self_creator && !publish_action),
+      inbox: bool_int(!data.spam && other_actor),
       spam: bool_int(data.spam),
       seen: bool_int(!(other_actor && real_act)),
       label_ids: data.label_ids || [],
     }
     await session.db.conversations.add(conv_data)
-    if (conv_data.inbox) {
+
+    if (conv_data.draft) {
+      new_states.draft = session.current.states.draft + 1
+    } else if (conv_data.inbox) {
       new_states.inbox = session.current.states.inbox + 1
       if (!conv_data.seen) {
         new_states.inbox_unseen = session.current.states.inbox_unseen + 1
@@ -209,6 +223,10 @@ async function apply_actions (data, session_email) {
       if (!conv_data.seen) {
         new_states.spam_unseen = session.current.states.spam_unseen + 1
       }
+    }
+
+    if (conv_data.sent) {
+      new_states.sent = session.current.states.sent + 1
     }
 
     if (!conv_data.seen && !data.spam) {

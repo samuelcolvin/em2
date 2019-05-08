@@ -45,11 +45,17 @@ async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, ex
     assert 4 == await db_conn.fetchval('select count(*) from participants where user_id=$1', test_user.id)
 
     url = factory.url('ui:list', session_id=test_user.session_id, query=query)
-    r = await cli.get(str(url).replace('label1', str(label1)).replace('label2', str(label2)))
+    url = str(url).replace('label1', str(label1)).replace('label2', str(label2))
+    r = await cli.get(url)
     assert r.status == 200, await r.text()
     data = await r.json()
     response = [c['details']['sub'] for c in data['conversations']]
     assert response == expected, f'url: {url}, response: {response}'
+
+    r = await cli.get(url)
+    assert r.status == 200, await r.text()
+    data2 = await r.json()
+    assert data == data2
 
 
 async def test_label_counts(cli, factory: Factory, db_conn):

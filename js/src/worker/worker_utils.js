@@ -98,4 +98,4 @@ export function offset_limit (arr, page) {
   return arr.slice(offset, offset + per_page)
 }
 
-export const bool_int = b => b ? 1: 0
+export const bool_int = bool => bool ? 1: 0

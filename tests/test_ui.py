@@ -142,7 +142,6 @@ async def test_conv_list(cli, factory: Factory, db_conn):
     assert r.status == 200, await r.text()
     obj = await r.json()
     assert obj == {
-        'count': 1,
         'conversations': [
             {
                 'key': conv.key,
@@ -167,7 +166,7 @@ async def test_conv_list(cli, factory: Factory, db_conn):
                     'msgs': 1,
                 },
             }
-        ],
+        ]
     }
 
 

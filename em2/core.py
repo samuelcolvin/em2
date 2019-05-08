@@ -7,6 +7,7 @@ from datetime import datetime
 from enum import Enum, unique
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
+from aioredis import Redis
 from atoolbox import JsonErrors
 from bs4 import BeautifulSoup
 from buildpg import V
@@ -516,6 +517,17 @@ class _Act:
         return follows_pk, follows_act, follows_actor, follows_age
 
 
+class ConvFolders(str, Enum):
+    inbox = 'inbox'
+    unseen = 'unseen'
+    draft = 'draft'
+    sent = 'sent'
+    archive = 'archive'
+    all = 'all'
+    deleted = 'deleted'
+    spam = 'spam'
+
+
 async def apply_actions(
     conn: BuildPgConnection, settings: Settings, actor_user_id: int, conv_ref: StrInt, actions: List[ActionModel]
 ) -> Tuple[int, List[int]]:
@@ -533,7 +545,8 @@ async def apply_actions(
 
         for action in actions:
             action_id = await act_cls.run(action)
-            action_id and action_ids.append(action_id)
+            if action_id:
+                action_ids.append(action_id)
 
         if action_ids:
             # the actor is assumed to have seen the conversation as they've acted upon it
@@ -789,3 +802,58 @@ def message_preview(body: str, msg_format: MsgFormat) -> str:
     for regex, p in _clean_all:
         preview = regex.sub(p, preview)
     return textwrap.shorten(preview, width=140, placeholder='…')
+
+
+conv_folder_count_sql = """
+select
+  count(*) filter (where inbox is true and deleted is not true and spam is not true) as inbox,
+  count(*) filter (where inbox is true and deleted is not true and spam is not true and seen is not true) as unseen,
+
+  count(*) filter (where c.creator = $1 and publish_ts is null and deleted is not true) as draft,
+  count(*) filter (where c.creator = $1 and publish_ts is not null and deleted is not true) as sent,
+  count(*) filter (
+    where inbox is not true and deleted is not true and spam is not true and c.creator != $1
+  ) as archive,
+  count(*) as "all",
+  count(*) filter (where spam is true and deleted is not true) as spam,
+  count(*) filter (where deleted is true) as deleted
+from participants p
+join conversations c on p.conv = c.id
+where user_id = $1 and (c.publish_ts is not null or c.creator = $1)
+limit 20000
+"""
+
+conv_label_count_sql = """
+select l.id, count(p)
+from labels l
+left join participants p on label_ids @> array[l.id]
+where l.user_id = $1
+group by l.id
+order by l.ordering, l.id
+"""
+
+
+async def get_conv_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> Tuple[dict, dict]:
+    folder_key = f'conv-counts-folder-{user_id}'
+    folders = await redis.hgetall(folder_key)
+    if folders:
+        folders = {k: int(v) for k, v in folders.items()}
+    else:
+        folders = dict(await conn.fetchrow(conv_folder_count_sql, user_id))
+        tr = redis.multi_exec()
+        tr.hmset_dict(folder_key, folders)
+        tr.expire(folder_key, 86400)
+        await tr.execute()
+
+    label_key = f'conv-counts-labels-{user_id}'
+    labels = await redis.hgetall(label_key)
+    if labels:
+        labels = {k: int(v) for k, v in labels.items()}
+    else:
+        labels = {str(k): v for k, v in await conn.fetch(conv_label_count_sql, user_id)}
+        if labels:
+            tr = redis.multi_exec()
+            tr.hmset_dict(label_key, labels)
+            tr.expire(label_key, 86400)
+            await tr.execute()
+    return folders, labels

@@ -100,22 +100,12 @@ async def test_conv_set_state_spam(cli, factory: Factory, db_conn, conv):
     assert await db_conn.fetchval('select spam from participants where user_id=$1', u_id) is None
 
 
-async def test_conv_set_state_counts_blank(cli, factory: Factory, db_conn):
+async def test_conv_set_state_counts_blank(cli, factory: Factory):
     await factory.create_user()
     r = await cli.get(factory.url('ui:conv-counts'))
     assert r.status == 200, await r.text()
     assert await r.json() == {
-        'states': {
-            'inbox': 0,
-            'inbox_unseen': 0,
-            'draft': 0,
-            'sent': 0,
-            'archive': 0,
-            'all': 0,
-            'spam': 0,
-            'spam_unseen': 0,
-            'deleted': 0,
-        },
+        'folders': {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 0, 'spam': 0, 'deleted': 0},
         'labels': [],
     }
 
@@ -128,22 +118,12 @@ async def test_conv_set_state_counts_creator(cli, factory: Factory):
     r = await cli.get(factory.url('ui:conv-counts'))
     assert r.status == 200, await r.text()
     assert await r.json() == {
-        'states': {
-            'inbox': 0,
-            'inbox_unseen': 0,
-            'draft': 1,
-            'sent': 1,
-            'archive': 0,
-            'all': 2,
-            'spam': 0,
-            'spam_unseen': 0,
-            'deleted': 0,
-        },
+        'folders': {'inbox': 0, 'unseen': 0, 'draft': 1, 'sent': 1, 'archive': 0, 'all': 2, 'spam': 0, 'deleted': 0},
         'labels': [],
     }
 
 
-async def test_conv_set_state_counts(cli, factory: Factory, db_conn):
+async def test_conv_set_state_counts(cli, factory: Factory, db_conn, redis):
     await factory.create_user()
 
     await factory.create_conv()
@@ -167,20 +147,11 @@ async def test_conv_set_state_counts(cli, factory: Factory, db_conn):
     await db_conn.execute('update participants set inbox=null, spam=true, seen=true where conv=$1', conv_arch_spam.id)
     await db_conn.execute('update participants set spam=true, seen=null where conv=$1', conv_arch_spam_unseen.id)
 
+    await redis.delete('conv-counts*')
     r = await cli.get(factory.url('ui:conv-counts', session_id=new_user.session_id))
     assert r.status == 200, await r.text()
     assert await r.json() == {
-        'states': {
-            'inbox': 3,
-            'inbox_unseen': 1,
-            'draft': 0,
-            'sent': 0,
-            'archive': 1,
-            'all': 7,
-            'spam': 2,
-            'spam_unseen': 1,
-            'deleted': 1,
-        },
+        'folders': {'inbox': 3, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 1, 'all': 7, 'spam': 2, 'deleted': 1},
         'labels': [],
     }
 
@@ -195,15 +166,14 @@ def query_display(v):
 @pytest.mark.parametrize(
     'query, expected',
     [
-        ({}, ['anne', 'ben', 'charlie', 'dave', 'ed', 'fred']),
-        ({'state': 'inbox'}, ['charlie']),
-        ({'state': 'spam'}, ['anne']),
-        ({'state': 'archive'}, ['ben']),
-        ({'seen': 'false'}, ['anne', 'ben', 'dave']),
-        ({'seen': 'true'}, ['charlie', 'ed', 'fred']),
-        ({'state': 'deleted'}, ['dave']),
-        ({'state': 'draft'}, ['ed']),
-        ({'state': 'sent'}, ['fred']),
+        ({}, ['anne', 'ben', 'charlie', 'dave', 'ed', 'fred', 'george']),
+        ({'folder': 'inbox'}, ['charlie', 'george']),
+        ({'folder': 'spam'}, ['anne']),
+        ({'folder': 'archive'}, ['ben']),
+        ({'folder': 'unseen'}, ['charlie']),
+        ({'folder': 'deleted'}, ['dave']),
+        ({'folder': 'draft'}, ['ed']),
+        ({'folder': 'sent'}, ['fred']),
     ],
     ids=query_display,
 )
@@ -220,7 +190,7 @@ async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, ex
     await db_conn.execute('update participants set inbox=false where conv=$1', conv_ben.id)
 
     conv_charlie = await factory.create_conv(subject='charlie', participants=prts, publish=True)
-    await db_conn.execute('update participants set seen=true where conv=$1', conv_charlie.id)
+    await db_conn.execute('update participants set seen=false where conv=$1', conv_charlie.id)
 
     conv_dave = await factory.create_conv(subject='dave', participants=prts, publish=True)
     await db_conn.execute('update participants set deleted=true where conv=$1', conv_dave.id)
@@ -228,8 +198,11 @@ async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, ex
     await factory.create_conv(subject='ed', session_id=test_user.session_id)
     await factory.create_conv(subject='fred', session_id=test_user.session_id, publish=True)
 
-    assert 6 == await db_conn.fetchval('select count(*) from conversations')
-    assert 6 == await db_conn.fetchval('select count(*) from participants where user_id=$1', test_user.id)
+    conv_george = await factory.create_conv(subject='george', participants=prts, publish=True)
+    await db_conn.execute('update participants set seen=true where conv=$1', conv_george.id)
+
+    assert 7 == await db_conn.fetchval('select count(*) from conversations')
+    assert 7 == await db_conn.fetchval('select count(*) from participants where user_id=$1', test_user.id)
 
     url = factory.url('ui:list', session_id=test_user.session_id, query=query)
     r = await cli.get(url)
@@ -238,10 +211,14 @@ async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, ex
     response = [c['details']['sub'] for c in data['conversations']]
     assert response == expected, f'url: {url}, response: {response}'
 
+    r = await cli.get(url)
+    assert r.status == 200, await r.text()
+    data2 = await r.json()
+    assert data == data2
+
     if query:
         return
     # all case check results
-    assert data['count'] == 6
     d = {
         c['details']['sub']: {
             'seen': c['seen'],
@@ -256,8 +233,9 @@ async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, ex
     assert d == {
         'anne': {'seen': False, 'inbox': False, 'deleted': False, 'spam': True, 'draft': False, 'sent': False},
         'ben': {'seen': False, 'inbox': False, 'deleted': False, 'spam': False, 'draft': False, 'sent': False},
-        'charlie': {'seen': True, 'inbox': True, 'deleted': False, 'spam': False, 'draft': False, 'sent': False},
+        'charlie': {'seen': False, 'inbox': True, 'deleted': False, 'spam': False, 'draft': False, 'sent': False},
         'dave': {'seen': False, 'inbox': False, 'deleted': True, 'spam': False, 'draft': False, 'sent': False},
         'ed': {'seen': True, 'inbox': False, 'deleted': False, 'spam': False, 'draft': True, 'sent': False},
         'fred': {'seen': True, 'inbox': False, 'deleted': False, 'spam': False, 'draft': False, 'sent': True},
+        'george': {'seen': True, 'inbox': True, 'deleted': False, 'spam': False, 'draft': False, 'sent': False},
     }
