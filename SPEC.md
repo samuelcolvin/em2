@@ -363,16 +363,22 @@ on that component
 
 Other actions shouldn't care at all what order they happen in
 
+# Conversation States
+
+States are system labels
+
+* `inbox`: has "inbox", doesn't have "deleted" or "spam"
+* `draft`: created by me and not published
+* `sent`: created by me and published
+* `archive`: doesn't have "inbox", "spam" or "deleted" set - isn't created by me
+* `spam`: has "spam" set but not "deleted"
+* `deleted`: has "deleted" set
+
+Some labels have special effects, eg. "mute" labels prevent inbox being set, but don't effect the logic above.
+
+Marking conversations as spam or deleted doesn't remove inbox, so if you "un-delete" they go back to inbox.
+
 # Labels
-
-Special labels:
-* inbox
-* draft
-* deleted
-* spam
-* sent eg. created by me
-
-everything without one of those is archive except sent which is also archive,
 
 Team labels are just labels that can be seen by everyone in a team. Does not apply to special labels.
 
@@ -380,7 +386,7 @@ if one member of a team adds a label it can be seen by all.
 
 User Label fields:
 * name
-* machine-name
+* machine-name (eg. `muted`)
 * ordering (for left menu)
 * description
 * colour

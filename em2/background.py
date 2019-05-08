@@ -54,18 +54,19 @@ class Background:
         if self.connections:
             data = ujson.loads(msg)
             coros = []
-            users = data.pop('users')
-            # hack to avoid building json for every user, remove the ending "}" so user_v can be appended
+            participants = data.pop('participants')
+            # hack to avoid building json for every user, remove the ending "}" so extra json can be appended
             msg_json_chunk = ujson.dumps(data)[:-1]
-            for user_id, user_v in users:
+            for p in participants:
+                user_id = p.pop('user_id')
                 wss = self.connections.get(user_id)
                 if wss is not None:
-                    coros.append(self.send(user_id, user_v, wss, msg_json_chunk))
+                    coros.append(self.send(user_id, p, wss, msg_json_chunk))
 
             await asyncio.gather(*coros)
 
-    async def send(self, user_id: int, user_v: int, wss: List[WebSocketResponse], msg_json_chunk: str):
-        msg = msg_json_chunk + (',"user_v":%d}' % user_v)
+    async def send(self, user_id: int, participant: dict, wss: List[WebSocketResponse], msg_json_chunk: str):
+        msg = msg_json_chunk + ',' + ujson.dumps(participant)[1:]
         for ws in wss:
             try:
                 await ws.send_str(msg)
@@ -76,13 +77,13 @@ class Background:
 
 local_users_sql = """
 select json_build_object(
-  'users', participants,
+  'participants', participants,
   'conv_details', conv_details
 )
 from (
-  select array_to_json(array_agg(t.a)) as participants
+  select array_to_json(array_agg(json_strip_nulls(row_to_json(t)))) as participants
   from (
-    select array[p.user_id, u.v] as a
+    select p.user_id, p.spam, p.label_ids as labels, u.v user_v
     from participants as p
     join conversations as c on p.conv = c.id
     join users as u on p.user_id = u.id

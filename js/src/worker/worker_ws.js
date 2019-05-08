@@ -147,6 +147,12 @@ async function apply_actions (data, session_email) {
     const update = {
       last_action_id: action.id,
       details: data.conv_details,
+      spam: data.spam || false,
+      label_ids: data.label_ids || [],
+    }
+    if (!data.spam) {
+      update.inbox = true
+      update.deleted = false
     }
     if (real_act) {
       update.updated_ts = action.ts
@@ -154,7 +160,7 @@ async function apply_actions (data, session_email) {
     if (publish_action) {
       update.publish_ts = publish_action.ts
     }
-    if (other_actor && real_act) {
+    if (other_actor && real_act && !data.spam) {
       update.seen = false
       notify_details = conv.details
     }
@@ -168,9 +174,12 @@ async function apply_actions (data, session_email) {
       publish_ts: publish_action ? publish_action.ts : null,
       last_action_id: action.id,
       details: data.conv_details,
+      inbox: !data.spam,
+      spam: data.spam || false,
       seen: !unseen,
+      label_ids: data.label_ids || [],
     })
-    if (unseen) {
+    if (unseen && !data.spam) {
       notify_details = data.conv_details
     }
     const old_conv = await session.db.conversations.get({new_key: action.conv})

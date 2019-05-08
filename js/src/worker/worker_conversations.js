@@ -130,12 +130,13 @@ const P = 50  // list pagination
 
 async function list_conversations (data) {
   const page = data.page
+  const state = data.state
   let status = await get_conn_status()
   if (!session.current) {
     return {}
   }
   if (status === statuses.online) {
-    const cache_key = `page-${data.page}`
+    const cache_key = `page-${state}-${page}`
     if (!session.current.cache.has(cache_key)) {
       const r = await requests.get('ui', `/${session.id}/conv/list/`, {args: {page}})
       const conversations = r.data.conversations.map(c => (
