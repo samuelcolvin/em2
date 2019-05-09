@@ -545,6 +545,7 @@ async def apply_actions(
     """
     action_ids = []
     act_cls = _Act(conn, settings, actor_user_id)
+    actor_user_id_seen = None
     from_deleted, from_archive, already_inbox = [], [], []
     async with conn.transaction():
         # IMPORTANT we do nothing that could be slow (eg. networking) inside this transaction,
@@ -558,7 +559,11 @@ async def apply_actions(
 
         if action_ids:
             # the actor is assumed to have seen the conversation as they've acted upon it
-            await conn.execute('update participants set seen=true where conv=$1 and user_id=$2', conv_id, actor_user_id)
+            actor_user_id_seen = await conn.fetchval(
+                'update participants set seen=true where conv=$1 and user_id=$2 and seen is not true returning user_id',
+                conv_id,
+                actor_user_id,
+            )
             # everyone else hasn't seen this action if it's "worth seeing"
             if any(a.act not in _meta_action_types for a in actions):
                 # TODO we'll also need to exclude muted conversations from being moved, while still setting seen=false
@@ -602,8 +607,8 @@ async def apply_actions(
                 )
             await update_conv_users(conn, conv_id)
 
-    # TODO someone increment inbox and all for new participants
-    updates = (
+    # TODO increment inbox and all for new participants
+    updates = [
         *(
             UpdateFlag(u_id, [(ConvFlags.deleted, -1), (ConvFlags.inbox, 1), (ConvFlags.unseen, 1)])
             for u_id in from_deleted
@@ -613,8 +618,11 @@ async def apply_actions(
             for u_id in from_archive
         ),
         *(UpdateFlag(u_id, [(ConvFlags.unseen, 1)]) for u_id in already_inbox),
-    )
-    await update_conv_flags(*updates, redis=redis)
+    ]
+    if actor_user_id_seen:
+        updates.append(UpdateFlag(actor_user_id_seen, [(ConvFlags.unseen, -1)]))
+    if updates:
+        await update_conv_flags(*updates, redis=redis)
     return conv_id, action_ids
 
 
@@ -897,16 +905,15 @@ order by l.ordering, l.id
 """
 
 
-def flags_count_key(user_id):
+def _flags_count_key(user_id: int):
     return f'conv-counts-flags-{user_id}'
 
 
-async def get_conv_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> Tuple[dict, dict]:
+async def get_flag_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> dict:
     """
-    Get counts for participant flags and labels. Data is cached to redis hashes and retrieved from the
-    cache if it exists.
+    Get counts for participant flags. Data is cached to a redis hash and retrieved from there if it exists.
     """
-    flag_key = flags_count_key(user_id)
+    flag_key = _flags_count_key(user_id)
     flags = await redis.hgetall(flag_key)
     if flags:
         flags = {k: int(v) for k, v in flags.items()}
@@ -916,19 +923,7 @@ async def get_conv_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> 
         tr.hmset_dict(flag_key, flags)
         tr.expire(flag_key, 86400)
         await tr.execute()
-
-    label_key = f'conv-counts-labels-{user_id}'
-    labels = await redis.hgetall(label_key)
-    if labels:
-        labels = {k: int(v) for k, v in labels.items()}
-    else:
-        labels = {str(k): v for k, v in await conn.fetch(conv_label_count_sql, user_id)}
-        if labels:
-            tr = redis.multi_exec()
-            tr.hmset_dict(label_key, labels)
-            tr.expire(label_key, 86400)
-            await tr.execute()
-    return flags, labels
+    return flags
 
 
 @dataclass
@@ -943,8 +938,30 @@ async def update_conv_flags(*updates: UpdateFlag, redis: Redis):
     """
 
     async def update(u: UpdateFlag):
-        key = flags_count_key(u.user_id)
+        key = _flags_count_key(u.user_id)
         if await redis.exists(key):
             await asyncio.gather(redis.expire(key, 86400), *(redis.hincrby(key, c[0].value, c[1]) for c in u.changes))
 
     await asyncio.gather(*(update(u) for u in updates))
+
+
+def _label_count_key(user_id: int):
+    return f'conv-counts-labels-{user_id}'
+
+
+async def get_label_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> dict:
+    """
+    Get counts for labels. Data is cached to a redis hash and retrieved from there if it exists.
+    """
+    label_key = _label_count_key(user_id)
+    labels = await redis.hgetall(label_key)
+    if labels:
+        labels = {k: int(v) for k, v in labels.items()}
+    else:
+        labels = {str(k): v for k, v in await conn.fetch(conv_label_count_sql, user_id)}
+        if labels:
+            tr = redis.multi_exec()
+            tr.hmset_dict(label_key, labels)
+            tr.expire(label_key, 86400)
+            await tr.execute()
+    return labels

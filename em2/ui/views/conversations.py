@@ -18,8 +18,9 @@ from em2.core import (
     conv_actions_json,
     create_conv,
     generate_conv_key,
-    get_conv_counts,
     get_conv_for_user,
+    get_flag_counts,
+    get_label_counts,
     update_conv_flags,
     update_conv_users,
 )
@@ -276,8 +277,8 @@ class SetConvFlag(View):
             """,
             participant_id,
         )
-        flags_count, _ = await get_conv_counts(self.session.user_id, conn=self.conn, redis=self.redis)
-        return json_response(conv=dict(conv_flags), counts=flags_count)
+        counts = await get_flag_counts(self.session.user_id, conn=self.conn, redis=self.redis)
+        return json_response(conv_flags=dict(conv_flags), counts=counts)
 
     @staticmethod  # noqa: 901
     def get_update_values(flag: SetFlags, inbox: bool, seen: bool, deleted: bool, spam: bool) -> Tuple[SetValues, list]:
@@ -347,7 +348,8 @@ class GetConvCounts(View):
     """
 
     async def call(self):
-        flags, label_counts = await get_conv_counts(self.session.user_id, conn=self.conn, redis=self.redis)
+        flags = await get_flag_counts(self.session.user_id, conn=self.conn, redis=self.redis)
+        label_counts = await get_label_counts(self.session.user_id, conn=self.conn, redis=self.redis)
         labels = [
             dict(id=r[0], name=r[1], color=r[2], description=r[3], count=label_counts[str(r[0])])
             for r in await self.conn.fetch(self.labels_sql, self.session.user_id)
