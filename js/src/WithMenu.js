@@ -64,7 +64,7 @@ class LeftMenu_ extends React.Component {
   render () {
     const s = this.props.ctx.menu_item
     return (
-      <div>
+      <div className="left-menu">
         <div className="box no-pad">
           <ListGroup>
             <ListGroupItem

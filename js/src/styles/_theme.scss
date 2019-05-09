@@ -54,6 +54,13 @@ body {
   }
 }
 
+.left-menu {
+  $menu-transition-time: 300ms;
+  .list-group-item ,.badge {
+    transition: background-color $menu-transition-time ease, color $menu-transition-time ease;
+  }
+}
+
 .participants-input {
   .rbt-token {
     width: 100%;

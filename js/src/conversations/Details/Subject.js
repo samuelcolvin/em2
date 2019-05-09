@@ -12,6 +12,8 @@ import {
   DropdownMenu,
   DropdownItem,
 } from 'reactstrap'
+import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, AsModal} from 'reactstrap-toolbox'
 
 
@@ -71,43 +73,49 @@ class EditSubject_ extends React.Component {
 
 const EditSubject = AsModal(WithContext(EditSubject_))
 
-export default ({conv_state, lock_subject, set_subject, release_subject}) => (
-  <div>
-    <div className="box d-flex justify-content-between">
-      <div className="align-self-center">
-        <h2 className="conv-title">{conv_state.conv.subject}</h2>
-      </div>
-      <div>
-        <ButtonGroup>
-          <Button color="primary"
-                  tag={Link}
-                  to="./edit-subject/"
-                  disabled={!!(conv_state.locked || conv_state.comment_parent || conv_state.new_message)}>
-            Edit Subject
-          </Button>
+export default ({conv_state, lock_subject, set_subject, release_subject}) => {
+  const btns_disabled = Boolean(conv_state.locked || conv_state.comment_parent || conv_state.new_message)
+  return (
+    <div>
+      <div className="box d-flex justify-content-between">
+        <div className="align-self-center">
+          <h2 className="conv-title">{conv_state.conv.subject}</h2>
+        </div>
+        <div>
+          <ButtonGroup>
+            <Button color="primary" disabled={btns_disabled}>
+              <FontAwesomeIcon icon={fas.faArchive} className="mr-2"/> Archive
+            </Button>
+            <Button color="warning" disabled={btns_disabled}>
+              <FontAwesomeIcon icon={fas.faTrash} className="mr-2"/>  Delete
+            </Button>
+            <Button color="danger" disabled={btns_disabled}>
+              <FontAwesomeIcon icon={fas.faRadiation} className="mr-2"/> Spam
+            </Button>
 
-          <UncontrolledButtonDropdown>
-            <DropdownToggle color="primary" caret>
-              More
-            </DropdownToggle>
-            <DropdownMenu>
-              <DropdownItem>Thing one</DropdownItem>
-              <DropdownItem>Thing two</DropdownItem>
-              <DropdownItem>Thing three</DropdownItem>
-            </DropdownMenu>
-          </UncontrolledButtonDropdown>
-        </ButtonGroup>
-      </div>
-  </div>
+            <UncontrolledButtonDropdown>
+              <DropdownToggle caret>
+                More
+              </DropdownToggle>
+              <DropdownMenu right>
+                <DropdownItem  tag={Link} to="./edit-subject/" disabled={btns_disabled}>
+                  Edit Subject
+                </DropdownItem>
+              </DropdownMenu>
+            </UncontrolledButtonDropdown>
+          </ButtonGroup>
+        </div>
+    </div>
 
-  <EditSubject
-    subject={conv_state.conv.subject}
-    set_subject={set_subject}
-    lock_subject={lock_subject}
-    release_subject={release_subject}
-    title="Edit Subject"
-    regex={/edit-subject\/$/}
-    className="simplified-modal"
-  />
-  </div>
-)
+    <EditSubject
+      subject={conv_state.conv.subject}
+      set_subject={set_subject}
+      lock_subject={lock_subject}
+      release_subject={release_subject}
+      title="Edit Subject"
+      regex={/edit-subject\/$/}
+      className="simplified-modal"
+    />
+    </div>
+  )
+}
