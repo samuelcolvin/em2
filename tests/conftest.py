@@ -14,7 +14,7 @@ from aiohttp import ClientSession, ClientTimeout
 from aiohttp.test_utils import teardown_test_loop
 from aioredis import create_redis
 from arq import ArqRedis, Worker
-from atoolbox.db.helpers import SimplePgPool
+from atoolbox.db.helpers import DummyPgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
 from buildpg import Values
 from PIL import Image, ImageDraw
@@ -108,7 +108,7 @@ async def redis(loop, settings):
 
 
 async def pre_startup_app(app):
-    app['pg'] = SimplePgPool(app['test_conn'])
+    app['pg'] = DummyPgPool(app['test_conn'])
 
 
 @pytest.fixture(name='cli')
@@ -265,7 +265,7 @@ async def _fix_worker(redis, settings, db_conn):
     session = ClientSession(timeout=ClientTimeout(total=10))
     ctx = dict(
         settings=settings,
-        pg=SimplePgPool(db_conn),
+        pg=DummyPgPool(db_conn),
         session=session,
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
@@ -284,7 +284,7 @@ async def _fix_ses_worker(redis, settings, db_conn):
     session = ClientSession(timeout=ClientTimeout(total=10))
     ctx = dict(
         settings=settings,
-        pg=SimplePgPool(db_conn),
+        pg=DummyPgPool(db_conn),
         session=session,
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
