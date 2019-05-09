@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
 from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
@@ -12,6 +12,7 @@ from em2.core import (
     ActionModel,
     ConvFlags,
     CreateConvModel,
+    UpdateFlag,
     apply_actions,
     construct_conv,
     conv_actions_json,
@@ -19,6 +20,7 @@ from em2.core import (
     generate_conv_key,
     get_conv_counts,
     get_conv_for_user,
+    update_conv_flags,
     update_conv_users,
 )
 from em2.utils.datetime import utcnow
@@ -40,6 +42,7 @@ class ConvList(View):
         select c.key, c.created_ts, c.updated_ts, c.publish_ts, c.last_action_id, c.details,
           p.seen is true seen,
           (p.inbox is true and p.deleted is not true and p.spam is not true) inbox,
+          -- TODO (p.inbox is not true and p.deleted is not true and p.spam is not true) archive,
           p.deleted is true deleted,
           p.spam is true spam,
           c.publish_ts is null draft,
@@ -228,7 +231,7 @@ class ConvPublish(ExecView):
             await self.add_msg(msg, conv_id, ts, pk)
 
 
-class States(str, Enum):
+class SetFlags(str, Enum):
     archive = 'archive'
     inbox = 'inbox'
     delete = 'delete'
@@ -237,54 +240,100 @@ class States(str, Enum):
     ham = 'ham'
 
 
-class SetConvState(View):
-    class StateQueryModel(BaseModel):
-        state: States
+class SetConvFlag(View):
+    class QueryModel(BaseModel):
+        flag: SetFlags
 
     async def call(self):
-        state = parse_request_query(self.request, self.StateQueryModel).state
+        flag = parse_request_query(self.request, self.QueryModel).flag
         conv_id, _ = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
         async with self.conn.transaction():
-            participant_id, inbox, deleted, spam = await self.conn.fetchrow(
-                'select id, inbox, deleted, spam from participants where conv=$1 and user_id=$2 for no key update',
+            participant_id, inbox, seen, deleted, spam, self_created = await self.conn.fetchrow(
+                """
+                select p.id, inbox, seen, deleted, spam, c.creator = $2
+                from participants p
+                join conversations c on p.conv = c.id
+                where conv=$1 and user_id=$2 for no key update
+                """,
                 conv_id,
                 self.session.user_id,
             )
+            if self_created:
+                raise JsonErrors.HTTPBadRequest('you cannot change labels on conversations you sent')
 
-            values = self.get_update_values(state, inbox, deleted, spam)
+            values, changes = self.get_update_values(flag, inbox, seen, deleted, spam)
             await self.conn.execute_b('update participants set :values where id=:id', values=values, id=participant_id)
-        # TODO return new states so js can update the local db
-        return raw_json_response('{"status": "ok"}')
+        await update_conv_flags(UpdateFlag(self.session.user_id, filter(bool, changes)), redis=self.redis)
+
+        conv_flags = await self.conn.fetchrow(
+            """
+            select
+              (inbox is true and deleted is not true and spam is not true) inbox,
+              (inbox is not true and deleted is not true and spam is not true) archive,
+              deleted is true deleted, spam is true spam
+            from participants
+            where id=$1
+            """,
+            participant_id,
+        )
+        flags_count, _ = await get_conv_counts(self.session.user_id, conn=self.conn, redis=self.redis)
+        return json_response(conv=dict(conv_flags), counts=flags_count)
 
     @staticmethod  # noqa: 901
-    def get_update_values(state: States, inbox: bool, deleted: bool, spam: bool) -> SetValues:
-        if state is States.archive:
-            if not inbox or deleted or spam:
+    def get_update_values(flag: SetFlags, inbox: bool, seen: bool, deleted: bool, spam: bool) -> Tuple[SetValues, list]:
+        if flag is SetFlags.archive:
+            if not (inbox and not deleted and not spam):
                 raise JsonErrors.HTTPConflict('conversation not in inbox')
-            return SetValues(inbox=None)
-        elif state is States.inbox:
+            changes = [(ConvFlags.inbox, -1), (ConvFlags.archive, 1), not seen and (ConvFlags.unseen, -1)]
+            return SetValues(inbox=None), changes
+        elif flag is SetFlags.inbox:
             if inbox:
                 raise JsonErrors.HTTPConflict('conversation already in inbox')
             elif deleted or spam:
                 raise JsonErrors.HTTPConflict('deleted or spam conversation cannot be moved to inbox')
-            return SetValues(inbox=True)
-        elif state is States.delete:
+            changes = [(ConvFlags.archive, -1), (ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1)]
+            return SetValues(inbox=True), changes
+        elif flag is SetFlags.delete:
             if deleted:
                 raise JsonErrors.HTTPConflict('conversation already deleted')
-            return SetValues(deleted=True, deleted_ts=funcs.now())
-        elif state is States.restore:
+            if inbox:
+                changes = [(ConvFlags.inbox, -1), not seen and (ConvFlags.unseen, -1), (ConvFlags.deleted, 1)]
+            elif spam:
+                changes = [(ConvFlags.spam, -1), (ConvFlags.deleted, 1)]
+            else:
+                changes = [(ConvFlags.archive, -1), (ConvFlags.deleted, 1)]
+            return SetValues(deleted=True, deleted_ts=funcs.now()), changes
+        elif flag is SetFlags.restore:
             if not deleted:
                 raise JsonErrors.HTTPConflict('conversation not deleted')
-            return SetValues(deleted=None, deleted_ts=None)
-        elif state is States.spam:
+            if inbox:
+                changes = [(ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1), (ConvFlags.deleted, -1)]
+            elif spam:
+                changes = [(ConvFlags.spam, 1), (ConvFlags.deleted, -1)]
+            else:
+                changes = [(ConvFlags.archive, 1), (ConvFlags.deleted, -1)]
+            return SetValues(deleted=None, deleted_ts=None), changes
+        elif flag is SetFlags.spam:
             if spam:
                 raise JsonErrors.HTTPConflict('conversation already spam')
-            return SetValues(spam=True)
+            if inbox:
+                changes = [(ConvFlags.inbox, -1), not seen and (ConvFlags.unseen, -1), (ConvFlags.spam, 1)]
+            elif deleted:
+                changes = [(ConvFlags.spam, 1)]
+            else:
+                changes = [(ConvFlags.archive, -1), (ConvFlags.spam, 1)]
+            return SetValues(spam=True), changes
         else:
-            assert state is States.ham, state
+            assert flag is SetFlags.ham, flag
             if not spam:
                 raise JsonErrors.HTTPConflict('conversation not spam')
-            return SetValues(spam=None)
+            if inbox:
+                changes = [(ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1), (ConvFlags.spam, -1)]
+            elif deleted:
+                changes = [(ConvFlags.spam, -1)]
+            else:
+                changes = [(ConvFlags.archive, 1), (ConvFlags.spam, -1)]
+            return SetValues(spam=None), changes
 
 
 class GetConvCounts(View):

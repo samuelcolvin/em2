@@ -363,9 +363,9 @@ on that component
 
 Other actions shouldn't care at all what order they happen in
 
-# Conversation States
+# Conversation Flags
 
-States are system labels
+Flags are system labels
 
 * `inbox`: has "inbox", doesn't have "deleted" or "spam"
 * `draft`: created by me and not published and not deleted
@@ -373,6 +373,18 @@ States are system labels
 * `archive`: doesn't have "inbox", "spam" or "deleted" set, isn't created by me
 * `spam`: has "spam" set but not "deleted"
 * `deleted`: has "deleted" set
+
+To choose folder:
+
+* if sent by me: `sent` or `draft`
+* `deleted`: has "deleted",
+* else `spam` if "spam",
+* else `inbox` if "inbox",
+* else `archive`
+
+Which folder is not the same as which flags are set, eg. something can have "spam" but be in deted
+
+TODO muted: doesn't get inbox set and unseen doesn't get incremented
 
 Some labels have special effects, eg. "mute" labels prevent inbox being set, but don't effect the logic above.
 

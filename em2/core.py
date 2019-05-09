@@ -4,9 +4,10 @@ import json
 import re
 import secrets
 import textwrap
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, unique
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from aioredis import Redis
 from atoolbox import JsonErrors
@@ -601,12 +602,19 @@ async def apply_actions(
                 )
             await update_conv_users(conn, conv_id)
 
-    coros = [update_conv_flags(u_id, ConvFlags.deleted, -1, redis=redis) for u_id in from_deleted]
-    for user_ids in (from_deleted, from_archive):
-        coros += [update_conv_flags(u_id, ConvFlags.inbox, 1, redis=redis) for u_id in user_ids]
-    for user_ids in (from_deleted, from_archive, already_inbox):
-        coros += [update_conv_flags(u_id, ConvFlags.unseen, 1, redis=redis) for u_id in user_ids]
-    await asyncio.gather(*coros)
+    # TODO someone increment inbox and all for new participants
+    updates = (
+        *(
+            UpdateFlag(u_id, [(ConvFlags.deleted, -1), (ConvFlags.inbox, 1), (ConvFlags.unseen, 1)])
+            for u_id in from_deleted
+        ),
+        *(
+            UpdateFlag(u_id, [(ConvFlags.archive, -1), (ConvFlags.inbox, 1), (ConvFlags.unseen, 1)])
+            for u_id in from_archive
+        ),
+        *(UpdateFlag(u_id, [(ConvFlags.unseen, 1)]) for u_id in already_inbox),
+    )
+    await update_conv_flags(*updates, redis=redis)
     return conv_id, action_ids
 
 
@@ -814,18 +822,16 @@ async def create_conv(
         )
         await update_conv_users(conn, conv_id)
 
-    coros = (
-        update_conv_flags(creator_id, ConvFlags.sent, 1, redis=redis),
-        update_conv_flags(creator_id, ConvFlags.draft, -1, redis=redis),
-        *(update_conv_flags(u_id, ConvFlags.inbox, 1, redis=redis) for u_id in other_user_ids),
-        *(update_conv_flags(u_id, ConvFlags.unseen, 1, redis=redis) for u_id in other_user_ids),
+    updates = (
+        UpdateFlag(creator_id, [(ConvFlags.sent, 1), (ConvFlags.draft, -1)]),
+        *(UpdateFlag(u_id, [(ConvFlags.inbox, 1), (ConvFlags.unseen, 1)]) for u_id in other_user_ids),
     )
-    await asyncio.gather(*coros)
+    await update_conv_flags(*updates, redis=redis)
     return conv_id, conv_key
 
 
 _clean_markdown = [
-    (re.compile(r'\<.*?\>', flags=re.S), ''),
+    (re.compile(r'<.*?>', flags=re.S), ''),
     (re.compile(r'_(\S.*?\S)_'), r'\1'),
     (re.compile(r'\[(.+?)\]\(.*?\)'), r'\1'),
     (re.compile(r'(\*\*|`)'), ''),
@@ -878,7 +884,7 @@ select
 from participants p
 join conversations c on p.conv = c.id
 where user_id = $1 and (c.publish_ts is not null or c.creator = $1)
-limit 20000
+limit 9999
 """
 
 conv_label_count_sql = """
@@ -891,8 +897,16 @@ order by l.ordering, l.id
 """
 
 
+def flags_count_key(user_id):
+    return f'conv-counts-flags-{user_id}'
+
+
 async def get_conv_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> Tuple[dict, dict]:
-    flag_key = f'conv-counts-flag-{user_id}'
+    """
+    Get counts for participant flags and labels. Data is cached to redis hashes and retrieved from the
+    cache if it exists.
+    """
+    flag_key = flags_count_key(user_id)
     flags = await redis.hgetall(flag_key)
     if flags:
         flags = {k: int(v) for k, v in flags.items()}
@@ -917,7 +931,20 @@ async def get_conv_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> 
     return flags, labels
 
 
-async def update_conv_flags(user_id, flag: ConvFlags, incr: int, *, redis: Redis):
-    key = f'conv-counts-flag-{user_id}'
-    if await redis.exists(key):
-        await redis.hincrby(key, flag.value, incr)
+@dataclass
+class UpdateFlag:
+    user_id: int
+    changes: Iterable[Tuple[ConvFlags, int]]
+
+
+async def update_conv_flags(*updates: UpdateFlag, redis: Redis):
+    """
+    Increment or decrement counts for participant flags if they exist in the cache, also extends cache expiry.
+    """
+
+    async def update(u: UpdateFlag):
+        key = flags_count_key(u.user_id)
+        if await redis.exists(key):
+            await asyncio.gather(redis.expire(key, 86400), *(redis.hincrby(key, c[0].value, c[1]) for c in u.changes))
+
+    await asyncio.gather(*(update(u) for u in updates))

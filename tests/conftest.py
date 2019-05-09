@@ -227,7 +227,7 @@ class Factory:
         return r1, r2
 
     async def create_conv(
-        self, subject='Test Subject', message='Test Message', session_id=None, participants=[], publish=False
+        self, subject='Test Subject', message='Test Message', session_id=None, participants=(), publish=False
     ) -> Conv:
         data = {'subject': subject, 'message': message, 'publish': publish, 'participants': participants}
         r = await self.cli.post_json(self.url('ui:create', session_id=session_id or self.user.session_id), data)
