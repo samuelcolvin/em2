@@ -297,30 +297,31 @@ class SetConvFlag(View):
         elif flag is SetFlags.delete:
             if deleted:
                 raise JsonErrors.HTTPConflict('conversation already deleted')
-            if inbox:
-                changes = [(ConvFlags.inbox, -1), not seen and (ConvFlags.unseen, -1), (ConvFlags.deleted, 1)]
-            elif spam:
+            if spam:
                 changes = [(ConvFlags.spam, -1), (ConvFlags.deleted, 1)]
+            elif inbox:
+                changes = [(ConvFlags.inbox, -1), not seen and (ConvFlags.unseen, -1), (ConvFlags.deleted, 1)]
             else:
                 changes = [(ConvFlags.archive, -1), (ConvFlags.deleted, 1)]
             return SetValues(deleted=True, deleted_ts=funcs.now()), changes
         elif flag is SetFlags.restore:
             if not deleted:
                 raise JsonErrors.HTTPConflict('conversation not deleted')
-            if inbox:
-                changes = [(ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1), (ConvFlags.deleted, -1)]
-            elif spam:
+            if spam:
                 changes = [(ConvFlags.spam, 1), (ConvFlags.deleted, -1)]
+            elif inbox:
+                changes = [(ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1), (ConvFlags.deleted, -1)]
             else:
                 changes = [(ConvFlags.archive, 1), (ConvFlags.deleted, -1)]
             return SetValues(deleted=None, deleted_ts=None), changes
         elif flag is SetFlags.spam:
             if spam:
                 raise JsonErrors.HTTPConflict('conversation already spam')
-            if inbox:
+            if deleted:
+                # deleted takes president over spam, so the conv is already "in deleted"
+                changes = []
+            elif inbox:
                 changes = [(ConvFlags.inbox, -1), not seen and (ConvFlags.unseen, -1), (ConvFlags.spam, 1)]
-            elif deleted:
-                changes = [(ConvFlags.spam, 1)]
             else:
                 changes = [(ConvFlags.archive, -1), (ConvFlags.spam, 1)]
             return SetValues(spam=True), changes
@@ -328,10 +329,11 @@ class SetConvFlag(View):
             assert flag is SetFlags.ham, flag
             if not spam:
                 raise JsonErrors.HTTPConflict('conversation not spam')
-            if inbox:
+            if deleted:
+                # deleted takes president over spam, so the conv is already "in deleted"
+                changes = []
+            elif inbox:
                 changes = [(ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1), (ConvFlags.spam, -1)]
-            elif deleted:
-                changes = [(ConvFlags.spam, -1)]
             else:
                 changes = [(ConvFlags.archive, 1), (ConvFlags.spam, -1)]
             return SetValues(spam=None), changes

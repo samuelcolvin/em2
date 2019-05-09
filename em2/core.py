@@ -277,13 +277,15 @@ class _Act:
     See act() below for details.
     """
 
-    __slots__ = 'conn', 'settings', 'actor_user_id', 'conv_id'
+    __slots__ = 'conn', 'settings', 'actor_user_id', 'conv_id', 'new_user_ids'
 
     def __init__(self, conn: BuildPgConnection, settings: Settings, actor_user_id: int):
         self.conn = conn
         self.settings = settings
         self.actor_user_id = actor_user_id
         self.conv_id: int = None
+        # ugly way of doing this, but less ugly than other approaches
+        self.new_user_ids: Set[int] = set()
 
     async def prepare(self, conv_ref: StrInt) -> int:
         self.conv_id, last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_ref)
@@ -363,6 +365,7 @@ class _Act:
             )
             if not prt_id:
                 raise JsonErrors.HTTPConflict('user already a participant in this conversation')
+            self.new_user_ids.add(prt_user_id)
         else:
             follows_pk, *_ = await self._get_follows(action, {ActionTypes.prt_add, ActionTypes.prt_modify})
             if action.act == ActionTypes.prt_remove:
@@ -575,25 +578,25 @@ async def apply_actions(
                     ),
                     from_deleted as (
                       -- user had previously deleted the conversation, move it back to the inbox
-                      update participants p set seen=false, inbox=true, deleted=null from conv_prts where
+                      update participants p set seen=null, inbox=true, deleted=null from conv_prts where
                       conv_prts.id=p.id and p.spam is not true and inbox is not true and p.deleted is true
                       returning p.user_id
                     ),
                     from_archive as (
                       -- conversation was previously in the archive for these users, move it back to the inbox
-                      update participants p set seen=false, inbox=true from conv_prts where
+                      update participants p set seen=null, inbox=true from conv_prts where
                       conv_prts.id=p.id and p.spam is not true and inbox is not true and p.deleted is not true
                       returning p.user_id
                     ),
                     already_inbox as (
                       -- conversation was already in the inbox, just mark it as unseen
-                      update participants p set seen=false from conv_prts where
-                      conv_prts.id=p.id and p.spam is not true and inbox is true
+                      update participants p set seen=null from conv_prts where
+                      conv_prts.id=p.id and p.spam is not true and inbox is true and seen is true
                       returning p.user_id
                     ),
                     is_spam as (
                       -- conversation is marked as spam, just set it to unseen
-                      update participants p set seen=false from conv_prts where
+                      update participants p set seen=null from conv_prts where
                       conv_prts.id=p.id and p.spam is true
                       returning p.user_id
                     )
@@ -607,7 +610,6 @@ async def apply_actions(
                 )
             await update_conv_users(conn, conv_id)
 
-    # TODO increment inbox and all for new participants
     updates = [
         *(
             UpdateFlag(u_id, [(ConvFlags.deleted, -1), (ConvFlags.inbox, 1), (ConvFlags.unseen, 1)])
@@ -617,7 +619,11 @@ async def apply_actions(
             UpdateFlag(u_id, [(ConvFlags.archive, -1), (ConvFlags.inbox, 1), (ConvFlags.unseen, 1)])
             for u_id in from_archive
         ),
-        *(UpdateFlag(u_id, [(ConvFlags.unseen, 1)]) for u_id in already_inbox),
+        *(UpdateFlag(u_id, [(ConvFlags.unseen, 1)]) for u_id in already_inbox if u_id),
+        *(
+            UpdateFlag(u_id, [(ConvFlags.unseen, 1), (ConvFlags.all, 1), (ConvFlags.inbox, 1)])
+            for u_id in act_cls.new_user_ids
+        ),
     ]
     if actor_user_id_seen:
         updates.append(UpdateFlag(actor_user_id_seen, [(ConvFlags.unseen, -1)]))
