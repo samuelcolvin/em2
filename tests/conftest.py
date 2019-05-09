@@ -2,6 +2,7 @@ import asyncio
 import base64
 import email
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from email.message import EmailMessage
@@ -17,6 +18,7 @@ from arq import ArqRedis, Worker
 from atoolbox.db.helpers import DummyPgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
 from buildpg import Values
+from cryptography.fernet import Fernet
 from PIL import Image, ImageDraw
 
 from em2.auth.utils import mk_password
@@ -31,32 +33,36 @@ from em2.utils.web import MakeUrl
 from . import dummy_server
 
 
-def pytest_addoption(parser):
-    parser.addoption('--reuse-db', action='store_true', default=False, help='keep the existing database if it exists')
-
-
-settings_args = dict(
-    DATABASE_URL='postgres://postgres@localhost:5432/em2_test',
-    REDISCLOUD_URL='redis://localhost:6379/6',
-    bcrypt_work_factor=6,
-    max_request_size=1024 ** 2,
-    aws_access_key='testing_access_key',
-    aws_secret_key='testing_secret_key',
-    ses_url_token='testing',
-    aws_sns_signing_host='localhost',
-    aws_sns_signing_schema='http',
-    internal_auth_key='testing' * 6,
-    s3_temp_bucket='s3_temp_bucket.example.com',
-)
-
-
 @pytest.fixture(scope='session', name='settings_session')
 def _fix_settings_session():
-    return Settings(**settings_args)
+    pg_db = 'em2_test'
+    redis_db = 2
+
+    test_worker = os.getenv('PYTEST_XDIST_WORKER')
+    if test_worker:
+        worker_id = int(test_worker.replace('gw', ''))
+        redis_db = worker_id + 2
+        if worker_id:
+            pg_db = f'em2_test_{worker_id}'
+
+    return Settings(
+        DATABASE_URL=f'postgres://postgres@localhost:5432/{pg_db}',
+        REDISCLOUD_URL=f'redis://localhost:6379/{redis_db}',
+        bcrypt_work_factor=6,
+        max_request_size=1024 ** 2,
+        aws_access_key='testing_access_key',
+        aws_secret_key='testing_secret_key',
+        ses_url_token='testing',
+        aws_sns_signing_host='localhost',
+        aws_sns_signing_schema='http',
+        internal_auth_key='testing' * 6,
+        auth_key=Fernet.generate_key(),
+        s3_temp_bucket='s3_temp_bucket.example.com',
+    )
 
 
 @pytest.fixture(scope='session', name='clean_db')
-def _fix_clean_db(request, settings_session):
+def _fix_clean_db(settings_session):
     # loop fixture has function scope so can't be used here.
     from atoolbox.db import prepare_database
 
@@ -75,8 +81,9 @@ replaced_url_fields = 'grecaptcha_url', 'ses_endpoint_url', 's3_endpoint_url'
 
 
 @pytest.fixture(name='settings')
-def _fix_settings(dummy_server: DummyServer, request, tmpdir):
-    return Settings(**{f: f'{dummy_server.server_name}/{f}/' for f in replaced_url_fields}, **settings_args)
+def _fix_settings(dummy_server: DummyServer, tmpdir, settings_session):
+    update = {f: f'{dummy_server.server_name}/{f}/' for f in replaced_url_fields}
+    return settings_session.copy(update=update)
 
 
 @pytest.fixture(name='db_conn')
