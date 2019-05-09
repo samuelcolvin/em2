@@ -105,7 +105,7 @@ async def test_conv_set_state_counts_blank(cli, factory: Factory):
     r = await cli.get(factory.url('ui:conv-counts'))
     assert r.status == 200, await r.text()
     assert await r.json() == {
-        'folders': {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 0, 'spam': 0, 'deleted': 0},
+        'flags': {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 0, 'spam': 0, 'deleted': 0},
         'labels': [],
     }
 
@@ -118,7 +118,7 @@ async def test_conv_set_state_counts_creator(cli, factory: Factory):
     r = await cli.get(factory.url('ui:conv-counts'))
     assert r.status == 200, await r.text()
     assert await r.json() == {
-        'folders': {'inbox': 0, 'unseen': 0, 'draft': 1, 'sent': 1, 'archive': 0, 'all': 2, 'spam': 0, 'deleted': 0},
+        'flags': {'inbox': 0, 'unseen': 0, 'draft': 1, 'sent': 1, 'archive': 0, 'all': 2, 'spam': 0, 'deleted': 0},
         'labels': [],
     }
 
@@ -151,7 +151,7 @@ async def test_conv_set_state_counts(cli, factory: Factory, db_conn, redis):
     r = await cli.get(factory.url('ui:conv-counts', session_id=new_user.session_id))
     assert r.status == 200, await r.text()
     assert await r.json() == {
-        'folders': {'inbox': 3, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 1, 'all': 7, 'spam': 2, 'deleted': 1},
+        'flags': {'inbox': 3, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 1, 'all': 7, 'spam': 2, 'deleted': 1},
         'labels': [],
     }
 
@@ -167,13 +167,13 @@ def query_display(v):
     'query, expected',
     [
         ({}, ['anne', 'ben', 'charlie', 'dave', 'ed', 'fred', 'george']),
-        ({'folder': 'inbox'}, ['charlie', 'george']),
-        ({'folder': 'spam'}, ['anne']),
-        ({'folder': 'archive'}, ['ben']),
-        ({'folder': 'unseen'}, ['charlie']),
-        ({'folder': 'deleted'}, ['dave']),
-        ({'folder': 'draft'}, ['ed']),
-        ({'folder': 'sent'}, ['fred']),
+        ({'flag': 'inbox'}, ['charlie', 'george']),
+        ({'flag': 'spam'}, ['anne']),
+        ({'flag': 'archive'}, ['ben']),
+        ({'flag': 'unseen'}, ['charlie']),
+        ({'flag': 'deleted'}, ['dave']),
+        ({'flag': 'draft'}, ['ed']),
+        ({'flag': 'sent'}, ['fred']),
     ],
     ids=query_display,
 )

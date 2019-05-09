@@ -10,7 +10,7 @@ from pydantic import BaseModel, validator
 from em2.background import push_all, push_multiple
 from em2.core import (
     ActionModel,
-    ConvFolders,
+    ConvFlags,
     CreateConvModel,
     apply_actions,
     construct_conv,
@@ -56,7 +56,7 @@ class ConvList(View):
     """
 
     class QueryModel(BaseModel):
-        folder: ConvFolders = None
+        flag: ConvFlags = None
         labels_all: List[int] = None
         labels_any: List[int] = None
 
@@ -78,19 +78,19 @@ class ConvList(View):
         not_deleted = V('p.deleted').is_not(true)
         not_spam = V('p.spam').is_not(true)
 
-        if query_data.folder is ConvFolders.inbox:
+        if query_data.flag is ConvFlags.inbox:
             where &= V('p.inbox').is_(true) & not_deleted & not_spam
-        if query_data.folder is ConvFolders.unseen:
+        if query_data.flag is ConvFlags.unseen:
             where &= V('p.inbox').is_(true) & not_deleted & not_spam & V('p.seen').is_not(true)
-        elif query_data.folder is ConvFolders.draft:
+        elif query_data.flag is ConvFlags.draft:
             where &= (V('c.creator') == V('p.user_id')) & V('c.publish_ts').is_(V('null')) & not_deleted
-        elif query_data.folder is ConvFolders.sent:
+        elif query_data.flag is ConvFlags.sent:
             where &= (V('c.creator') == V('p.user_id')) & V('c.publish_ts').is_not(V('null')) & not_deleted
-        elif query_data.folder is ConvFolders.archive:
+        elif query_data.flag is ConvFlags.archive:
             where &= (V('c.creator') != V('p.user_id')) & V('p.inbox').is_not(true) & not_deleted & not_spam
-        elif query_data.folder is ConvFolders.spam:
+        elif query_data.flag is ConvFlags.spam:
             where &= V('p.spam').is_(true) & not_deleted
-        elif query_data.folder is ConvFolders.deleted:
+        elif query_data.flag is ConvFlags.deleted:
             where &= V('p.deleted').is_(true)
 
         if query_data.labels_all:
@@ -298,12 +298,12 @@ class GetConvCounts(View):
     """
 
     async def call(self):
-        folders, label_counts = await get_conv_counts(self.session.user_id, conn=self.conn, redis=self.redis)
+        flags, label_counts = await get_conv_counts(self.session.user_id, conn=self.conn, redis=self.redis)
         labels = [
             dict(id=r[0], name=r[1], color=r[2], description=r[3], count=label_counts[str(r[0])])
             for r in await self.conn.fetch(self.labels_sql, self.session.user_id)
         ]
-        return json_response(folders=folders, labels=labels)
+        return json_response(flags=flags, labels=labels)
 
 
 class GetFile(View):

@@ -518,7 +518,7 @@ class _Act:
         return follows_pk, follows_act, follows_actor, follows_age
 
 
-class ConvFolders(str, Enum):
+class ConvFlags(str, Enum):
     inbox = 'inbox'
     unseen = 'unseen'
     draft = 'draft'
@@ -601,11 +601,11 @@ async def apply_actions(
                 )
             await update_conv_users(conn, conv_id)
 
-    coros = [update_conv_folders(u_id, ConvFolders.deleted, -1, redis=redis) for u_id in from_deleted]
+    coros = [update_conv_flags(u_id, ConvFlags.deleted, -1, redis=redis) for u_id in from_deleted]
     for user_ids in (from_deleted, from_archive):
-        coros += [update_conv_folders(u_id, ConvFolders.inbox, 1, redis=redis) for u_id in user_ids]
+        coros += [update_conv_flags(u_id, ConvFlags.inbox, 1, redis=redis) for u_id in user_ids]
     for user_ids in (from_deleted, from_archive, already_inbox):
-        coros += [update_conv_folders(u_id, ConvFolders.unseen, 1, redis=redis) for u_id in user_ids]
+        coros += [update_conv_flags(u_id, ConvFlags.unseen, 1, redis=redis) for u_id in user_ids]
     await asyncio.gather(*coros)
     return conv_id, action_ids
 
@@ -815,10 +815,10 @@ async def create_conv(
         await update_conv_users(conn, conv_id)
 
     coros = (
-        update_conv_folders(creator_id, ConvFolders.sent, 1, redis=redis),
-        update_conv_folders(creator_id, ConvFolders.draft, -1, redis=redis),
-        *(update_conv_folders(u_id, ConvFolders.inbox, 1, redis=redis) for u_id in other_user_ids),
-        *(update_conv_folders(u_id, ConvFolders.unseen, 1, redis=redis) for u_id in other_user_ids),
+        update_conv_flags(creator_id, ConvFlags.sent, 1, redis=redis),
+        update_conv_flags(creator_id, ConvFlags.draft, -1, redis=redis),
+        *(update_conv_flags(u_id, ConvFlags.inbox, 1, redis=redis) for u_id in other_user_ids),
+        *(update_conv_flags(u_id, ConvFlags.unseen, 1, redis=redis) for u_id in other_user_ids),
     )
     await asyncio.gather(*coros)
     return conv_id, conv_key
@@ -862,7 +862,7 @@ def message_preview(body: str, msg_format: MsgFormat) -> str:
     return textwrap.shorten(preview, width=140, placeholder='…')
 
 
-conv_folder_count_sql = """
+conv_flag_count_sql = """
 select
   count(*) filter (where inbox is true and deleted is not true and spam is not true) as inbox,
   count(*) filter (where inbox is true and deleted is not true and spam is not true and seen is not true) as unseen,
@@ -892,15 +892,15 @@ order by l.ordering, l.id
 
 
 async def get_conv_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> Tuple[dict, dict]:
-    folder_key = f'conv-counts-folder-{user_id}'
-    folders = await redis.hgetall(folder_key)
-    if folders:
-        folders = {k: int(v) for k, v in folders.items()}
+    flag_key = f'conv-counts-flag-{user_id}'
+    flags = await redis.hgetall(flag_key)
+    if flags:
+        flags = {k: int(v) for k, v in flags.items()}
     else:
-        folders = dict(await conn.fetchrow(conv_folder_count_sql, user_id))
+        flags = dict(await conn.fetchrow(conv_flag_count_sql, user_id))
         tr = redis.multi_exec()
-        tr.hmset_dict(folder_key, folders)
-        tr.expire(folder_key, 86400)
+        tr.hmset_dict(flag_key, flags)
+        tr.expire(flag_key, 86400)
         await tr.execute()
 
     label_key = f'conv-counts-labels-{user_id}'
@@ -914,10 +914,10 @@ async def get_conv_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> 
             tr.hmset_dict(label_key, labels)
             tr.expire(label_key, 86400)
             await tr.execute()
-    return folders, labels
+    return flags, labels
 
 
-async def update_conv_folders(user_id, folder: ConvFolders, incr: int, *, redis: Redis):
-    key = f'conv-counts-folder-{user_id}'
+async def update_conv_flags(user_id, flag: ConvFlags, incr: int, *, redis: Redis):
+    key = f'conv-counts-flag-{user_id}'
     if await redis.exists(key):
-        await redis.hincrby(key, folder.value, incr)
+        await redis.hincrby(key, flag.value, incr)
