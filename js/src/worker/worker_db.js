@@ -18,8 +18,10 @@ class Session {
       this.id = this.current.session_id
       this.db = new Dexie('em2-' + this.current.email)
       this.db.version(1).stores({
-        conversations: '&key, new_key, created_ts, updated_ts, publish_ts',
+        conversations: '&key, new_key, created_ts, updated_ts, publish_ts, ' +
+                       'seen, inbox, draft, sent, archive, all, deleted, spam, labels',
         actions: '[conv+id], [conv+act], id, conv, ts',
+        labels: 'id, ordering',
       })
     } else {
       this.id = null
@@ -49,6 +51,14 @@ class Session {
   update = async changes => {
     Object.assign(this.current, changes)
     await session_db.sessions.update(this.id, changes)
+  }
+
+  conv_counts = async () => {
+    // TODO get labels
+    return {
+      flags: session.current.flags,
+      labels: [],
+    }
   }
 
   other_sessions = () => session_db.sessions.where('session_id').notEqual(this.id || -1).toArray()

@@ -1,23 +1,27 @@
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
-from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
+from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
 from buildpg import SetValues, V, funcs
-from buildpg.logic import Operator
 from pydantic import BaseModel, validator
 
 from em2.background import push_all, push_multiple
 from em2.core import (
     ActionModel,
+    ConvFlags,
     CreateConvModel,
+    UpdateFlag,
     apply_actions,
     construct_conv,
     conv_actions_json,
     create_conv,
     generate_conv_key,
     get_conv_for_user,
+    get_flag_counts,
+    get_label_counts,
+    update_conv_flags,
     update_conv_users,
 )
 from em2.utils.datetime import utcnow
@@ -29,21 +33,21 @@ from .utils import ExecView, View
 
 
 class ConvList(View):
+    # FIXME we can remove counts
     sql = """
     select json_build_object(
-      'count', count,
       'conversations', conversations
     ) from (
-      select count(*) from conversations as c
-        join participants p on c.id = p.conv
-        where :where
-        limit 999
-    ) count, (
       select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
       from (
         select c.key, c.created_ts, c.updated_ts, c.publish_ts, c.last_action_id, c.details,
-          p.seen is true seen, p.inbox is true inbox, p.deleted is true deleted, p.spam is true spam,
-          c.publish_ts is null draft, c.publish_ts is not null and c.creator = p.user_id sent,
+          p.seen is true seen,
+          (p.inbox is true and p.deleted is not true and p.spam is not true) inbox,
+          -- TODO (p.inbox is not true and p.deleted is not true and p.spam is not true) archive,
+          p.deleted is true deleted,
+          p.spam is true spam,
+          c.publish_ts is null draft,
+          c.publish_ts is not null and c.creator = p.user_id sent,
           coalesce(p.label_ids, '{}') labels
         from conversations c
         join participants p on c.id = p.conv
@@ -56,46 +60,49 @@ class ConvList(View):
     """
 
     class QueryModel(BaseModel):
-        inbox: bool = None
-        seen: bool = None
-        deleted: bool = None
-        spam: bool = None
-        archive: bool = None
+        flag: ConvFlags = None
         labels_all: List[int] = None
         labels_any: List[int] = None
 
     async def call(self):
-        query_data = parse_request_query(self.request, self.QueryModel)
+        where = self.where_clause()
+        raw_json = await self.conn.fetchval_b(self.sql, where=where, offset=get_offset(self.request, paginate_by=50))
+        return raw_json_response(raw_json)
+
+    def where_clause(self):
         where = funcs.AND(
             V('p.user_id') == self.session.user_id,
             funcs.OR(V('publish_ts').is_not(V('null')), V('creator') == self.session.user_id),
         )
+
+        query_data = parse_request_query(self.request, self.QueryModel)
         # SQL true
         true = V('true')
         # "is true" or "is not true" to work with null
+        not_deleted = V('p.deleted').is_not(true)
+        not_spam = V('p.spam').is_not(true)
 
-        if query_data.seen is not None:
-            where &= V('p.seen').operate(Operator.is_ if query_data.seen else Operator.is_not, true)
-
-        # inbox and archive false doesn't do anything
-        if query_data.inbox:
-            where &= V('p.inbox').is_(true) & V('p.deleted').is_not(true) & V('p.spam').is_not(true)
-        elif query_data.archive:
-            where &= V('p.inbox').is_not(true) & V('p.deleted').is_not(true) & V('p.spam').is_not(true)
-        else:
-            if query_data.deleted is not None:
-                where &= V('p.deleted').operate(Operator.is_ if query_data.deleted else Operator.is_not, true)
-
-            if query_data.spam is not None:
-                where &= V('p.spam').operate(Operator.is_ if query_data.spam else Operator.is_not, true)
+        if query_data.flag is ConvFlags.inbox:
+            where &= V('p.inbox').is_(true) & not_deleted & not_spam
+        if query_data.flag is ConvFlags.unseen:
+            where &= V('p.inbox').is_(true) & not_deleted & not_spam & V('p.seen').is_not(true)
+        elif query_data.flag is ConvFlags.draft:
+            where &= (V('c.creator') == V('p.user_id')) & V('c.publish_ts').is_(V('null')) & not_deleted
+        elif query_data.flag is ConvFlags.sent:
+            where &= (V('c.creator') == V('p.user_id')) & V('c.publish_ts').is_not(V('null')) & not_deleted
+        elif query_data.flag is ConvFlags.archive:
+            where &= (V('c.creator') != V('p.user_id')) & V('p.inbox').is_not(true) & not_deleted & not_spam
+        elif query_data.flag is ConvFlags.spam:
+            where &= V('p.spam').is_(true) & not_deleted
+        elif query_data.flag is ConvFlags.deleted:
+            where &= V('p.deleted').is_(true)
 
         if query_data.labels_all:
             where &= V('p.label_ids').contains(query_data.labels_all)
         elif query_data.labels_any:
             where &= V('p.label_ids').overlap(query_data.labels_any)
 
-        raw_json = await self.conn.fetchval_b(self.sql, where=where, offset=get_offset(self.request, paginate_by=50))
-        return raw_json_response(raw_json)
+        return where
 
 
 class ConvActions(View):
@@ -115,7 +122,11 @@ class ConvCreate(ExecView):
 
     async def execute(self, conv: CreateConvModel):
         conv_id, conv_key = await create_conv(
-            conn=self.conn, creator_email=self.session.email, creator_id=self.session.user_id, conv=conv
+            conn=self.conn,
+            redis=self.redis,
+            creator_email=self.session.email,
+            creator_id=self.session.user_id,
+            conv=conv,
         )
 
         await push_all(self.conn, self.app['redis'], conv_id)
@@ -128,7 +139,7 @@ class ConvAct(ExecView):
 
     async def execute(self, m: Model):
         conv_id, action_ids = await apply_actions(
-            self.conn, self.settings, self.session.user_id, self.request.match_info['conv'], m.actions
+            self.conn, self.redis, self.settings, self.session.user_id, self.request.match_info['conv'], m.actions
         )
 
         if action_ids:
@@ -221,7 +232,7 @@ class ConvPublish(ExecView):
             await self.add_msg(msg, conv_id, ts, pk)
 
 
-class States(str, Enum):
+class SetFlags(str, Enum):
     archive = 'archive'
     inbox = 'inbox'
     delete = 'delete'
@@ -230,99 +241,122 @@ class States(str, Enum):
     ham = 'ham'
 
 
-class SetConvState(View):
-    class StateQueryModel(BaseModel):
-        state: States
+class SetConvFlag(View):
+    class QueryModel(BaseModel):
+        flag: SetFlags
 
     async def call(self):
-        state = parse_request_query(self.request, self.StateQueryModel).state
+        flag = parse_request_query(self.request, self.QueryModel).flag
         conv_id, _ = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
         async with self.conn.transaction():
-            participant_id, inbox, deleted, spam = await self.conn.fetchrow(
-                'select id, inbox, deleted, spam from participants where conv=$1 and user_id=$2 for no key update',
+            participant_id, inbox, seen, deleted, spam, self_created = await self.conn.fetchrow(
+                """
+                select p.id, inbox, seen, deleted, spam, c.creator = $2
+                from participants p
+                join conversations c on p.conv = c.id
+                where conv=$1 and user_id=$2 for no key update
+                """,
                 conv_id,
                 self.session.user_id,
             )
+            if self_created:
+                raise JsonErrors.HTTPBadRequest('you cannot change labels on conversations you sent')
 
-            values = self.get_update_values(state, inbox, deleted, spam)
+            values, changes = self.get_update_values(flag, inbox, seen, deleted, spam)
             await self.conn.execute_b('update participants set :values where id=:id', values=values, id=participant_id)
-        return raw_json_response('{"status": "ok"}')
+        await update_conv_flags(UpdateFlag(self.session.user_id, filter(bool, changes)), redis=self.redis)
+
+        conv_flags = await self.conn.fetchrow(
+            """
+            select
+              (inbox is true and deleted is not true and spam is not true) inbox,
+              (inbox is not true and deleted is not true and spam is not true) archive,
+              deleted is true deleted, spam is true spam
+            from participants
+            where id=$1
+            """,
+            participant_id,
+        )
+        counts = await get_flag_counts(self.session.user_id, conn=self.conn, redis=self.redis)
+        return json_response(conv_flags=dict(conv_flags), counts=counts)
 
     @staticmethod  # noqa: 901
-    def get_update_values(state: States, inbox: bool, deleted: bool, spam: bool) -> SetValues:
-        if state is States.archive:
-            if not inbox or deleted or spam:
+    def get_update_values(flag: SetFlags, inbox: bool, seen: bool, deleted: bool, spam: bool) -> Tuple[SetValues, list]:
+        if flag is SetFlags.archive:
+            if not (inbox and not deleted and not spam):
                 raise JsonErrors.HTTPConflict('conversation not in inbox')
-            return SetValues(inbox=None)
-        elif state is States.inbox:
+            changes = [(ConvFlags.inbox, -1), (ConvFlags.archive, 1), not seen and (ConvFlags.unseen, -1)]
+            return SetValues(inbox=None), changes
+        elif flag is SetFlags.inbox:
             if inbox:
                 raise JsonErrors.HTTPConflict('conversation already in inbox')
             elif deleted or spam:
                 raise JsonErrors.HTTPConflict('deleted or spam conversation cannot be moved to inbox')
-            return SetValues(inbox=True)
-        elif state is States.delete:
+            changes = [(ConvFlags.archive, -1), (ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1)]
+            return SetValues(inbox=True), changes
+        elif flag is SetFlags.delete:
             if deleted:
                 raise JsonErrors.HTTPConflict('conversation already deleted')
-            return SetValues(deleted=True, deleted_ts=funcs.now())
-        elif state is States.restore:
+            if spam:
+                changes = [(ConvFlags.spam, -1), (ConvFlags.deleted, 1)]
+            elif inbox:
+                changes = [(ConvFlags.inbox, -1), not seen and (ConvFlags.unseen, -1), (ConvFlags.deleted, 1)]
+            else:
+                changes = [(ConvFlags.archive, -1), (ConvFlags.deleted, 1)]
+            return SetValues(deleted=True, deleted_ts=funcs.now()), changes
+        elif flag is SetFlags.restore:
             if not deleted:
                 raise JsonErrors.HTTPConflict('conversation not deleted')
-            return SetValues(deleted=None, deleted_ts=None)
-        elif state is States.spam:
+            if spam:
+                changes = [(ConvFlags.spam, 1), (ConvFlags.deleted, -1)]
+            elif inbox:
+                changes = [(ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1), (ConvFlags.deleted, -1)]
+            else:
+                changes = [(ConvFlags.archive, 1), (ConvFlags.deleted, -1)]
+            return SetValues(deleted=None, deleted_ts=None), changes
+        elif flag is SetFlags.spam:
             if spam:
                 raise JsonErrors.HTTPConflict('conversation already spam')
-            return SetValues(spam=True)
+            if deleted:
+                # deleted takes president over spam, so the conv is already "in deleted"
+                changes = []
+            elif inbox:
+                changes = [(ConvFlags.inbox, -1), not seen and (ConvFlags.unseen, -1), (ConvFlags.spam, 1)]
+            else:
+                changes = [(ConvFlags.archive, -1), (ConvFlags.spam, 1)]
+            return SetValues(spam=True), changes
         else:
-            assert state is States.ham, state
+            assert flag is SetFlags.ham, flag
             if not spam:
                 raise JsonErrors.HTTPConflict('conversation not spam')
-            return SetValues(spam=None)
+            if deleted:
+                # deleted takes president over spam, so the conv is already "in deleted"
+                changes = []
+            elif inbox:
+                changes = [(ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1), (ConvFlags.spam, -1)]
+            else:
+                changes = [(ConvFlags.archive, 1), (ConvFlags.spam, -1)]
+            return SetValues(spam=None), changes
 
 
 class GetConvCounts(View):
-    sql = """
-    select json_build_object(
-      'states', states,
-      'labels', labels
-    ) from (
-      select coalesce(row_to_json(t), '{}') states
-      from (
-        select
-          count(*) filter (where inbox is true and deleted is not true and spam is not true) as inbox,
-          count(*) filter (where inbox is true and seen is not true and deleted is not true and spam is not true)
-            as inbox_unseen,
-
-          count(*) filter (where c.creator = $1 and publish_ts is null and deleted is not true) as draft,
-          count(*) filter (where c.creator = $1 and publish_ts is not null and deleted is not true) as sent,
-          count(*) filter (
-            where inbox is not true and deleted is not true and spam is not true and publish_ts is not null
-          ) as archive,
-          count(*) as "all",
-          count(*) filter (where spam is true and deleted is not true) as spam,
-          count(*) filter (where spam is true and deleted is not true and seen is not true) as spam_unseen,
-          count(*) filter (where deleted is true) as deleted
-        from participants p
-        join conversations c on p.conv = c.id
-        where user_id = $1
-        limit 20000
-      ) t
-    ) states, (
-      select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as labels
-      from (
-        select l.id, name, color, description, count(p) as count
-        from labels l
-        left join participants p on label_ids @> array[l.id]
-        where l.user_id = $1
-        group by l.id
-        order by l.ordering, l.id
-      ) t
-    ) labels
+    labels_sql = """
+    select l.id, name, color, description
+    from labels l
+    left join participants p on label_ids @> array[l.id]
+    where l.user_id = $1
+    group by l.id
+    order by l.ordering, l.id
     """
 
     async def call(self):
-        # TODO cache these results
-        raw_json = await self.conn.fetchval(self.sql, self.session.user_id)
-        return raw_json_response(raw_json)
+        flags = await get_flag_counts(self.session.user_id, conn=self.conn, redis=self.redis)
+        label_counts = await get_label_counts(self.session.user_id, conn=self.conn, redis=self.redis)
+        labels = [
+            dict(id=r[0], name=r[1], color=r[2], description=r[3], count=label_counts[str(r[0])])
+            for r in await self.conn.fetch(self.labels_sql, self.session.user_id)
+        ]
+        return json_response(flags=flags, labels=labels)
 
 
 class GetFile(View):

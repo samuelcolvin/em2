@@ -108,7 +108,9 @@ class ProcessSMTP:
                 if actor_email not in existing_prts:
                     # reply from different address, we need to add the new address to the conversation
                     a = ActionModel(act=ActionTypes.prt_add, participant=actor_email)
-                    _, all_action_ids = await apply_actions(self.conn, self.settings, original_actor_id, conv_id, [a])
+                    _, all_action_ids = await apply_actions(
+                        self.conn, self.redis, self.settings, original_actor_id, conv_id, [a]
+                    )
                     assert all_action_ids
                 else:
                     all_action_ids = []
@@ -120,7 +122,7 @@ class ProcessSMTP:
                     msg_format = MsgFormat.html if is_html else MsgFormat.plain
                     actions.append(ActionModel(act=ActionTypes.msg_add, body=body, msg_format=msg_format))
 
-                _, action_ids = await apply_actions(self.conn, self.settings, actor_id, conv_id, actions)
+                _, action_ids = await apply_actions(self.conn, self.redis, self.settings, actor_id, conv_id, actions)
                 assert action_ids
 
                 all_action_ids += action_ids
@@ -149,7 +151,12 @@ class ProcessSMTP:
                     participants=[{'email': r} for r in recipients],
                 )
                 conv_id, conv_key = await create_conv(
-                    conn=self.conn, creator_email=actor_email, creator_id=actor_id, conv=conv, ts=timestamp
+                    conn=self.conn,
+                    redis=self.redis,
+                    creator_email=actor_email,
+                    creator_id=actor_id,
+                    conv=conv,
+                    ts=timestamp,
                 )
                 send_id = await self.conn.fetchval(
                     """

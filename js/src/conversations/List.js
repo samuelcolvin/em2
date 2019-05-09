@@ -57,11 +57,14 @@ class ConvListView extends React.Component {
 
   async componentDidMount () {
     this.mounted = true
-    if (this.props.ctx.user) {
-      this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
-    }
     this.update()
     this.remove_listener = this.props.ctx.worker.add_listener('change', this.update)
+  }
+
+  componentDidUpdate (prevProps) {
+    if (this.props.location !== prevProps.location) {
+      this.update()
+    }
   }
 
   componentWillUnmount () {
@@ -73,8 +76,16 @@ class ConvListView extends React.Component {
     this.mounted && super.setState(state, callback)
   }
 
+  conv_flag = () => this.props.match.params.flag || 'inbox'
+
   update = async () => {
-    this.setState(await this.props.ctx.worker.call('list-conversations', {page: this.get_page()}))
+    if (this.props.ctx.user) {
+      this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
+      const flag = this.conv_flag()
+      this.props.ctx.setMenuItem(flag)
+      const args = {page: this.get_page(), flag}
+      this.setState(await this.props.ctx.worker.call('list-conversations', args))
+    }
   }
 
   get_page = () => get_page(this.props.location.search)
@@ -82,11 +93,11 @@ class ConvListView extends React.Component {
   on_pagination_click = async e => {
     const link = e.target.getAttribute('href')
     e.preventDefault()
-    const next_page = get_page(link)
-    if (next_page === this.get_page()) {
+    const page = get_page(link)
+    if (page === this.get_page()) {
       return
     }
-    const r = await this.props.ctx.worker.call('list-conversations', {page: next_page})
+    const r = await this.props.ctx.worker.call('list-conversations', {page, state: this.conv_state()})
     if (r.conversations.length) {
       this.setState(r)
       this.props.history.push(link)
@@ -107,7 +118,7 @@ class ConvListView extends React.Component {
           No Conversations found
         </div>
       )
-  }
+    }
     return (
       <div>
         <div className="box conv-list">

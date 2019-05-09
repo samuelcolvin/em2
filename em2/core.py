@@ -1,12 +1,15 @@
+import asyncio
 import hashlib
 import json
 import re
 import secrets
 import textwrap
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, unique
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
+from aioredis import Redis
 from atoolbox import JsonErrors
 from bs4 import BeautifulSoup
 from buildpg import V
@@ -274,13 +277,15 @@ class _Act:
     See act() below for details.
     """
 
-    __slots__ = 'conn', 'settings', 'actor_user_id', 'conv_id'
+    __slots__ = 'conn', 'settings', 'actor_user_id', 'conv_id', 'new_user_ids'
 
     def __init__(self, conn: BuildPgConnection, settings: Settings, actor_user_id: int):
         self.conn = conn
         self.settings = settings
         self.actor_user_id = actor_user_id
         self.conv_id: int = None
+        # ugly way of doing this, but less ugly than other approaches
+        self.new_user_ids: Set[int] = set()
 
     async def prepare(self, conv_ref: StrInt) -> int:
         self.conv_id, last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_ref)
@@ -360,6 +365,7 @@ class _Act:
             )
             if not prt_id:
                 raise JsonErrors.HTTPConflict('user already a participant in this conversation')
+            self.new_user_ids.add(prt_user_id)
         else:
             follows_pk, *_ = await self._get_follows(action, {ActionTypes.prt_add, ActionTypes.prt_modify})
             if action.act == ActionTypes.prt_remove:
@@ -516,8 +522,24 @@ class _Act:
         return follows_pk, follows_act, follows_actor, follows_age
 
 
+class ConvFlags(str, Enum):
+    inbox = 'inbox'
+    unseen = 'unseen'
+    draft = 'draft'
+    sent = 'sent'
+    archive = 'archive'
+    all = 'all'
+    deleted = 'deleted'
+    spam = 'spam'
+
+
 async def apply_actions(
-    conn: BuildPgConnection, settings: Settings, actor_user_id: int, conv_ref: StrInt, actions: List[ActionModel]
+    conn: BuildPgConnection,
+    redis: Redis,
+    settings: Settings,
+    actor_user_id: int,
+    conv_ref: StrInt,
+    actions: List[ActionModel],
 ) -> Tuple[int, List[int]]:
     """
     Apply actions and return their ids.
@@ -526,6 +548,8 @@ async def apply_actions(
     """
     action_ids = []
     act_cls = _Act(conn, settings, actor_user_id)
+    actor_user_id_seen = None
+    from_deleted, from_archive, already_inbox = [], [], []
     async with conn.transaction():
         # IMPORTANT we do nothing that could be slow (eg. networking) inside this transaction,
         # as the conv is locked for update from prepare onwards
@@ -533,17 +557,78 @@ async def apply_actions(
 
         for action in actions:
             action_id = await act_cls.run(action)
-            action_id and action_ids.append(action_id)
+            if action_id:
+                action_ids.append(action_id)
 
         if action_ids:
             # the actor is assumed to have seen the conversation as they've acted upon it
-            await conn.execute('update participants set seen=true where conv=$1 and user_id=$2', conv_id, actor_user_id)
+            actor_user_id_seen = await conn.fetchval(
+                'update participants set seen=true where conv=$1 and user_id=$2 and seen is not true returning user_id',
+                conv_id,
+                actor_user_id,
+            )
             # everyone else hasn't seen this action if it's "worth seeing"
             if any(a.act not in _meta_action_types for a in actions):
-                await conn.execute(
-                    'update participants set seen=false where conv=$1 and user_id!=$2', conv_id, actor_user_id
+                # TODO we'll also need to exclude muted conversations from being moved, while still setting seen=false
+                # we could exclude no local users from some of this
+                from_deleted, from_archive, already_inbox = await conn.fetchrow(
+                    """
+                    with conv_prts as (
+                      select p.id from participants p where conv=$1 and user_id!=$2
+                    ),
+                    from_deleted as (
+                      -- user had previously deleted the conversation, move it back to the inbox
+                      update participants p set seen=null, inbox=true, deleted=null from conv_prts where
+                      conv_prts.id=p.id and p.spam is not true and inbox is not true and p.deleted is true
+                      returning p.user_id
+                    ),
+                    from_archive as (
+                      -- conversation was previously in the archive for these users, move it back to the inbox
+                      update participants p set seen=null, inbox=true from conv_prts where
+                      conv_prts.id=p.id and p.spam is not true and inbox is not true and p.deleted is not true
+                      returning p.user_id
+                    ),
+                    already_inbox as (
+                      -- conversation was already in the inbox, just mark it as unseen
+                      update participants p set seen=null from conv_prts where
+                      conv_prts.id=p.id and p.spam is not true and inbox is true and seen is true
+                      returning p.user_id
+                    ),
+                    is_spam as (
+                      -- conversation is marked as spam, just set it to unseen
+                      update participants p set seen=null from conv_prts where
+                      conv_prts.id=p.id and p.spam is true
+                      returning p.user_id
+                    )
+                    select from_deleted, from_archive, already_inbox
+                    from (select coalesce(array_agg(user_id), '{}') from_deleted from from_deleted) from_deleted,
+                         (select coalesce(array_agg(user_id), '{}') from_archive from from_archive) from_archive,
+                         (select coalesce(array_agg(user_id), '{}') already_inbox from already_inbox) already_inbox
+                    """,
+                    conv_id,
+                    actor_user_id,
                 )
             await update_conv_users(conn, conv_id)
+
+    updates = [
+        *(
+            UpdateFlag(u_id, [(ConvFlags.deleted, -1), (ConvFlags.inbox, 1), (ConvFlags.unseen, 1)])
+            for u_id in from_deleted
+        ),
+        *(
+            UpdateFlag(u_id, [(ConvFlags.archive, -1), (ConvFlags.inbox, 1), (ConvFlags.unseen, 1)])
+            for u_id in from_archive
+        ),
+        *(UpdateFlag(u_id, [(ConvFlags.unseen, 1)]) for u_id in already_inbox if u_id),
+        *(
+            UpdateFlag(u_id, [(ConvFlags.unseen, 1), (ConvFlags.all, 1), (ConvFlags.inbox, 1)])
+            for u_id in act_cls.new_user_ids
+        ),
+    ]
+    if actor_user_id_seen:
+        updates.append(UpdateFlag(actor_user_id_seen, [(ConvFlags.unseen, -1)]))
+    if updates:
+        await update_conv_flags(*updates, redis=redis)
     return conv_id, action_ids
 
 
@@ -679,6 +764,7 @@ class CreateConvModel(BaseModel):
 async def create_conv(
     *,
     conn: BuildPgConnection,
+    redis: Redis,
     creator_email: str,
     creator_id: int,
     conv: CreateConvModel,
@@ -707,7 +793,7 @@ async def create_conv(
         part_users = await get_create_multiple_users(conn, participants)
 
         await conn.execute(
-            'insert into participants (conv, user_id, seen, inbox) (select $1, $2, true, false)', conv_id, creator_id
+            'insert into participants (conv, user_id, seen, inbox) (select $1, $2, true, null)', conv_id, creator_id
         )
         other_user_ids = list(part_users.values())
         await conn.execute(
@@ -750,11 +836,16 @@ async def create_conv(
         )
         await update_conv_users(conn, conv_id)
 
+    updates = (
+        UpdateFlag(creator_id, [(ConvFlags.sent, 1), (ConvFlags.draft, -1)]),
+        *(UpdateFlag(u_id, [(ConvFlags.inbox, 1), (ConvFlags.unseen, 1)]) for u_id in other_user_ids),
+    )
+    await update_conv_flags(*updates, redis=redis)
     return conv_id, conv_key
 
 
 _clean_markdown = [
-    (re.compile(r'\<.*?\>', flags=re.S), ''),
+    (re.compile(r'<.*?>', flags=re.S), ''),
     (re.compile(r'_(\S.*?\S)_'), r'\1'),
     (re.compile(r'\[(.+?)\]\(.*?\)'), r'\1'),
     (re.compile(r'(\*\*|`)'), ''),
@@ -789,3 +880,94 @@ def message_preview(body: str, msg_format: MsgFormat) -> str:
     for regex, p in _clean_all:
         preview = regex.sub(p, preview)
     return textwrap.shorten(preview, width=140, placeholder='…')
+
+
+conv_flag_count_sql = """
+select
+  count(*) filter (where inbox is true and deleted is not true and spam is not true) as inbox,
+  count(*) filter (where inbox is true and deleted is not true and spam is not true and seen is not true) as unseen,
+
+  count(*) filter (where c.creator = $1 and publish_ts is null and deleted is not true) as draft,
+  count(*) filter (where c.creator = $1 and publish_ts is not null and deleted is not true) as sent,
+  count(*) filter (
+    where inbox is not true and deleted is not true and spam is not true and c.creator != $1
+  ) as archive,
+  count(*) as "all",
+  count(*) filter (where spam is true and deleted is not true) as spam,
+  count(*) filter (where deleted is true) as deleted
+from participants p
+join conversations c on p.conv = c.id
+where user_id = $1 and (c.publish_ts is not null or c.creator = $1)
+limit 9999
+"""
+
+conv_label_count_sql = """
+select l.id, count(p)
+from labels l
+left join participants p on label_ids @> array[l.id]
+where l.user_id = $1
+group by l.id
+order by l.ordering, l.id
+"""
+
+
+def _flags_count_key(user_id: int):
+    return f'conv-counts-flags-{user_id}'
+
+
+async def get_flag_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> dict:
+    """
+    Get counts for participant flags. Data is cached to a redis hash and retrieved from there if it exists.
+    """
+    flag_key = _flags_count_key(user_id)
+    flags = await redis.hgetall(flag_key)
+    if flags:
+        flags = {k: int(v) for k, v in flags.items()}
+    else:
+        flags = dict(await conn.fetchrow(conv_flag_count_sql, user_id))
+        tr = redis.multi_exec()
+        tr.hmset_dict(flag_key, flags)
+        tr.expire(flag_key, 86400)
+        await tr.execute()
+    return flags
+
+
+@dataclass
+class UpdateFlag:
+    user_id: int
+    changes: Iterable[Tuple[ConvFlags, int]]
+
+
+async def update_conv_flags(*updates: UpdateFlag, redis: Redis):
+    """
+    Increment or decrement counts for participant flags if they exist in the cache, also extends cache expiry.
+    """
+
+    async def update(u: UpdateFlag):
+        key = _flags_count_key(u.user_id)
+        if await redis.exists(key):
+            await asyncio.gather(redis.expire(key, 86400), *(redis.hincrby(key, c[0].value, c[1]) for c in u.changes))
+
+    await asyncio.gather(*(update(u) for u in updates))
+
+
+def _label_count_key(user_id: int):
+    return f'conv-counts-labels-{user_id}'
+
+
+async def get_label_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> dict:
+    """
+    Get counts for labels. Data is cached to a redis hash and retrieved from there if it exists.
+    """
+    label_key = _label_count_key(user_id)
+    labels = await redis.hgetall(label_key)
+    if labels:
+        labels = {k: int(v) for k, v in labels.items()}
+    else:
+        labels = {str(k): v for k, v in await conn.fetch(conv_label_count_sql, user_id)}
+        if labels:
+            tr = redis.multi_exec()
+            tr.hmset_dict(label_key, labels)
+            tr.expire(label_key, 86400)
+            await tr.execute()
+    return labels

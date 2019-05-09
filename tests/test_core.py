@@ -429,6 +429,7 @@ async def test_seen(factory: Factory, db_conn):
     assert json.loads(details) == {
         'act': 'participant:add',
         'sub': 'Test Subject',
+        'creator': 'testing-1@example.com',
         'email': 'testing-1@example.com',
         'prev': 'Test Message',
         'prts': 2,
@@ -437,7 +438,7 @@ async def test_seen(factory: Factory, db_conn):
 
     assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user.id)
     user2_id = await db_conn.fetchval('select id from users where email=$1', '2@ex.com')
-    assert False is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
+    assert None is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
 
     await factory.act(user2_id, conv.id, ActionModel(act=ActionTypes.seen))
 
@@ -448,6 +449,7 @@ async def test_seen(factory: Factory, db_conn):
     assert json.loads(details) == {
         'act': 'participant:add',
         'sub': 'Test Subject',
+        'creator': 'testing-1@example.com',
         'email': 'testing-1@example.com',
         'prev': 'Test Message',
         'prts': 2,
@@ -458,7 +460,7 @@ async def test_seen(factory: Factory, db_conn):
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant='3@ex.com'))
 
     assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user.id)
-    assert False is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
+    assert None is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
 
 
 async def test_already_seen(factory: Factory, db_conn):
@@ -467,14 +469,14 @@ async def test_already_seen(factory: Factory, db_conn):
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant='2@ex.com'))
 
     user2_id = await db_conn.fetchval('select id from users where email=$1', '2@ex.com')
-    assert False is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
+    assert None is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
 
     assert None is not await factory.act(user2_id, conv.id, ActionModel(act=ActionTypes.seen))
     assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
 
     assert [] == await factory.act(user2_id, conv.id, ActionModel(act=ActionTypes.seen))
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant='3@ex.com'))
-    assert False is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
+    assert None is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
     assert [7] == await factory.act(user2_id, conv.id, ActionModel(act=ActionTypes.seen))
     assert True is await db_conn.fetchval('select seen from participants where user_id=$1', user2_id)
 

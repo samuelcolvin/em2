@@ -19,12 +19,6 @@ def query_display(v):
         ({'labels_all': 'label1'}, ['ben', 'dave']),
         ([('labels_all', 'label1'), ('labels_all', 'label2')], ['dave']),
         ([('labels_any', 'label1'), ('labels_any', 'label2')], ['ben', 'charlie', 'dave']),
-        ({'inbox': 'true'}, ['charlie']),
-        ({'spam': 'true'}, ['anne']),
-        ({'spam': 'false'}, ['ben', 'charlie', 'dave']),
-        ({'archive': 'true'}, ['ben']),
-        ({'seen': 'false'}, ['anne', 'ben', 'dave']),
-        ({'deleted': 'true'}, ['dave']),
     ],
     ids=query_display,
 )
@@ -36,28 +30,32 @@ async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, ex
     label2 = await factory.create_label('Label 2')
     prts = [{'email': test_user.email}]
 
-    conv_anne = await factory.create_conv(subject='anne', participants=prts, publish=True)
-    await db_conn.execute('update participants set spam=true where conv=$1', conv_anne.id)
+    await factory.create_conv(subject='anne', participants=prts, publish=True)
 
     conv_ben = await factory.create_conv(subject='ben', participants=prts, publish=True)
-    await db_conn.execute('update participants set label_ids=$1, inbox=false where conv=$2', [label1], conv_ben.id)
+    await db_conn.execute('update participants set label_ids=$1 where conv=$2', [label1], conv_ben.id)
 
     conv_charlie = await factory.create_conv(subject='charlie', participants=prts, publish=True)
-    await db_conn.execute('update participants set label_ids=$1, seen=true where conv=$2', [label2], conv_charlie.id)
+    await db_conn.execute('update participants set label_ids=$1 where conv=$2', [label2], conv_charlie.id)
 
     conv_dave = await factory.create_conv(subject='dave', participants=prts, publish=True)
-    await db_conn.execute(
-        'update participants set label_ids=$1, deleted=true where conv=$2', [label1, label2], conv_dave.id
-    )
+    await db_conn.execute('update participants set label_ids=$1 where conv=$2', [label1, label2], conv_dave.id)
 
     assert 4 == await db_conn.fetchval('select count(*) from conversations')
     assert 4 == await db_conn.fetchval('select count(*) from participants where user_id=$1', test_user.id)
 
     url = factory.url('ui:list', session_id=test_user.session_id, query=query)
-    r = await cli.get(str(url).replace('label1', str(label1)).replace('label2', str(label2)))
+    url = str(url).replace('label1', str(label1)).replace('label2', str(label2))
+    r = await cli.get(url)
     assert r.status == 200, await r.text()
-    response = [c['details']['sub'] for c in (await r.json())['conversations']]
+    data = await r.json()
+    response = [c['details']['sub'] for c in data['conversations']]
     assert response == expected, f'url: {url}, response: {response}'
+
+    r = await cli.get(url)
+    assert r.status == 200, await r.text()
+    data2 = await r.json()
+    assert data == data2
 
 
 async def test_label_counts(cli, factory: Factory, db_conn):

@@ -14,7 +14,7 @@ from aiohttp import ClientSession, ClientTimeout
 from aiohttp.test_utils import teardown_test_loop
 from aioredis import create_redis
 from arq import ArqRedis, Worker
-from atoolbox.db.helpers import SimplePgPool
+from atoolbox.db.helpers import DummyPgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
 from buildpg import Values
 from PIL import Image, ImageDraw
@@ -108,7 +108,7 @@ async def redis(loop, settings):
 
 
 async def pre_startup_app(app):
-    app['pg'] = SimplePgPool(app['test_conn'])
+    app['pg'] = DummyPgPool(app['test_conn'])
 
 
 @pytest.fixture(name='cli')
@@ -160,10 +160,10 @@ class Conv:
 
 
 class Factory:
-    def __init__(self, conn, redis, cli, url):
-        self.conn = conn
+    def __init__(self, redis, cli, url):
         self.redis: ArqRedis = redis
         self.cli = cli
+        self.conn = self.cli.server.app['pg']
         self.settings: Settings = cli.server.app['settings']
         self.email_index = 1
 
@@ -227,7 +227,7 @@ class Factory:
         return r1, r2
 
     async def create_conv(
-        self, subject='Test Subject', message='Test Message', session_id=None, participants=[], publish=False
+        self, subject='Test Subject', message='Test Message', session_id=None, participants=(), publish=False
     ) -> Conv:
         data = {'subject': subject, 'message': message, 'publish': publish, 'participants': participants}
         r = await self.cli.post_json(self.url('ui:create', session_id=session_id or self.user.session_id), data)
@@ -246,7 +246,9 @@ class Factory:
         )
 
     async def act(self, actor_user_id: int, conv_id: int, action: ActionModel) -> List[int]:
-        conv_id, action_ids = await apply_actions(self.conn, self.settings, actor_user_id, conv_id, [action])
+        conv_id, action_ids = await apply_actions(
+            self.conn, self.redis, self.settings, actor_user_id, conv_id, [action]
+        )
 
         if action_ids:
             await push_multiple(self.conn, self.redis, conv_id, action_ids)
@@ -254,8 +256,8 @@ class Factory:
 
 
 @pytest.fixture
-async def factory(db_conn, redis, cli, url):
-    return Factory(db_conn, redis, cli, url)
+async def factory(redis, cli, url):
+    return Factory(redis, cli, url)
 
 
 @pytest.yield_fixture(name='worker')
@@ -263,7 +265,7 @@ async def _fix_worker(redis, settings, db_conn):
     session = ClientSession(timeout=ClientTimeout(total=10))
     ctx = dict(
         settings=settings,
-        pg=SimplePgPool(db_conn),
+        pg=DummyPgPool(db_conn),
         session=session,
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
@@ -282,7 +284,7 @@ async def _fix_ses_worker(redis, settings, db_conn):
     session = ClientSession(timeout=ClientTimeout(total=10))
     ctx = dict(
         settings=settings,
-        pg=SimplePgPool(db_conn),
+        pg=DummyPgPool(db_conn),
         session=session,
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )

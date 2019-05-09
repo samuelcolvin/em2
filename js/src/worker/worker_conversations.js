@@ -1,5 +1,13 @@
 import {session} from './worker_db'
-import {add_listener, get_conn_status, requests, unix_ms} from './worker_utils'
+import {
+  add_listener,
+  get_conn_status,
+  requests,
+  unix_ms,
+  offset_limit,
+  per_page,
+  bool_int,
+} from './worker_utils'
 import {statuses} from '../utils/network'
 
 
@@ -126,41 +134,61 @@ async function get_conversation (data) {
   return construct_conv(actions)
 }
 
-const P = 50  // list pagination
-
 async function list_conversations (data) {
   const page = data.page
+  const flag = data.flag
   let status = await get_conn_status()
   if (!session.current) {
     return {}
   }
   if (status === statuses.online) {
-    const cache_key = `page-${data.page}`
+    const cache_key = `page-${flag}-${page}`
     if (!session.current.cache.has(cache_key)) {
-      const r = await requests.get('ui', `/${session.id}/conv/list/`, {args: {page}})
+      const r = await requests.get('ui', `/${session.id}/conv/list/`, {args: {page, flag}})
       const conversations = r.data.conversations.map(c => (
           Object.assign({}, c, {
             created_ts: unix_ms(c.created_ts),
             updated_ts: unix_ms(c.updated_ts),
             publish_ts: unix_ms(c.publish_ts),
+            inbox: bool_int(c.inbox),
+            draft: bool_int(c.draft),
+            sent: bool_int(c.sent),
+            archive: bool_int(c.archive),
+            spam: bool_int(c.spam),
+            deleted: bool_int(c.deleted),
           })
       ))
       await session.db.conversations.bulkPut(conversations)
       session.current.cache.add(cache_key)
-      await session.update({cache: session.current.cache, conv_count: r.data.count})
+      await session.update({cache: session.current.cache})
     }
   }
-
-  const table = session.db.conversations
-  const count = await table.count()
+  const qs = session.db.conversations.where({[flag]: 1})
+  const count = await qs.count()
   return {
-    conversations: await table.orderBy('updated_ts').reverse().offset((page - 1) * P).limit(P).toArray(),
-    pages: Math.ceil(count / P),
+    conversations: offset_limit(await qs.reverse().sortBy('updated_ts'), page),
+    pages: Math.ceil(count / per_page),
   }
+}
+
+async function conv_counts () {
+  let status = await get_conn_status()
+  if (!session.current) {
+    return {flags: {}, labels: []}
+  }
+  if (status === statuses.online && !session.current.cache.has('counts')) {
+    const r = await requests.get('ui', `/${session.id}/conv/counts/`)
+
+    session.current.cache.add('counts')
+    await session.update({cache: session.current.cache, flags: r.data.flags})
+    // TODO update labels, and return them
+  }
+  return await session.conv_counts()
 }
 
 export default function () {
   add_listener('list-conversations', list_conversations)
+  add_listener('conv-counts', conv_counts)
 
   add_listener('get-conversation', get_conversation)
 
@@ -174,7 +202,6 @@ export default function () {
     const conv = await session.db.conversations.get(data.conv)
     if (!conv.seen) {
       await requests.post('ui', `/${session.id}/conv/${data.conv}/act/`, {actions: [{act: 'seen'}]})
-      await session.db.conversations.update(data.conv, {seen: true})
     }
   })
 

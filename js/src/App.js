@@ -1,17 +1,14 @@
 import React from 'react'
 import {Route, Switch, withRouter} from 'react-router-dom'
-import {GlobalContext, Error, NotFound, Notify} from 'reactstrap-toolbox'
+import {GlobalContext, Error, Notify} from 'reactstrap-toolbox'
 
 import {statuses} from './utils/network'
-import Worker from './run_worker'
-import Navbar from './common/Navbar'
-import WithMenu from './common/LeftMenu'
 import Login from './auth/Login'
 import Logout from './auth/Logout'
 import SwitchSession from './auth/SwitchSession'
-import ListConversations from './conversations/List'
-import ConversationDetails from './conversations/Details'
-import CreateConversation from './conversations/Create'
+import Worker from './run_worker'
+import Navbar from './Navbar'
+import WithMenu from './WithMenu'
 import './fa'
 
 
@@ -30,13 +27,10 @@ const Main = ({app_state}) => {
   } else {
     return (
       <Switch>
-        <Route exact path="/" render={WithMenu(ListConversations, 'all')}/>
-        <Route exact path="/create/" render={WithMenu(CreateConversation, 'create')}/>
         <Route exact path="/login/" component={Login}/>
         <Route exact path="/logout/" component={Logout}/>
         <Route exact path="/switch/:id(\d+)/" component={SwitchSession}/>
-        <Route path="/:key([a-f0-9]{10,64})/" render={WithMenu(ConversationDetails, 'all')}/>
-        <Route component={NotFound}/>
+        <Route component={WithMenu}/>
       </Switch>
     )
   }
@@ -49,6 +43,7 @@ class App extends React.Component {
     user: null,
     other_sessions: [],
     conn_status: null,
+    menu_item: null,
   }
 
   constructor (props) {
@@ -101,6 +96,8 @@ class App extends React.Component {
     const ctx = {
       setError: error => this.setError(error),
       setTitle: title => this.setState({title}),
+      setMenuItem: menu_item => this.setState({menu_item}),
+      menu_item: this.state.menu_item,
       user: this.state.user,
       worker: this.worker,
     }

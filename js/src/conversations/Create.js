@@ -76,6 +76,7 @@ const FormButtons = ({state, form_props, submit, setField}) => {
 const Create = ({ctx, history}) => {
   const [form_data, set_form_data] = React.useState(0)
   React.useEffect(() => {
+    ctx.setMenuItem('create')
     ctx.setTitle('Compose Conversation')
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 

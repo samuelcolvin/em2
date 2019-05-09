@@ -35,6 +35,7 @@ async def test_create_conv(cli, factory: Factory, db_conn):
         'act': 'conv:create',
         'sub': 'Sub',
         'email': 'testing-1@example.com',
+        'creator': 'testing-1@example.com',
         'prev': 'Msg',
         'prts': 1,
         'msgs': 1,
@@ -83,6 +84,7 @@ async def test_create_conv_participants(cli, factory: Factory, db_conn):
         'act': 'conv:create',
         'sub': 'Sub',
         'email': 'testing-1@example.com',
+        'creator': 'testing-1@example.com',
         'prev': 'Msg',
         'prts': 3,
         'msgs': 1,
@@ -124,6 +126,7 @@ async def test_create_conv_publish(cli, factory: Factory, db_conn):
         'act': 'conv:publish',
         'sub': 'Sub',
         'email': 'testing-1@example.com',
+        'creator': 'testing-1@example.com',
         'prev': 'Msg',
         'prts': 1,
         'msgs': 1,
@@ -139,7 +142,6 @@ async def test_conv_list(cli, factory: Factory, db_conn):
     assert r.status == 200, await r.text()
     obj = await r.json()
     assert obj == {
-        'count': 1,
         'conversations': [
             {
                 'key': conv.key,
@@ -158,12 +160,13 @@ async def test_conv_list(cli, factory: Factory, db_conn):
                     'act': 'conv:create',
                     'sub': 'Test Subject',
                     'email': 'testing-1@example.com',
+                    'creator': 'testing-1@example.com',
                     'prev': 'Test Message',
                     'prts': 1,
                     'msgs': 1,
                 },
             }
-        ],
+        ]
     }
 
 
@@ -360,10 +363,12 @@ async def test_ws_create(cli, factory: Factory, db_conn):
             'act': 'conv:create',
             'sub': 'Test Subject',
             'email': 'testing-1@example.com',
+            'creator': 'testing-1@example.com',
             'prev': 'Test Message',
             'prts': 1,
             'msgs': 1,
         },
+        'flags': {'inbox': 0, 'unseen': 0, 'draft': 2, 'sent': 0, 'archive': 0, 'all': 2, 'spam': 0, 'deleted': 0},
     }
 
 
@@ -402,10 +407,12 @@ async def test_ws_add_msg(cli, factory: Factory, db_conn):
             'act': 'message:add',
             'sub': 'Test Subject',
             'email': 'testing-1@example.com',
+            'creator': 'testing-1@example.com',
             'prev': 'this is another message',
             'prts': 1,
             'msgs': 2,
         },
+        'flags': {'inbox': 0, 'unseen': 0, 'draft': 1, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0},
     }
 
 

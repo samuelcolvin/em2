@@ -24,7 +24,7 @@ host = 'localhost:8000'
 email = 'robot@example.com'
 password = 'testing'
 
-other_users = [{'email': 'testing@imber.io'}, {'email': 'different@remote.com'}]
+other_users = [{'email': 'testing@example.com'}, {'email': 'different@remote.com'}]
 
 
 class Client:
