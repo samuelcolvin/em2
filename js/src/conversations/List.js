@@ -76,13 +76,14 @@ class ConvListView extends React.Component {
     this.mounted && super.setState(state, callback)
   }
 
-  conv_state = () => this.props.match.params.state || 'inbox'
+  conv_flag = () => this.props.match.params.flag || 'inbox'
 
   update = async () => {
     if (this.props.ctx.user) {
       this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
-      this.props.ctx.setMenuItem(this.conv_state())
-      const args = {page: this.get_page(), state: this.conv_state()}
+      const flag = this.conv_flag()
+      this.props.ctx.setMenuItem(flag)
+      const args = {page: this.get_page(), flag}
       this.setState(await this.props.ctx.worker.call('list-conversations', args))
     }
   }

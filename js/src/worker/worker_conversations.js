@@ -7,7 +7,6 @@ import {
   offset_limit,
   per_page,
   bool_int,
-  window_call,
 } from './worker_utils'
 import {statuses} from '../utils/network'
 
@@ -137,15 +136,15 @@ async function get_conversation (data) {
 
 async function list_conversations (data) {
   const page = data.page
-  const state = data.state
+  const flag = data.flag
   let status = await get_conn_status()
   if (!session.current) {
     return {}
   }
   if (status === statuses.online) {
-    const cache_key = `page-${state}-${page}`
+    const cache_key = `page-${flag}-${page}`
     if (!session.current.cache.has(cache_key)) {
-      const r = await requests.get('ui', `/${session.id}/conv/list/`, {args: {page, state}})
+      const r = await requests.get('ui', `/${session.id}/conv/list/`, {args: {page, flag}})
       const conversations = r.data.conversations.map(c => (
           Object.assign({}, c, {
             created_ts: unix_ms(c.created_ts),
@@ -164,7 +163,7 @@ async function list_conversations (data) {
       await session.update({cache: session.current.cache})
     }
   }
-  const qs = session.db.conversations.where({[state]: 1})
+  const qs = session.db.conversations.where({[flag]: 1})
   const count = await qs.count()
   return {
     conversations: offset_limit(await qs.reverse().sortBy('updated_ts'), page),
@@ -175,13 +174,13 @@ async function list_conversations (data) {
 async function conv_counts () {
   let status = await get_conn_status()
   if (!session.current) {
-    return {states: {}, labels: []}
+    return {flags: {}, labels: []}
   }
   if (status === statuses.online && !session.current.cache.has('counts')) {
     const r = await requests.get('ui', `/${session.id}/conv/counts/`)
 
     session.current.cache.add('counts')
-    await session.update({cache: session.current.cache, states: r.data.states})
+    await session.update({cache: session.current.cache, flags: r.data.flags})
     // TODO update labels, and return them
   }
   return await session.conv_counts()
@@ -201,23 +200,9 @@ export default function () {
 
   add_listener('seen', async data => {
     const conv = await session.db.conversations.get(data.conv)
-    if (conv.seen) {
-      return
+    if (!conv.seen) {
+      await requests.post('ui', `/${session.id}/conv/${data.conv}/act/`, {actions: [{act: 'seen'}]})
     }
-    const new_states = {}
-    if (conv.inbox) {
-      new_states.inbox_unseen = session.current.states.inbox_unseen - 1
-    } else if (conv.spam) {
-      new_states.spam_unseen = session.current.states.spam_unseen - 1
-    }
-    // very similar to what we do in ws
-    if (Object.keys(new_states).length) {
-      await session.update({states: Object.assign({}, session.current.states, new_states)})
-      window_call('states-change', await session.conv_counts())
-    }
-
-    await requests.post('ui', `/${session.id}/conv/${data.conv}/act/`, {actions: [{act: 'seen'}]})
-    await session.db.conversations.update(data.conv, {seen: true})
   })
 
   add_listener('publish', async data => {

@@ -368,6 +368,7 @@ async def test_ws_create(cli, factory: Factory, db_conn):
             'prts': 1,
             'msgs': 1,
         },
+        'flags': {'inbox': 0, 'unseen': 0, 'draft': 2, 'sent': 0, 'archive': 0, 'all': 2, 'spam': 0, 'deleted': 0},
     }
 
 
@@ -411,6 +412,7 @@ async def test_ws_add_msg(cli, factory: Factory, db_conn):
             'prts': 1,
             'msgs': 2,
         },
+        'flags': {'inbox': 0, 'unseen': 0, 'draft': 1, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0},
     }
 
 

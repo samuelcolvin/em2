@@ -31,7 +31,7 @@ const ListGroupItem = ({to, active, icon, title, count, count_unseen}) => (
 )
 
 const main_menu_items = [
-  {to: '/', name: 'inbox', icon: fas.faInbox},
+  {to: '/', name: 'inbox', unseen: true, icon: fas.faInbox},
   {to: '/draft/', name: 'draft', icon: fas.faFileAlt},
   {to: '/sent/', name: 'sent', icon: fas.faPaperPlane},
   {to: '/archive/', name: 'archive', icon: fas.faArchive},
@@ -41,12 +41,12 @@ const main_menu_items = [
 ]
 
 class LeftMenu_ extends React.Component {
-  state = {states: {}}
+  state = {flags: {}}
 
   componentDidMount () {
     this.mounted = true
     this.update()
-    this.remove_listener = this.props.ctx.worker.add_listener('states-change', this.update)
+    this.remove_listener = this.props.ctx.worker.add_listener('flag-change', this.update)
   }
 
   componentWillUnmount () {
@@ -57,7 +57,7 @@ class LeftMenu_ extends React.Component {
   update = async () => {
     if (this.mounted) {
       const r = await this.props.ctx.worker.call('conv-counts')
-      this.setState({states: r.states, labels: r.labels})
+      this.setState({flags: r.flags, labels: r.labels})
     }
   }
 
@@ -85,8 +85,8 @@ class LeftMenu_ extends React.Component {
                 active={this.props.ctx.menu_item === m.name}
                 icon={m.icon}
                 title={as_title(m.name)}
-                count={this.state.states[m.name]}
-                count_unseen={this.state.states[m.name + '_unseen']}
+                count={this.state.flags[m.name]}
+                count_unseen={m.unseen && this.state.flags['unseen']}
               />
             ))}
           </ListGroup>
@@ -117,7 +117,7 @@ export default () => (
     <Col md="9">
       <Switch>
         <Route exact path="/" render={ListConversations}/>
-        <Route exact path="/:state(draft|sent|archive|all|spam|deleted)/" render={ListConversations}/>
+        <Route exact path="/:flag(draft|sent|archive|all|spam|deleted)/" render={ListConversations}/>
         <Route exact path="/create/" render={CreateConversation}/>
         <Route path="/:key([a-f0-9]{10,64})/" render={ConversationDetails}/>
         <Route component={NotFound}/>

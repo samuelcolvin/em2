@@ -146,8 +146,6 @@ async function apply_actions (data) {
   const real_act = Boolean(actions.find(a => !meta_action_types.has(a.act)))
   let notify_details = null
 
-  // FIXME all these counts might be wrong as we're assuming the conversation is actually new which it might not be
-  const new_states = {}
   if (conv) {
     const update = {
       last_action_id: action.id,
@@ -155,44 +153,28 @@ async function apply_actions (data) {
       spam: bool_int(data.spam),
       label_ids: data.label_ids || [],
     }
-    const unseen = other_actor && real_act
-    const now_unseen = unseen && conv.seen
-    if (now_unseen) {
+    if (other_actor && real_act) {
       update.seen = 0
-    }
-    if (unseen && !data.spam) {
-      notify_details = conv.details
+      if (!update.spam) {
+        notify_details = conv.details
+      }
+    } else if (!other_actor && action.act === 'seen') {
+      update.seen = 1
     }
 
     if (real_act) {
       update.updated_ts = action.ts
-      if (data.spam && !conv.spam) {
-        update.spam = bool_int(data.spam)
-        new_states.spam = session.current.states.spam + 1
-        if (now_unseen) {
-          new_states.spam_unseen = session.current.states.spam_unseen + 1
-        }
-      } else {
-        if (!conv.inbox) {
-          update.inbox = 1
-          new_states.inbox = session.current.states.inbox + 1
-          if (now_unseen) {
-            new_states.inbox_unseen = session.current.states.inbox_unseen + 1
-          }
-        }
-        if (conv.deleted) {
-          update.deleted = 0
-          new_states.deleted = session.current.states.deleted - 1
-        }
+      if (!update.spam) {
+        update.inbox = 1
+        update.deleted = 0
       }
     }
     if (publish_action && !conv.publish_ts) {
       update.publish_ts = publish_action.ts
       update.draft = 0
       update.sent = 1
-      new_states.draft = session.current.states.draft - 1
-      new_states.sent = session.current.states.sent + 1
     }
+    console.log('update:', update)
     await session.db.conversations.update(action.conv, update)
   } else {
     const conv_data = {
@@ -211,24 +193,6 @@ async function apply_actions (data) {
     }
     await session.db.conversations.add(conv_data)
 
-    if (conv_data.draft) {
-      new_states.draft = session.current.states.draft + 1
-    } else if (conv_data.inbox) {
-      new_states.inbox = session.current.states.inbox + 1
-      if (!conv_data.seen) {
-        new_states.inbox_unseen = session.current.states.inbox_unseen + 1
-      }
-    } else if (conv_data.spam) {
-      new_states.spam = session.current.states.spam + 1
-      if (!conv_data.seen) {
-        new_states.spam_unseen = session.current.states.spam_unseen + 1
-      }
-    }
-
-    if (conv_data.sent) {
-      new_states.sent = session.current.states.sent + 1
-    }
-
     if (!conv_data.seen && !data.spam) {
       notify_details = data.conv_details
     }
@@ -240,9 +204,9 @@ async function apply_actions (data) {
   }
   window_call('change', {conv: action.conv})
 
-  if (Object.keys(new_states).length) {
-    await session.update({states: Object.assign({}, session.current.states, new_states)})
-    window_call('states-change', await session.conv_counts())
+  if (session.current.flags !== data.flags) {
+    await session.update({flags: data.flags})
+    window_call('flag-change', await session.conv_counts())
   }
 
   if (notify_details) {

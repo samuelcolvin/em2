@@ -9,6 +9,7 @@ from aiohttp.web_ws import WebSocketResponse
 from arq.connections import ArqRedis
 from buildpg.asyncpg import BuildPgConnection
 
+from em2.core import get_flag_counts
 from em2.settings import Settings
 
 logger = logging.getLogger('em2.ui.background')
@@ -66,6 +67,7 @@ class Background:
             await asyncio.gather(*coros)
 
     async def send(self, user_id: int, participant: dict, wss: List[WebSocketResponse], msg_json_chunk: str):
+        participant['flags'] = await get_flag_counts(user_id, conn=self.app['pg'], redis=self.app['redis'])
         msg = msg_json_chunk + ',' + ujson.dumps(participant)[1:]
         for ws in wss:
             try:

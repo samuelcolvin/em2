@@ -160,10 +160,10 @@ class Conv:
 
 
 class Factory:
-    def __init__(self, conn, redis, cli, url):
-        self.conn = conn
+    def __init__(self, redis, cli, url):
         self.redis: ArqRedis = redis
         self.cli = cli
+        self.conn = self.cli.server.app['pg']
         self.settings: Settings = cli.server.app['settings']
         self.email_index = 1
 
@@ -256,8 +256,8 @@ class Factory:
 
 
 @pytest.fixture
-async def factory(db_conn, redis, cli, url):
-    return Factory(db_conn, redis, cli, url)
+async def factory(redis, cli, url):
+    return Factory(redis, cli, url)
 
 
 @pytest.yield_fixture(name='worker')
