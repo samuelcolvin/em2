@@ -7,7 +7,7 @@ jobs:
       - checkout
       - run: docker version
       - run: |
-          curl -Lf https://github.com/samuelcolvin/donkey-make/releases/download/v0.2/donk > ./donk
+          curl -Lf https://github.com/samuelcolvin/donkey-make/releases/download/v0.3/donk > ./donk
           chmod +x ./donk
       - run: ./donk build
 
