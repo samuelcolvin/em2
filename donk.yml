@@ -1,0 +1,105 @@
+install:
+- pip install -U pip setuptools
+- pip install -r tests/requirements.txt
+- pip install -r em2/requirements1.txt
+- pip install -r em2/requirements2.txt
+
+black: black -S -l 120 --target-version py37 em2 tests
+isort: isort -rc -w 120 em2 tests
+
+format:
+- +isort
+- +black
+- ./tests/clean_python.py
+
+lint:
+- flake8 em2/ tests/
+- +isort -- --check-only
+- +black -- --check
+- ./tests/check_debug.sh
+- cd js && yarn --offline lint
+
+test:
+- pytest --cov=em2
+
+testcov:
+- +test
+- coverage html
+
+all:
+- +testcov
+- +lint
+
+robot:
+- PYTHONPATH="`pwd`" ./tests/robot.py
+
+clean:
+- rm -rf `find . -name __pycache__`
+- rm -f `find . -type f -name '*.py[co]' `
+- rm -f `find . -type f -name '*~' `
+- rm -f `find . -type f -name '.*~' `
+- rm -rf .cache
+- rm -rf .pytest_cache
+- rm -rf .mypy_cache
+- rm -rf htmlcov
+- rm -rf *.egg-info
+- rm -f .coverage
+- rm -f .coverage.*
+- rm -rf build
+- rm -r em2/.index
+
+build:
+- _find em2 -name '*.py[co]' -delete
+- _find em2 -name '__pycache__' -delete
+- export C=$(git rev-parse HEAD)
+- export BT=$(date)
+- 'docker build em2 -t em2 --build-arg COMMIT=$C --build-arg BUILD_TIME="$BT"'
+
+docker-dev:
+- +build
+- _echo ================================================================================
+- _echo running locally for development and testing
+- _echo You'll want to run docker-logs in anther window see what's going on
+- _echo ================================================================================
+- _echo
+- _echo running docker compose...
+- docker-compose -f docker/docker-compose.yml up -d
+
+docker-dev-stop:
+- docker-compose -f docker/docker-compose.yml stop
+
+js:
+- >
+  COMMIT_REF=$(git rev-parse HEAD)
+  REACT_APP_DOMAIN=${REACT_APP_DOMAIN:-imber.io}
+  ./js/build.py
+
+release-js:
+- +js
+- cp -r js/build site
+- zip -r site.zip site
+- _rm -r site
+- >
+  _curl --fail -s -H "Content-Type: application/zip" -H "Authorization: Bearer ${NETLIFY}"
+  --data-binary "@site.zip"
+  https://api.netlify.com/api/v1/sites/em2.netlify.com/deploys 1>/dev/null
+- _echo 'js uploaded to netlify successfully'
+- _rm site.zip
+
+heroku-app: 'export heroku="${heroku:-em2-demo}"'
+
+push:
+- +build
+- _if [ "`git status --porcelain | wc -l`" -ne "0" ]; then
+- _    echo "REPO NOT CLEAN";
+- _    # exit 1; \
+- _fi
+- <heroku-app
+- docker tag em2 registry.heroku.com/$heroku/web
+- docker push registry.heroku.com/$heroku/web
+- docker tag em2 registry.heroku.com/$heroku/worker
+- docker push registry.heroku.com/$heroku/worker
+
+push-release:
+- <push
+- heroku container:release web worker -a $heroku

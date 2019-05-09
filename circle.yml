@@ -6,7 +6,10 @@ jobs:
     steps:
       - checkout
       - run: docker version
-      - run: make build
+      - run: |
+        curl -Lf https://github.com/samuelcolvin/donkey-make/releases/download/v0.2/donk > ./donk
+        chmod +x ./donk
+      - run: ./donk build
 
 workflows:
   version: 2
