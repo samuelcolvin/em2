@@ -34,11 +34,11 @@ class ConvDetailsView extends React.Component {
   async componentDidMount () {
     this.mounted = true
     this.update()
-    this.remove_listener = this.props.ctx.worker.add_listener('change', this.update)
+    this.remove_listener = window.logic.add_listener('change', this.update)
     document.addEventListener('keydown', this.on_keydown)
     await sleep(1000)
     if (this.mounted) {
-      await this.props.ctx.worker.call('seen', {conv: this.state.conv.key})
+      await window.logic.conversations.seen(this.state.conv.key)
     }
   }
 
@@ -83,7 +83,7 @@ class ConvDetailsView extends React.Component {
     } else if (data && data.new_key) {
       this.props.history.push(`/${data.new_key.substr(0, 10)}/`)
     } else {
-      const conv = await this.props.ctx.worker.call('get-conversation', this.props.match.params)
+      const conv = await window.logic.conversations.get_conversation(this.props.match.params)
       this.props.ctx.setTitle(conv.subject)
       this.setState({conv})
       if (this.action_ids && this.state.locked && this.action_ids.filter(id => conv.action_ids.has(id))) {
@@ -96,7 +96,7 @@ class ConvDetailsView extends React.Component {
   publish = async () => {
     if (!this.state.locked && !this.state.conv.published) {
       this.setState({locked: true})
-      await this.props.ctx.worker.call('publish', {conv: this.state.conv.key})
+      await window.logic.conversations.publish(this.state.conv.key)
     }
   }
 
@@ -104,7 +104,7 @@ class ConvDetailsView extends React.Component {
     if (!this.state.locked && this.state.new_message) {
       this.setState({locked: true})
       const actions = [{act: 'message:add', body: this.state.new_message}]
-      const r = await this.props.ctx.worker.call('act', {conv: this.state.conv.key, actions})
+      const r = await window.logic.conversations.act(this.state.conv.key, actions)
       this.action_ids = r.data.action_ids
       this.setState({new_message: null})
     }
@@ -114,7 +114,7 @@ class ConvDetailsView extends React.Component {
     if (!this.state.locked && this.state.comment && this.state.comment_parent) {
       this.setState({locked: true})
       const actions = [{act: 'message:add', body: this.state.comment, parent: this.state.comment_parent}]
-      const r = await this.props.ctx.worker.call('act', {conv: this.state.conv.key, actions})
+      const r = await window.logic.conversations.act(this.state.conv.key, actions)
       this.action_ids = r.data.action_ids
       this.setState({comment: null, comment_parent: null})
     }
@@ -126,7 +126,7 @@ class ConvDetailsView extends React.Component {
       const actions = this.state.extra_prts.map(p => (
         {act: 'participant:add', participant: p.email}
       ))
-      const r = await this.props.ctx.worker.call('act', {conv: this.state.conv.key, actions})
+      const r = await window.logic.conversations.act(this.state.conv.key, actions)
       this.action_ids = r.data.action_ids
       this.setState({extra_prts: null})
     }
@@ -135,14 +135,14 @@ class ConvDetailsView extends React.Component {
   act = async actions => {
     if (!this.state.locked) {
       this.setState({locked: true})
-      const r = await this.props.ctx.worker.call('act', {conv: this.state.conv.key, actions})
+      const r = await window.logic.conversations.act(this.state.conv.key, actions)
       this.action_ids = r.data.action_ids
       return r.data.action_ids
     }
   }
 
   lock_subject = async () => {
-    const follows = await this.props.ctx.worker.call('last-subject-action', {conv: this.state.conv.key})
+    const follows = await window.logic.conversations.last_subject_action(this.state.conv.key)
     const action_ids = await this.act([{act: 'subject:lock', follows}])
     return action_ids[0]
   }

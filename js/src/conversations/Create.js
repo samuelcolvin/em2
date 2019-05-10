@@ -86,7 +86,7 @@ const Create = ({ctx, history}) => {
       <Form
         fields={fields}
         form_data={form_data}
-        function="create-conversation"
+        function={window.logic.conversations.create}
         Buttons={FormButtons}
         RenderFields={RenderFields}
         submitted={r => history.push(`/${r.data.key}/`)}

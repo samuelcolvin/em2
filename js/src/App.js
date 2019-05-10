@@ -1,12 +1,12 @@
 import React from 'react'
 import {Route, Switch, withRouter} from 'react-router-dom'
-import {GlobalContext, Error, Notify} from 'reactstrap-toolbox'
+import {GlobalContext, Error} from 'reactstrap-toolbox'
 
-import {statuses} from './utils/network'
+import Logic from './logic'
+import {statuses} from './logic/network'
 import Login from './auth/Login'
 import Logout from './auth/Logout'
 import SwitchSession from './auth/SwitchSession'
-import Worker from './run_worker'
 import Navbar from './Navbar'
 import WithMenu from './WithMenu'
 
@@ -45,18 +45,10 @@ class App extends React.Component {
     menu_item: null,
   }
 
-  constructor (props) {
-    super(props)
-    this.worker = new Worker(this)
-    this.notify = new Notify(this.props.history)
-    this.worker.add_listener('notify', this.notify.notify)
-    this.worker.add_listener('notify-request', this.notify.request)
-  }
-
   componentDidMount () {
-    this.worker.add_listener('setState', s => this.setState(s))
-    this.worker.add_listener('setUser', u => this.setUser(u))
-    this.worker.call('start', JSON.parse(sessionStorage['session_id'] || 'null'))
+    window.logic = new Logic(this.props.history)
+    window.logic.add_listener('setState', s => this.setState(s))
+    window.logic.add_listener('setUser', u => this.setUser(u))
   }
 
   componentDidUpdate (prevProps) {
@@ -98,7 +90,6 @@ class App extends React.Component {
       setMenuItem: menu_item => this.setState({menu_item}),
       menu_item: this.state.menu_item,
       user: this.state.user,
-      worker: this.worker,
     }
     return (
       <GlobalContext.Provider value={ctx}>

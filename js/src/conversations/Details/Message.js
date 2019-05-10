@@ -3,7 +3,7 @@ import {Button, Tooltip, ListGroup, ListGroupItem} from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {format_ts} from '../../utils/dt'
-import {make_url} from '../../utils/network'
+import {make_url} from '../../logic/network'
 import MessageBody from './MessageBody'
 import file_icon from './file_icons'
 

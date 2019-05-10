@@ -59,7 +59,7 @@ class ConvListView extends React.Component {
   async componentDidMount () {
     this.mounted = true
     this.update()
-    this.remove_listener = this.props.ctx.worker.add_listener('change', this.update)
+    this.remove_listener = window.logic.add_listener('change', this.update)
   }
 
   componentDidUpdate (prevProps) {
@@ -84,8 +84,7 @@ class ConvListView extends React.Component {
       this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
       const flag = this.conv_flag()
       this.props.ctx.setMenuItem(flag)
-      const args = {page: this.get_page(), flag}
-      this.setState(await this.props.ctx.worker.call('list-conversations', args))
+      this.setState(await window.logic.conversations.list({page: this.get_page(), flag}))
     }
   }
 
@@ -98,7 +97,7 @@ class ConvListView extends React.Component {
     if (page === this.get_page()) {
       return
     }
-    const r = await this.props.ctx.worker.call('list-conversations', {page, state: this.conv_state()})
+    const r = await window.logic.conversations.list({page, flag: this.conv_flag()})
     if (r.conversations.length) {
       this.setState(r)
       this.props.history.push(link)

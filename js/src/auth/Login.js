@@ -2,7 +2,7 @@ import React from 'react'
 import {Row, Col, Button, FormFeedback} from 'reactstrap'
 import {Link} from 'react-router-dom'
 import {WithContext, DetailedError, message_toast} from 'reactstrap-toolbox'
-import {make_url} from '../utils/network'
+import {make_url} from '../logic/network'
 import IFrame from './IFrame'
 import Recaptcha from './Recaptcha'
 
@@ -18,7 +18,7 @@ class Login extends React.Component {
   iframe_ref = React.createRef()
 
   authenticate = async data => {
-    const user = await this.props.ctx.worker.call('auth-token', data)
+    const user = await window.logic.auth.auth_token(data)
     message_toast({
       icon: 'user',
       title: 'Logged in',
@@ -36,7 +36,7 @@ class Login extends React.Component {
     if (event.data.loaded) {
       const load_msg = {
         loaded: true,
-        existing_sessions: await this.props.ctx.worker.call('all-emails'),
+        existing_sessions: await window.logic.session.all_emails(),
         login_url: make_url('auth', '/login/'),
       }
       this.iframe_ref.current.contentWindow.postMessage(load_msg, '*')

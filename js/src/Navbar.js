@@ -12,7 +12,7 @@ import {
   DropdownMenu,
   DropdownItem,
 } from 'reactstrap'
-import {statuses} from './utils/network'
+import {statuses} from './logic/network'
 
 const AccountSummary = ({conn_status, user}) => {
   const [show_tooltip, set_tooltip] = React.useState(false)
