@@ -1,7 +1,6 @@
 import debounce from 'debounce-async'
 import isEmail from 'validator/lib/isEmail'
-import {session} from './worker_db'
-import {add_listener, requests} from './worker_utils'
+import {requests} from './utils'
 
 function parse_address (email) {
   let name = ''
@@ -14,21 +13,22 @@ function parse_address (email) {
   return isEmail(email) ? {name, email: email.toLowerCase()} : null
 }
 
-const request_contacts = debounce(
-  data => requests.get('ui', `/${session.id}/contacts/lookup-email/`, {args: data}),
-  300 // may have to increase this in future
-)
+export default class Contacts {
+  constructor (main) {
+    this._main = main
+    this._sess = main.session
+    this._debounce_request_contacts = debounce(this._raw_request_contacts, 300)
+  }
 
-export default function () {
-  add_listener('fast-email-lookup', async data => {
+  fast_email_lookup = async data => {
     const r = parse_address(data.query)
     // TODO search for email addresses in indexeddb
     return r && [r]
-  })
+  }
 
-  add_listener('slow-email-lookup', async data => {
+  slow_email_lookup = async data => {
     try {
-      const r = await request_contacts(data)
+      const r = await this._debounce_request_contacts(data)
       return r.data
     } catch (e) {
       if (e === 'canceled') {
@@ -37,9 +37,9 @@ export default function () {
         throw e
       }
     }
-  })
+  }
 
-  add_listener('parse-multiple-addresses', data => {
+  parse_multiple_addresses = data => {
     let addresses
     if (data.raw.indexOf(',') === -1) {
       // no commas, split on spaces
@@ -50,5 +50,9 @@ export default function () {
     }
     const results = addresses.filter(v => v).map(parse_address)
     return [results.filter(v => v), results.filter(v => !v).length]
-  })
+  }
+
+  _raw_request_contacts = data => {
+    requests.get('ui', `/${this._sess.id}/contacts/lookup-email/`, {args: data})
+  }
 }

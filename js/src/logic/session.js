@@ -5,7 +5,7 @@ session_db.version(1).stores({
   sessions: '&session_id, email',
 })
 
-class Session {
+export default class Session {
   constructor () {
     this.current = null
     this.id = null
@@ -56,7 +56,7 @@ class Session {
   conv_counts = async () => {
     // TODO get labels
     return {
-      flags: session.current.flags,
+      flags: this.current.flags,
       labels: [],
     }
   }
@@ -64,4 +64,3 @@ class Session {
   other_sessions = () => session_db.sessions.where('session_id').notEqual(this.id || -1).toArray()
   all_emails = () => session_db.sessions.orderBy('email').keys()
 }
-export const session = new Session()
