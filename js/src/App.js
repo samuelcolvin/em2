@@ -9,7 +9,6 @@ import SwitchSession from './auth/SwitchSession'
 import Worker from './run_worker'
 import Navbar from './Navbar'
 import WithMenu from './WithMenu'
-import './fa'
 
 
 const Main = ({app_state}) => {

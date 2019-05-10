@@ -1,6 +1,7 @@
 import React from 'react'
 import {Link} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+import * as fas from '@fortawesome/free-solid-svg-icons'
 import {
   Navbar as NavbarBootstrap,
   NavbarBrand,
@@ -20,13 +21,13 @@ const AccountSummary = ({conn_status, user}) => {
   if (!conn_status || conn_status === statuses.connecting) {
     // no connection status yet
     connection_status_text = 'connecting...'
-    connection_status_icon = 'spinner'
+    connection_status_icon = fas.faSpinner
   } else if (conn_status === statuses.offline) {
     connection_status_text = 'offline'
-    connection_status_icon = 'times'
+    connection_status_icon = fas.faTimes
   } else {
     connection_status_text = 'online'
-    connection_status_icon = 'circle'
+    connection_status_icon = fas.faCircle
   }
   return (
     <span>
@@ -43,7 +44,7 @@ const AccountSummary = ({conn_status, user}) => {
         <span className="ml-2">
           <span className="d-none d-sm-inline-block">
             {user.name}
-            <FontAwesomeIcon icon="caret-down" className="ml-2"/>
+            <FontAwesomeIcon icon={fas.faCaretDown} className="ml-2"/>
           </span>
           <span className="d-inline-block d-sm-none">
             <span className="navbar-toggler-icon"/>

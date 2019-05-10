@@ -1,6 +1,7 @@
 import React from 'react'
 import {Link} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+import * as fas from '@fortawesome/free-solid-svg-icons'
 import {withRouter} from 'react-router-dom'
 import {WithContext, Loading, message_toast} from 'reactstrap-toolbox'
 import {format_ts} from '../utils/dt'
@@ -17,10 +18,10 @@ const ConvList = ({conversations, user_email}) => conversations.map((conv, i) =>
 
     <div className="details">
       <span className="icon">
-        <FontAwesomeIcon icon="comment"/> {conv.details.msgs}
+        <FontAwesomeIcon icon={fas.faComment}/> {conv.details.msgs}
       </span>
       <span className="icon">
-        <FontAwesomeIcon icon="users"/> {conv.details.prts}
+        <FontAwesomeIcon icon={fas.faUsers}/> {conv.details.prts}
       </span>
       <span>
         {format_ts(conv.updated_ts)}

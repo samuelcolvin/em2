@@ -1,6 +1,7 @@
 import React from 'react'
 import {Button, Tooltip, ListGroup, ListGroupItem} from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+import * as fas from '@fortawesome/free-solid-svg-icons'
 import {format_ts} from '../../utils/dt'
 import {make_url} from '../../utils/network'
 import MessageBody from './MessageBody'
@@ -17,7 +18,7 @@ const CommentButton = ({msg, state, setState, comment_ref, children}) => {
       <Button size="sm" color="comment" id={btn_id}
               disabled={!!(state.locked || state.comment_parent || state.new_message || state.extra_prts)}
               onClick={click}>
-        <FontAwesomeIcon icon="reply" className="mr-1"/>
+        <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
       </Button>
       <Tooltip placement="right" isOpen={state[btn_id]}
                trigger="hover"
@@ -43,7 +44,7 @@ const AddComment = ({state, setState, comment_ref, add_comment}) => (
     <div className="text-right pl-2">
       <div>
         <Button size="sm" color="primary" disabled={state.locked || !state.comment} onClick={add_comment}>
-          <FontAwesomeIcon icon="reply" className="mr-1"/>
+          <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
           Comment
         </Button>
       </div>

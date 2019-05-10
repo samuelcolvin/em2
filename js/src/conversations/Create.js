@@ -1,6 +1,7 @@
 import React from 'react'
 import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+import * as fas from '@fortawesome/free-solid-svg-icons'
 import {
   Col,
   Row,
@@ -53,7 +54,7 @@ const FormButtons = ({state, form_props, submit, setField}) => {
         <ButtonGroup className="flex-row-reverse">
 
           <Button color="primary" disabled={state.disabled} onClick={() => pub_submit(true)}>
-            <FontAwesomeIcon icon="paper-plane" className="mr-1"/>
+            <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/>
             Send
           </Button>
 

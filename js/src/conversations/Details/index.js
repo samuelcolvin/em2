@@ -2,6 +2,7 @@ import React from 'react'
 import {Button, ButtonGroup, Col, Row} from 'reactstrap'
 import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, sleep, Loading} from 'reactstrap-toolbox'
 import Message from './Message'
 import RightPanel from './RightPanel'
@@ -13,7 +14,7 @@ const DraftButtons = ({state, add_msg, publish}) => (
       Add Message
     </Button>
     <Button color="primary" disabled={state.locked || !!state.new_message} onClick={publish}>
-      <FontAwesomeIcon icon="paper-plane" className="mr-1"/>
+      <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/>
       Publish
     </Button>
   </ButtonGroup>
@@ -21,7 +22,7 @@ const DraftButtons = ({state, add_msg, publish}) => (
 
 const PublishedButtons = ({state, add_msg}) => (
   <Button color="primary" disabled={state.locked || !state.new_message} onClick={add_msg}>
-    <FontAwesomeIcon icon="paper-plane" className="mr-1"/>
+    <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/>
     Send
   </Button>
 )
