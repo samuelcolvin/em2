@@ -16,19 +16,18 @@ function parse_address (email) {
 export default class Contacts {
   constructor (main) {
     this._main = main
-    this._sess = main.session
     this._debounce_request_contacts = debounce(this._raw_request_contacts, 300)
   }
 
-  fast_email_lookup = async data => {
-    const r = parse_address(data.query)
+  fast_email_lookup = async query => {
+    const r = parse_address(query)
     // TODO search for email addresses in indexeddb
     return r && [r]
   }
 
-  slow_email_lookup = async data => {
+  slow_email_lookup = async query => {
     try {
-      const r = await this._debounce_request_contacts(data)
+      const r = await this._debounce_request_contacts(query)
       return r.data
     } catch (e) {
       if (e === 'canceled') {
@@ -52,7 +51,7 @@ export default class Contacts {
     return [results.filter(v => v), results.filter(v => !v).length]
   }
 
-  _raw_request_contacts = data => {
-    requests.get('ui', `/${this._sess.id}/contacts/lookup-email/`, {args: data})
+  _raw_request_contacts = query => {
+    requests.get('ui', `/${this._main.session.id}/contacts/lookup-email/`, {args: {query}})
   }
 }

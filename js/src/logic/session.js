@@ -6,7 +6,8 @@ session_db.version(1).stores({
 })
 
 export default class Session {
-  constructor () {
+  constructor (main) {
+    this._main = main
     this.current = null
     this.id = null
     this.db = null
@@ -53,14 +54,17 @@ export default class Session {
     await session_db.sessions.update(this.id, changes)
   }
 
-  conv_counts = async () => {
-    // TODO get labels
-    return {
-      flags: this.current.flags,
-      labels: [],
-    }
-  }
+  conv_counts = () => ({
+    flags: this.current.flags || {},
+    labels: [],
+  })
 
   other_sessions = () => session_db.sessions.where('session_id').notEqual(this.id || -1).toArray()
   all_emails = () => session_db.sessions.orderBy('email').keys()
+
+  switch = async session_id => {
+    await this.set(session_id)
+    await this._main.update_sessions()
+    return {email: this.current.email, name: this.current.name}
+  }
 }

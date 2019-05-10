@@ -33,14 +33,14 @@ class Participants extends React.Component {
   search = async query => {
     this.setState({ongoing_searches: this.state.ongoing_searches + 1})
 
-    const options1 = await this.props.ctx.worker.call('fast-email-lookup', {query})
+    const options1 = await window.logic.contacts.fast_email_lookup(query)
     // null when the address is invalid
     if (options1) {
       this.setState({options: options1})
       // this.setState({options: this.selected().concat(options1)})
     }
 
-    const options2 = await this.props.ctx.worker.call('slow-email-lookup', {query})
+    const options2 = await window.logic.slow_email_lookup(query)
     // null when the request was cancelled, or offline
     if (options2 && options2.length) {
       // could combine first and second set of options, but in general second set will override first
@@ -54,7 +54,7 @@ class Participants extends React.Component {
     const raw = e.clipboardData.getData('Text')
     if (raw) {
       e.preventDefault()
-      const [addresses, bad_count] = await this.props.ctx.worker.call('parse-multiple-addresses', {raw})
+      const [addresses, bad_count] = await window.logic.parse_multiple_addresses(raw)
       if (addresses) {
         this.onChange(this.props.value.concat(addresses))
       }

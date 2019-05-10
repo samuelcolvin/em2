@@ -15,7 +15,6 @@ const ws_ttl = 49900
 export default class Websocket {
   constructor (main) {
     this._main = main
-    this._sess = main.session
     this._disconnects = 0
     this._socket = null
     this._clear_reconnect = null
@@ -36,11 +35,11 @@ export default class Websocket {
   }
 
   _connect = () => {
-    if (!this._sess) {
+    if (!this._main.session) {
       console.warn('session null, not connecting to ws')
       return
     }
-    let ws_url = make_url('ui', `/${this._sess.id}/ws/`).replace('http', 'ws')
+    let ws_url = make_url('ui', `/${this._main.session.id}/ws/`).replace('http', 'ws')
     let socket
     try {
       socket = new WebSocket(ws_url)
@@ -71,7 +70,7 @@ export default class Websocket {
       console.debug('websocket open')
       this._main.set_conn_status(statuses.online)
       this._disconnects = 0
-      this._main.fire('notify-request')
+      this._main.notify.request()
       this._clear_reconnect = setTimeout(this._reconnect, ws_ttl)
     }
   }
@@ -84,11 +83,11 @@ export default class Websocket {
     let clear_cache = false
     if (data.actions) {
       await this._apply_actions(data)
-      if (data.user_v - this._sess.current.user_v !== 1) {
+      if (data.user_v - this._main.session.current.user_v !== 1) {
         // user_v has increased by more than one, we must have missed actions, everything could have changed
         clear_cache = true
       }
-    } else if (data.user_v === this._sess.current.user_v) {
+    } else if (data.user_v === this._main.session.current.user_v) {
       // just connecting and nothing has changed
       return
     } else {
@@ -100,7 +99,7 @@ export default class Websocket {
     if (clear_cache) {
       session_update.cache = new Set()
     }
-    await this._sess.update(session_update)
+    await this._main.session.update(session_update)
   }
 
   _on_close = async e => {
@@ -116,7 +115,7 @@ export default class Websocket {
     if (e.code === 4403) {
       console.debug('websocket closed with 4403, not authorised')
       this._main.set_conn_status(statuses.online)
-      await this._sess.delete()
+      await this._main.session.delete()
       this._main.fire('setState', {user: null})
       this._main.fire('setState', {other_sessions: []})
     } else {
@@ -136,13 +135,13 @@ export default class Websocket {
     // console.log('actions:', data)
     const actions = data.actions.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
 
-    await this._sess.db.actions.bulkPut(actions)
+    await this._main.session.db.actions.bulkPut(actions)
     const action = actions[actions.length - 1]
-    const conv = await this._sess.db.conversations.get(action.conv)
+    const conv = await this._main.session.db.conversations.get(action.conv)
     const publish_action = actions.find(a => a.act === 'conv:publish')
 
-    const other_actor = Boolean(actions.find(a => a.actor !== this._sess.current.email))
-    const self_creator = data.conv_details.creator === this._sess.current.email
+    const other_actor = Boolean(actions.find(a => a.actor !== this._main.session.current.email))
+    const self_creator = data.conv_details.creator === this._main.session.current.email
     const real_act = Boolean(actions.find(a => !meta_action_types.has(a.act)))
     let notify_details = null
 
@@ -174,8 +173,7 @@ export default class Websocket {
         update.draft = 0
         update.sent = 1
       }
-      console.log('update:', update)
-      await this._sess.db.conversations.update(action.conv, update)
+      await this._main.session.db.conversations.update(action.conv, update)
     } else {
       const conv_data = {
         key: action.conv,
@@ -191,27 +189,27 @@ export default class Websocket {
         seen: bool_int(!(other_actor && real_act)),
         label_ids: data.label_ids || [],
       }
-      await this._sess.db.conversations.add(conv_data)
+      await this._main.session.db.conversations.add(conv_data)
 
       if (!conv_data.seen && !data.spam) {
         notify_details = data.conv_details
       }
-      const old_conv = await this._sess.db.conversations.get({new_key: action.conv})
+      const old_conv = await this._main.session.db.conversations.get({new_key: action.conv})
       if (old_conv) {
-        await this._sess.db.conversations.delete(old_conv.key)
+        await this._main.session.db.conversations.delete(old_conv.key)
         this._main.fire('change', {conv: old_conv.key, new_key: action.conv})
       }
     }
     this._main.fire('change', {conv: action.conv})
 
-    if (this._sess.current.flags !== data.flags) {
-      await this._sess.update({flags: data.flags})
-      this._main.fire('flag-change', await this._sess.conv_counts())
+    if (this._main.session.current.flags !== data.flags) {
+      await this._main.session.update({flags: data.flags})
+      this._main.fire('flag-change', this._main.session.conv_counts())
     }
 
     if (notify_details) {
       // TODO better summary of action
-      this._main.fire('notify', {
+      this._main.notify.notify({
         title: action.actor,
         message: notify_details.sub,
         link: `/${action.conv.substr(0, 10)}/`,

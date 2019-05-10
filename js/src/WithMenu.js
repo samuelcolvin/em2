@@ -41,24 +41,16 @@ const main_menu_items = [
 ]
 
 class LeftMenu_ extends React.Component {
-  state = {flags: {}}
+  state = {flags: {}, labels:[]}
 
-  componentDidMount () {
-    this.mounted = true
-    this.update()
-    this.remove_listener = this.props.ctx.worker.add_listener('flag-change', this.update)
+  async componentDidMount () {
+    const counts = await window.logic.conversations.update_counts()
+    this.setState(counts)
+    this.remove_listener = window.logic.add_listener('flag-change', counts => this.setState(counts))
   }
 
   componentWillUnmount () {
-    this.mounted = false
     this.remove_listener && this.remove_listener()
-  }
-
-  update = async () => {
-    if (this.mounted) {
-      const r = await this.props.ctx.worker.call('conv-counts')
-      this.setState({flags: r.flags, labels: r.labels})
-    }
   }
 
   render () {

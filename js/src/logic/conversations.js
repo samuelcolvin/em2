@@ -115,20 +115,19 @@ function construct_conv (actions) {
 export default class Conversations {
   constructor (main) {
     this._main = main
-    this._sess = main.session
   }
 
-  list_conversations = async (data) => {
+  list = async (data) => {
     const page = data.page
     const flag = data.flag
     let status = await this._main.get_conn_status()
-    if (!this._sess.current) {
+    if (!this._main.session.current) {
       return {}
     }
     if (status === statuses.online) {
       const cache_key = `page-${flag}-${page}`
-      if (!this._sess.current.cache.has(cache_key)) {
-        const r = await requests.get('ui', `/${this._sess.id}/conv/list/`, {args: {page, flag}})
+      if (!this._main.session.current.cache.has(cache_key)) {
+        const r = await requests.get('ui', `/${this._main.session.id}/conv/list/`, {args: {page, flag}})
         const conversations = r.data.conversations.map(c => (
             Object.assign({}, c, {
               created_ts: unix_ms(c.created_ts),
@@ -142,12 +141,12 @@ export default class Conversations {
               deleted: bool_int(c.deleted),
             })
         ))
-        await this._sess.db.conversations.bulkPut(conversations)
-        this._sess.current.cache.add(cache_key)
-        await this._sess.update({cache: this._sess.current.cache})
+        await this._main.session.db.conversations.bulkPut(conversations)
+        this._main.session.current.cache.add(cache_key)
+        await this._main.session.update({cache: this._main.session.current.cache})
       }
     }
-    const qs = this._sess.db.conversations.where({[flag]: 1})
+    const qs = this._main.session.db.conversations.where({[flag]: 1})
     const count = await qs.count()
     return {
       conversations: offset_limit(await qs.reverse().sortBy('updated_ts'), page),
@@ -155,19 +154,19 @@ export default class Conversations {
     }
   }
 
-  conv_counts = async () => {
+  update_counts = async () => {
     let status = await this._main.get_conn_status()
-    if (!this._sess.current) {
+    if (!this._main.session.current) {
       return {flags: {}, labels: []}
     }
-    if (status === statuses.online && !this._sess.current.cache.has('counts')) {
-      const r = await requests.get('ui', `/${this._sess.id}/conv/counts/`)
+    if (status === statuses.online && !this._main.session.current.cache.has('counts')) {
+      const r = await requests.get('ui', `/${this._main.session.id}/conv/counts/`)
 
-      this._sess.current.cache.add('counts')
-      await this._sess.update({cache: this._sess.current.cache, flags: r.data.flags})
+      this._main.session.current.cache.add('counts')
+      await this._main.session.update({cache: this._main.session.current.cache, flags: r.data.flags})
       // TODO update labels, and return them
     }
-    return await this._sess.conv_counts()
+    return this._main.session.conv_counts()
   }
 
   get_conversation = async (data) => {
@@ -176,48 +175,48 @@ export default class Conversations {
 
     const last_action = actions_incomplete(actions)
     if (!actions.length || last_action !== null) {
-      let url = `/${this._sess.id}/conv/${data.key}/`
+      let url = `/${this._main.session.id}/conv/${data.key}/`
       if (last_action) {
         url += `?since=${last_action}`
       }
       const r = await requests.get('ui', url)
       const new_actions = r.data.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
-      await this._sess.db.actions.bulkPut(new_actions)
+      await this._main.session.db.actions.bulkPut(new_actions)
       actions = await this._get_db_actions(data.key)
     }
     return construct_conv(actions)
   }
 
-  act = async data => {
-    const r = await requests.post('ui', `/${this._sess.id}/conv/${data.conv}/act/`, {actions: data.actions})
-    await this._sess.db.conversations.update(data.conv, {seen: true})
+  act = async (conv, actions) => {
+    const r = await requests.post('ui', `/${this._main.session.id}/conv/${conv}/act/`, {actions: actions})
+    await this._main.session.db.conversations.update(conv, {seen: true})
     return r
   }
 
-  seen = async data => {
-    const conv = await this._sess.db.conversations.get(data.conv)
+  seen = async conv_key => {
+    const conv = await this._main.session.db.conversations.get(conv_key)
     if (!conv.seen) {
-      await requests.post('ui', `/${this._sess.id}/conv/${data.conv}/act/`, {actions: [{act: 'seen'}]})
+      await requests.post('ui', `/${this._main.session.id}/conv/${conv_key}/act/`, {actions: [{act: 'seen'}]})
     }
   }
 
-  publish = async data => {
-    const r = await requests.post('ui', `/${this._sess.id}/conv/${data.conv}/publish/`, {publish: true})
-    await this._sess.db.conversations.update(data.conv, {new_key: r.data.key})
+  publish = async conv => {
+    const r = await requests.post('ui', `/${this._main.session.id}/conv/${conv}/publish/`, {publish: true})
+    await this._main.session.db.conversations.update(conv, {new_key: r.data.key})
   }
 
   create_conversation = async data => (
-    await requests.post('ui', `/${this._sess.id}/conv/create/`, data, {expected_status: [201, 400]})
+    await requests.post('ui', `/${this._main.session.id}/conv/create/`, data, {expected_status: [201, 400]})
   )
 
-  last_subject_action = async data => {
+  last_subject_action = async conv => {
     const acts = new Set(['conv:create', 'conv:publish', 'subject:lock', 'subject:release', 'subject:modify'])
     const actions = await (
-      this._sess.db.actions
-      .where({conv: data.conv}).and(a => acts.has(a.act)).reverse().sortBy('id')
+      this._main.session.db.actions
+      .where({conv: conv}).and(a => acts.has(a.act)).reverse().sortBy('id')
     )
     return actions[0].id
   }
 
-  _get_db_actions = conv_key => this._sess.db.actions.where('conv').startsWith(conv_key).sortBy('id')
+  _get_db_actions = conv_key => this._main.session.db.actions.where('conv').startsWith(conv_key).sortBy('id')
 }

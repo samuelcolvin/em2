@@ -1,13 +1,13 @@
 import React from 'react'
 import {Redirect} from 'react-router-dom'
-import {WithContext, Loading, message_toast} from 'reactstrap-toolbox'
+import {Loading, message_toast} from 'reactstrap-toolbox'
 
 
-const Logout = ({ctx}) => {
+export default () => {
   const [finished, set_finished] = React.useState(false)
 
   React.useEffect(() => {
-    ctx.worker.call('logout').then(() => {
+    window.logic.auth.logout().then(() => {
       message_toast({
         icon: 'user',
         title: 'Logged out',
@@ -22,5 +22,3 @@ const Logout = ({ctx}) => {
 
   return finished ? <Redirect to="/login/"/> : <Loading/>
 }
-
-export default WithContext(Logout)

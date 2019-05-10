@@ -1,22 +1,28 @@
-import {sleep} from 'reactstrap-toolbox'
+import {sleep, Notify} from 'reactstrap-toolbox'
 import {make_url, statuses} from '../utils/network'
 import Session from './session'
 import Websocket from './ws'
-import {requests} from './utils'
 import Conversations from './conversations'
 import Contacts from './contacts'
+import Auth from './auth'
 
-export default class LogicMain extends EventTarget {
-  constructor () {
-    super()
+const random = () => Math.floor(Math.random() * 1e6)
+
+export default class LogicMain {
+  constructor (history) {
+    this.notify = new Notify(history)
+    this.listeners = {}
     this.ws = new Websocket(this)
-    this.session = new Session()
+    this.session = new Session(this)
     this.conversations = new Conversations(this)
     this.contacts = new Contacts(this)
+    this.auth = new Auth(this)
     this._conn_status = null
+    this._start()
   }
 
-  start = async session_id => {
+  _start = async () => {
+    const session_id = JSON.parse(sessionStorage['session_id'] || 'null')
     await this.session.set(session_id)
     if (this.session.id) {
       await this.update_sessions()
@@ -42,39 +48,6 @@ export default class LogicMain extends EventTarget {
     await this.ws.connect()
   }
 
-  switch_session = async session_id => {
-    await this.session.set(session_id)
-    await this.update_sessions()
-    return {email: this.session.email, name: this.session.name}
-  }
-
-  auth_token = async data => {
-    await requests.post('ui', '/auth/token/', {auth_token: data.auth_token})
-    delete data.session.ts
-    data.session.cache = new Set()
-    await this.session.add(data.session)
-    await this.update_sessions()
-    return {email: data.session.email, name: data.session.name}
-  }
-
-  logout = async () => {
-    this.ws.close()
-    await requests.post('ui', `/${this.session.id}/auth/logout/`)
-    await this.session.delete()
-    if (this.session.id) {
-      await this.update_sessions()
-    } else {
-      this.fire('setUser', null)
-      this.fire('setState', {other_sessions: []})
-    }
-  }
-
-  fire = (channel, detail={}) => {
-    const event = new CustomEvent(channel, {detail})
-    this.dispatchEvent(event)
-  }
-
-
   set_conn_status = conn_status => {
     if (conn_status !== this._conn_status) {
       this._conn_status = conn_status
@@ -90,5 +63,27 @@ export default class LogicMain extends EventTarget {
       await sleep(50)
     }
     return this._conn_status
+  }
+
+  add_listener = (channel, listener) => {
+    const id = random()
+    this.listeners[id] = {func: listener, channel}
+    return () => {
+      delete this.listeners[id]
+    }
+  }
+
+  fire = (channel, details={}) => {
+    let matched = 0
+    for (const l of Object.values(this.listeners)) {
+      if (l.channel === channel) {
+        console.debug(`channel "${channel}", calling "${l.func}" with`, details)
+        l.func(details)
+        matched += 1
+      }
+    }
+    if (matched === 0) {
+      console.debug(`message to channel "${channel}", with no listeners`)
+    }
   }
 }
