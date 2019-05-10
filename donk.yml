@@ -80,7 +80,7 @@ release-js:
 - zip -r site.zip site
 - _rm -r site
 - >
-  _curl --fail -s -H "Content-Type: application/zip" -H "Authorization: Bearer ${NETLIFY}"
+  _curl --fail -s -H "Content-Type: application/zip" -H "Authorization: Bearer $NETLIFY"
   --data-binary "@site.zip"
   https://api.netlify.com/api/v1/sites/em2.netlify.com/deploys 1>/dev/null
 - _echo 'js uploaded to netlify successfully'
@@ -90,9 +90,9 @@ heroku-app: 'export heroku="${heroku:-em2-demo}"'
 
 push:
 - +build
-- _if [ "`git status --porcelain | wc -l`" -ne "0" ]; then
-- _    echo "REPO NOT CLEAN";
-- _    # exit 1; \
+- _if [ "$(git status --porcelain | wc -l)" -ne "0" ]; then
+- _    echo "REPO NOT CLEAN!"
+#- _    exit 1
 - _fi
 - <heroku-app
 - docker tag em2 registry.heroku.com/$heroku/web
