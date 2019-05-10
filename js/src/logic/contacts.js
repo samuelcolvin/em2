@@ -1,6 +1,5 @@
 import debounce from 'debounce-async'
 import isEmail from 'validator/lib/isEmail'
-import {requests} from './utils'
 
 function parse_address (email) {
   let name = ''
@@ -51,5 +50,7 @@ export default class Contacts {
     return [results.filter(v => v), results.filter(v => !v).length]
   }
 
-  _raw_lookup = query => requests.get('ui', `/${this._main.session.id}/contacts/lookup-email/`, {args: {query}})
+  _raw_lookup = query => (
+    this._main.requests.get('ui', `/${this._main.session.id}/contacts/lookup-email/`, {query})
+  )
 }

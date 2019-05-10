@@ -1,5 +1,5 @@
 import {sleep, Notify} from 'reactstrap-toolbox'
-import {make_url, statuses} from '../utils/network'
+import {make_url, statuses, Requests} from './network'
 import Session from './session'
 import Websocket from './ws'
 import Conversations from './conversations'
@@ -10,8 +10,9 @@ const random = () => Math.floor(Math.random() * 1e6)
 
 export default class LogicMain {
   constructor (history) {
-    this.notify = new Notify(history)
     this.listeners = {}
+    this.notify = new Notify(history)
+    this.requests = new Requests(this)
     this.ws = new Websocket(this)
     this.session = new Session(this)
     this.conversations = new Conversations(this)

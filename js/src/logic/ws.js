@@ -1,5 +1,5 @@
 import {sleep} from 'reactstrap-toolbox'
-import {make_url, statuses} from '../utils/network'
+import {make_url, statuses} from './network'
 import {unix_ms, bool_int} from './utils'
 
 const meta_action_types = new Set([

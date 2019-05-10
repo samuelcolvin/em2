@@ -1,13 +1,10 @@
-import {requests} from './utils'
-
-
 export default class Auth {
   constructor (main) {
     this._main = main
   }
 
   auth_token = async data => {
-    await requests.post('ui', '/auth/token/', {auth_token: data.auth_token})
+    await this._main.requests.post('ui', '/auth/token/', {auth_token: data.auth_token})
     delete data.session.ts
     data.session.cache = new Set()
     await this._main.session.add(data.session)
@@ -17,7 +14,7 @@ export default class Auth {
 
   logout = async () => {
     this._main.ws.close()
-    await requests.post('ui', `/${this._main.session.id}/auth/logout/`)
+    await this._main.requests.post('ui', `/${this._main.session.id}/auth/logout/`)
     await this._main.session.delete()
     if (this._main.session.id) {
       await this._main.update_sessions()

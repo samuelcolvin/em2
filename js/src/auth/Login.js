@@ -2,7 +2,7 @@ import React from 'react'
 import {Row, Col, Button, FormFeedback} from 'reactstrap'
 import {Link} from 'react-router-dom'
 import {WithContext, DetailedError, message_toast} from 'reactstrap-toolbox'
-import {make_url} from '../utils/network'
+import {make_url} from '../logic/network'
 import IFrame from './IFrame'
 import Recaptcha from './Recaptcha'
 

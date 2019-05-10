@@ -3,7 +3,7 @@ import {Route, Switch, withRouter} from 'react-router-dom'
 import {GlobalContext, Error} from 'reactstrap-toolbox'
 
 import Logic from './logic'
-import {statuses} from './utils/network'
+import {statuses} from './logic/network'
 import Login from './auth/Login'
 import Logout from './auth/Logout'
 import SwitchSession from './auth/SwitchSession'
