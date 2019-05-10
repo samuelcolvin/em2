@@ -16,7 +16,7 @@ function parse_address (email) {
 export default class Contacts {
   constructor (main) {
     this._main = main
-    this._debounce_request_contacts = debounce(this._raw_request_contacts, 300)
+    this._debounce_lookup = debounce(this._raw_lookup, 300)
   }
 
   fast_email_lookup = async query => {
@@ -27,7 +27,7 @@ export default class Contacts {
 
   slow_email_lookup = async query => {
     try {
-      const r = await this._debounce_request_contacts(query)
+      const r = await this._debounce_lookup(query)
       return r.data
     } catch (e) {
       if (e === 'canceled') {
@@ -38,20 +38,18 @@ export default class Contacts {
     }
   }
 
-  parse_multiple_addresses = data => {
+  parse_multiple_addresses = raw => {
     let addresses
-    if (data.raw.indexOf(',') === -1) {
+    if (raw.indexOf(',') === -1) {
       // no commas, split on spaces
-      addresses = data.raw.split(/[\n ]/)
+      addresses = raw.split(/[\n ]/)
     } else {
       // includes commas, split on commas
-      addresses = data.raw.split(/[\n,]/)
+      addresses = raw.split(/[\n,]/)
     }
     const results = addresses.filter(v => v).map(parse_address)
     return [results.filter(v => v), results.filter(v => !v).length]
   }
 
-  _raw_request_contacts = query => {
-    requests.get('ui', `/${this._main.session.id}/contacts/lookup-email/`, {args: {query}})
-  }
+  _raw_lookup = query => requests.get('ui', `/${this._main.session.id}/contacts/lookup-email/`, {args: {query}})
 }

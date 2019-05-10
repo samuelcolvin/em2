@@ -1,6 +1,7 @@
 import React from 'react'
 import {AsyncTypeahead, Token} from 'react-bootstrap-typeahead'
 import {FormGroup, FormFeedback} from 'reactstrap'
+import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, InputLabel, InputHelpText, message_toast} from 'reactstrap-toolbox'
 
 const render_option = o => o.name ? `${o.name} <${o.email}>` : o.email
@@ -40,7 +41,7 @@ class Participants extends React.Component {
       // this.setState({options: this.selected().concat(options1)})
     }
 
-    const options2 = await window.logic.slow_email_lookup(query)
+    const options2 = await window.logic.contacts.slow_email_lookup(query)
     // null when the request was cancelled, or offline
     if (options2 && options2.length) {
       // could combine first and second set of options, but in general second set will override first
@@ -54,12 +55,12 @@ class Participants extends React.Component {
     const raw = e.clipboardData.getData('Text')
     if (raw) {
       e.preventDefault()
-      const [addresses, bad_count] = await window.logic.parse_multiple_addresses(raw)
+      const [addresses, bad_count] = await window.logic.contacts.parse_multiple_addresses(raw)
       if (addresses) {
         this.onChange(this.props.value.concat(addresses))
       }
       if (bad_count) {
-        message_toast({icon: 'times', message: `Skipped ${bad_count} invalid addresses while pasting`})
+        message_toast({icon: fas.faTimes, message: `Skipped ${bad_count} invalid addresses while pasting`})
       }
     }
   }
@@ -67,7 +68,7 @@ class Participants extends React.Component {
   onChange = addresses => {
     const existing_participants = this.props.existing_participants || 0
     if (existing_participants + addresses.length > max_participants) {
-      message_toast({icon: 'times', message: `Maximum ${max_participants} participants permitted`})
+      message_toast({icon: fas.faTimes, message: `Maximum ${max_participants} participants permitted`})
     } else {
       this.props.onChange(addresses)
     }

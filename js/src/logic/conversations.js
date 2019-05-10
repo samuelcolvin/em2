@@ -205,7 +205,7 @@ export default class Conversations {
     await this._main.session.db.conversations.update(conv, {new_key: r.data.key})
   }
 
-  create_conversation = async data => (
+  create = async data => (
     await requests.post('ui', `/${this._main.session.id}/conv/create/`, data, {expected_status: [201, 400]})
   )
 
