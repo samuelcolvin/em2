@@ -102,7 +102,7 @@ class ConvListView extends React.Component {
       this.setState(r)
       this.props.history.push(link)
     } else {
-      message_toast({icon: 'times', title: 'No more Conversations', message: 'No more Conversations found'})
+      message_toast({icon: fas.faTimes, title: 'No more Conversations', message: 'No more Conversations found'})
       this.setState({more_pages: false})
     }
   }

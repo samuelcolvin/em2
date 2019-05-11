@@ -1,6 +1,7 @@
 import React from 'react'
 import {Row, Col, Button, FormFeedback} from 'reactstrap'
 import {Link} from 'react-router-dom'
+import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, DetailedError, message_toast} from 'reactstrap-toolbox'
 import {make_url} from '../logic/network'
 import IFrame from './IFrame'
@@ -20,7 +21,7 @@ class Login extends React.Component {
   authenticate = async data => {
     const user = await window.logic.auth.auth_token(data)
     message_toast({
-      icon: 'user',
+      icon: fas.faUser,
       title: 'Logged in',
       message: `Logged in successfully as ${user.name}`,
       progress: false,

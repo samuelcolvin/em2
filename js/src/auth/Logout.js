@@ -1,5 +1,6 @@
 import React from 'react'
 import {Redirect} from 'react-router-dom'
+import * as fas from '@fortawesome/free-solid-svg-icons'
 import {Loading, message_toast} from 'reactstrap-toolbox'
 
 
@@ -9,7 +10,7 @@ export default () => {
   React.useEffect(() => {
     window.logic.auth.logout().then(() => {
       message_toast({
-        icon: 'user',
+        icon: fas.faUser,
         title: 'Logged out',
         message: 'Logged out successfully',
         progress: false,
