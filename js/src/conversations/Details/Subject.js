@@ -1,5 +1,5 @@
 import React from 'react'
-import {Link} from 'react-router-dom'
+import {Link, withRouter} from 'react-router-dom'
 import {
   InputGroup,
   Input,
@@ -14,7 +14,7 @@ import {
 } from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
-import {WithContext, AsModal} from 'reactstrap-toolbox'
+import {WithContext, AsModal, message_toast} from 'reactstrap-toolbox'
 
 
 class EditSubject_ extends React.Component {
@@ -73,8 +73,31 @@ class EditSubject_ extends React.Component {
 
 const EditSubject = AsModal(WithContext(EditSubject_))
 
-export default ({conv_state, publish, lock_subject, set_subject, release_subject}) => {
+const msg_lookup = {
+  archive: 'Archived',
+  delete: 'Deleted',
+  restore: 'Restored',
+  spam: 'Spam',
+  ham: 'Not Spam',
+}
+
+export default withRouter(({history, conv_state, publish, lock_subject, set_subject, release_subject}) => {
   const btns_disabled = Boolean(conv_state.locked || conv_state.comment_parent || conv_state.new_message)
+  const set_flag = (flag, leave=true) => {
+    window.logic.conversations.set_flag(conv_state.conv.key, flag)
+
+    message_toast({
+      icon: fas.faEnvelope,
+      title: msg_lookup[flag],
+      message: conv_state.conv.subject,
+      progress: false,
+      time: 3000,
+    })
+    if (leave) {
+      const f = conv_state.conv.primary_flag
+      history.push(f === 'inbox' ? '/' : `/${f}/`)
+    }
+  }
   return (
     <div>
       <div className="box d-flex justify-content-between">
@@ -89,26 +112,26 @@ export default ({conv_state, publish, lock_subject, set_subject, release_subject
               </Button>
             ) : null}
             {conv_state.conv.inbox ? (
-              <Button color="primary" disabled={btns_disabled}>
+              <Button color="primary" disabled={btns_disabled} onClick={() => set_flag('archive')}>
                 <FontAwesomeIcon icon={fas.faArchive} className="mr-2"/> Archive
               </Button>
             ) : null}
-            {conv_state.conv.restore ? (
-              <Button color="success" disabled={btns_disabled}>
+            {conv_state.conv.deleted ? (
+              <Button color="success" disabled={btns_disabled} onClick={() => set_flag('restore', false)}>
                 <FontAwesomeIcon icon={fas.faTrash} className="mr-2"/>  Restore
               </Button>
             ) : (
-              <Button color="warning" disabled={btns_disabled}>
+              <Button color="warning" disabled={btns_disabled} onClick={() => set_flag('delete')}>
                 <FontAwesomeIcon icon={fas.faTrash} className="mr-2"/>  Delete
               </Button>
             )}
             {!(conv_state.conv.sent || conv_state.conv.draft || conv_state.conv.spam) ? (
-              <Button color="danger" disabled={btns_disabled}>
+              <Button color="danger" disabled={btns_disabled} onClick={() => set_flag('spam')}>
                 <FontAwesomeIcon icon={fas.faRadiation} className="mr-2"/> Spam
               </Button>
             ) : null}
             {conv_state.conv.spam ? (
-              <Button color="success" disabled={btns_disabled}>
+              <Button color="success" disabled={btns_disabled} onClick={() => set_flag('ham', false)}>
                 <FontAwesomeIcon icon={fas.faRadiation} className="mr-2"/> Not Spam
               </Button>
             ) : null}
@@ -138,4 +161,4 @@ export default ({conv_state, publish, lock_subject, set_subject, release_subject
     />
     </div>
   )
-}
+})

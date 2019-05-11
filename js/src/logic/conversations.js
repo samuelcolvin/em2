@@ -100,6 +100,7 @@ function construct_conv (conv, actions) {
     draft: Boolean(conv.draft),
     sent: Boolean(conv.sent),
     inbox: Boolean(conv.inbox),
+    archive: Boolean(conv.archive),
     deleted: Boolean(conv.deleted),
     spam: Boolean(conv.spam),
     seen: Boolean(conv.seen),
@@ -222,6 +223,31 @@ export default class Conversations {
 
   act = async (conv, actions) => {
     return await this._requests.post('ui', `/${this._main.session.id}/conv/${conv}/act/`, {actions: actions})
+  }
+
+  set_flag = async (conv_key, flag) => {
+    const r = await this._requests.post(
+      'ui',
+      `/${this._main.session.id}/conv/${conv_key}/set-flag/`,
+      {},
+      {args: {flag}}
+    )
+    const update = {
+      inbox: bool_int(r.data.conv_flags.inbox),
+      unseen: bool_int(r.data.conv_flags.unseen),
+      archive: bool_int(r.data.conv_flags.archive),
+      deleted: bool_int(r.data.conv_flags.deleted),
+      spam: bool_int(r.data.conv_flags.spam),
+      draft: bool_int(r.data.conv_flags.draft),
+      sent: bool_int(r.data.conv_flags.sent),
+    }
+    await this._main.session.db.conversations.update(conv_key, update)
+    this._main.fire('change', {conv: conv_key})
+
+    if (this._main.session.current.flags !== r.data.counts) {
+      await this._main.session.update({flags: r.data.counts})
+      this._main.fire('flag-change', this._main.session.conv_counts())
+    }
   }
 
   seen = async conv_key => {
