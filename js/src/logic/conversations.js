@@ -1,3 +1,4 @@
+import {sleep} from 'reactstrap-toolbox'
 import {unix_ms, offset_limit, per_page, bool_int} from './utils'
 import {statuses} from './network'
 
@@ -32,7 +33,7 @@ const _meta_action_types = new Set([
 ])
 
 // taken roughly from core.py:_construct_conv_actions
-function construct_conv (actions) {
+function construct_conv (conv, actions) {
   let subject = null
   let created = null
   const messages = {}
@@ -95,14 +96,36 @@ function construct_conv (actions) {
   }
 
   return {
-    // actions: actions,
-    key: actions[0].conv,
+    key: conv.key,
+    draft: Boolean(conv.draft),
+    sent: Boolean(conv.sent),
+    inbox: Boolean(conv.inbox),
+    deleted: Boolean(conv.deleted),
+    spam: Boolean(conv.spam),
+    seen: Boolean(conv.seen),
+    primary_flag: primary_flag(conv),
     published: Boolean(actions.find(a => a.act === 'conv:publish')),
     subject: subject,
     created: created,
     messages: msg_list,
-    participants: participants,
+    participants,
     action_ids: new Set(actions.map(a => a.id)),
+  }
+}
+
+const primary_flag = conv => {
+  if (conv.deleted) {
+    return 'deleted'
+  } else if (conv.spam) {
+    return 'spam'
+  } else if (conv.inbox) {
+    return 'inbox'
+  } else if (conv.draft) {
+    return 'draft'
+  } else if (conv.sent) {
+    return 'sent'
+  } else {
+    return 'archive'
   }
 }
 
@@ -164,28 +187,41 @@ export default class Conversations {
     return this._main.session.conv_counts()
   }
 
-  get_conversation = async (data) => {
+  get_conversation = async key_prefix => {
     // TODO also need to look at the conversation and see if there are any new actions we've missed
-    let actions = await this._get_db_actions(data.key)
+    // TODO If the conversation doesn't exist, we need to get it from the server
+    const conv = await this._get_conv(key_prefix)
+    if (!conv) {
+      return
+    }
+    let actions = await this._get_db_actions(conv.key)
 
     const last_action = actions_incomplete(actions)
     if (!actions.length || last_action !== null) {
-      let url = `/${this._main.session.id}/conv/${data.key}/`
+      let url = `/${this._main.session.id}/conv/${conv.key}/`
       if (last_action) {
         url += `?since=${last_action}`
       }
       const r = await this._requests.get('ui', url)
       const new_actions = r.data.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
       await this._main.session.db.actions.bulkPut(new_actions)
-      actions = await this._get_db_actions(data.key)
+      actions = await this._get_db_actions(conv.key)
     }
-    return construct_conv(actions)
+    return construct_conv(conv, actions)
+  }
+
+  wait_for_conversation  = async key_prefix => {
+    for (let i = 0; i < 50; i++) {
+      let conv = await this._get_conv(key_prefix)
+      if (conv) {
+        return conv
+      }
+      await sleep(100)
+    }
   }
 
   act = async (conv, actions) => {
-    const r = await this._requests.post('ui', `/${this._main.session.id}/conv/${conv}/act/`, {actions: actions})
-    await this._main.session.db.conversations.update(conv, {seen: true})
-    return r
+    return await this._requests.post('ui', `/${this._main.session.id}/conv/${conv}/act/`, {actions: actions})
   }
 
   seen = async conv_key => {
@@ -213,5 +249,12 @@ export default class Conversations {
     return actions[0].id
   }
 
-  _get_db_actions = conv_key => this._main.session.db.actions.where('conv').startsWith(conv_key).sortBy('id')
+  _get_db_actions = conv => this._main.session.db.actions.where({conv}).sortBy('id')
+
+  _get_conv = async key_prefix => {
+    const convs = await (
+      this._main.session.db.conversations.where('key').startsWith(key_prefix).reverse().sortBy('created_ts')
+    )
+    return convs[0]
+  }
 }

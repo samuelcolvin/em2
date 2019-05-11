@@ -1,5 +1,5 @@
 import React from 'react'
-import {Button, ButtonGroup, Col, Row} from 'reactstrap'
+import {Button, Col, Row} from 'reactstrap'
 import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
@@ -8,27 +8,10 @@ import Message from './Message'
 import RightPanel from './RightPanel'
 import Subject from './Subject'
 
-const DraftButtons = ({state, add_msg, publish}) => (
-  <ButtonGroup>
-    <Button color="secondary" disabled={state.locked || !state.new_message} onClick={add_msg}>
-      Add Message
-    </Button>
-    <Button color="primary" disabled={state.locked || !!state.new_message} onClick={publish}>
-      <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/>
-      Publish
-    </Button>
-  </ButtonGroup>
-)
-
-const PublishedButtons = ({state, add_msg}) => (
-  <Button color="primary" disabled={state.locked || !state.new_message} onClick={add_msg}>
-    <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/>
-    Send
-  </Button>
-)
 
 class ConvDetailsView extends React.Component {
   state = {}
+  marked_seen = false
   comment_ref = React.createRef()
 
   async componentDidMount () {
@@ -36,10 +19,6 @@ class ConvDetailsView extends React.Component {
     this.update()
     this.remove_listener = window.logic.add_listener('change', this.update)
     document.addEventListener('keydown', this.on_keydown)
-    await sleep(1000)
-    if (this.mounted) {
-      await window.logic.conversations.seen(this.state.conv.key)
-    }
   }
 
   componentDidUpdate (prevProps, prevState) {
@@ -83,12 +62,24 @@ class ConvDetailsView extends React.Component {
     } else if (data && data.new_key) {
       this.props.history.push(`/${data.new_key.substr(0, 10)}/`)
     } else {
-      const conv = await window.logic.conversations.get_conversation(this.props.match.params)
+      let conv = await window.logic.conversations.get_conversation(this.props.match.params.key)
+      if (!conv) {
+        this.setState({not_found: true})
+        return
+      }
+      this.props.ctx.setMenuItem(conv.primary_flag)
       this.props.ctx.setTitle(conv.subject)
       this.setState({conv})
       if (this.action_ids && this.state.locked && this.action_ids.filter(id => conv.action_ids.has(id))) {
         this.action_ids = null
         this.setState({locked: false})
+      }
+      if (!this.marked_seen) {
+        this.marked_seen = true
+        await sleep(1000)
+        if (this.mounted) {
+          await window.logic.conversations.seen(this.state.conv.key)
+        }
       }
     }
   }
@@ -150,16 +141,24 @@ class ConvDetailsView extends React.Component {
   set_subject = (subject, follows) => this.act([{act: 'subject:modify', body: subject, follows}])
 
   render () {
-    if (!this.state.conv) {
+    if (this.state.not_found) {
+      return (
+        <div className="box">
+          <h3>Conversation not found</h3>
+          <p>Unable to find conversation <code>{this.props.match.params.key}</code>.</p>
+        </div>
+      )
+    } else if (!this.state.conv) {
       return <Loading/>
     }
-    const Buttons = this.state.conv.published ? PublishedButtons : DraftButtons
     return (
       <div>
-        <Subject conv_state={this.state} lock_subject={this.lock_subject}
-                 set_subject={this.set_subject} release_subject={this.release_subject}/>
+        <Subject conv_state={this.state}
+                 publish={this.publish}
+                 lock_subject={this.lock_subject}
+                 set_subject={this.set_subject}
+                 release_subject={this.release_subject}/>
         <div className="h5 mb-3">
-          {!this.state.conv.published && <span className="badge badge-dark mr-2">Draft</span>}
           <span className="badge badge-success mr-2">TODO Labels</span>
         </div>
         <Row>
@@ -187,7 +186,12 @@ class ConvDetailsView extends React.Component {
                           onChange={e => this.setState({new_message: e.target.value})}/>
 
                 <div className="text-right">
-                  <Buttons state={this.state} add_msg={this.add_msg} publish={this.publish}/>
+                  <Button color="primary"
+                          disabled={this.state.locked || !this.state.new_message}
+                          onClick={this.add_msg}>
+                    <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/>
+                    {this.state.conv.draft ? 'Add Message' : 'Send'}
+                  </Button>
                 </div>
               </div>
             </div>

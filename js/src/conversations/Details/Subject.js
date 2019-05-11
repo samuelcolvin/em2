@@ -73,7 +73,7 @@ class EditSubject_ extends React.Component {
 
 const EditSubject = AsModal(WithContext(EditSubject_))
 
-export default ({conv_state, lock_subject, set_subject, release_subject}) => {
+export default ({conv_state, publish, lock_subject, set_subject, release_subject}) => {
   const btns_disabled = Boolean(conv_state.locked || conv_state.comment_parent || conv_state.new_message)
   return (
     <div>
@@ -83,15 +83,35 @@ export default ({conv_state, lock_subject, set_subject, release_subject}) => {
         </div>
         <div>
           <ButtonGroup>
-            <Button color="primary" disabled={btns_disabled}>
-              <FontAwesomeIcon icon={fas.faArchive} className="mr-2"/> Archive
-            </Button>
-            <Button color="warning" disabled={btns_disabled}>
-              <FontAwesomeIcon icon={fas.faTrash} className="mr-2"/>  Delete
-            </Button>
-            <Button color="danger" disabled={btns_disabled}>
-              <FontAwesomeIcon icon={fas.faRadiation} className="mr-2"/> Spam
-            </Button>
+            {conv_state.conv.draft ? (
+              <Button color="primary" disabled={btns_disabled} onClick={publish}>
+                <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-2"/> Publish
+              </Button>
+            ) : null}
+            {conv_state.conv.inbox ? (
+              <Button color="primary" disabled={btns_disabled}>
+                <FontAwesomeIcon icon={fas.faArchive} className="mr-2"/> Archive
+              </Button>
+            ) : null}
+            {conv_state.conv.restore ? (
+              <Button color="success" disabled={btns_disabled}>
+                <FontAwesomeIcon icon={fas.faTrash} className="mr-2"/>  Restore
+              </Button>
+            ) : (
+              <Button color="warning" disabled={btns_disabled}>
+                <FontAwesomeIcon icon={fas.faTrash} className="mr-2"/>  Delete
+              </Button>
+            )}
+            {!(conv_state.conv.sent || conv_state.conv.draft || conv_state.conv.spam) ? (
+              <Button color="danger" disabled={btns_disabled}>
+                <FontAwesomeIcon icon={fas.faRadiation} className="mr-2"/> Spam
+              </Button>
+            ) : null}
+            {conv_state.conv.spam ? (
+              <Button color="success" disabled={btns_disabled}>
+                <FontAwesomeIcon icon={fas.faRadiation} className="mr-2"/> Not Spam
+              </Button>
+            ) : null}
 
             <UncontrolledButtonDropdown>
               <DropdownToggle caret>
