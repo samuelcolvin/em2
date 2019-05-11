@@ -13,7 +13,6 @@ from em2.core import get_flag_counts
 from em2.settings import Settings
 
 logger = logging.getLogger('em2.ui.background')
-channel_name = 'actions'
 
 
 class Background:
@@ -40,7 +39,7 @@ class Background:
         logger.info('starting background task')
         try:
             with await self.app['redis'] as self.redis:
-                channel, *_ = await self.redis.psubscribe(channel_name)
+                channel, *_ = await self.redis.psubscribe(channel_name(self.redis))
                 while await channel.wait_message():
                     _, msg = await channel.get()
                     await self.process_action(msg)
@@ -77,6 +76,10 @@ class Background:
                 self.remove_ws(user_id, ws)
 
 
+def channel_name(redis: ArqRedis):
+    return f'actions-{redis.db}'
+
+
 local_users_sql = """
 select json_build_object(
   'participants', participants,
@@ -102,7 +105,7 @@ from (
 
 async def _push_local(pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int, actions_data: str):
     extra = await pg_conn.fetchval(local_users_sql, conv_id)
-    await redis.publish(channel_name, actions_data[:-1] + ',' + extra[1:])
+    await redis.publish(channel_name(redis), actions_data[:-1] + ',' + extra[1:])
 
 
 remote_users_sql = """

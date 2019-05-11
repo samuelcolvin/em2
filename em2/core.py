@@ -194,18 +194,19 @@ async def get_conv_for_user(
     return conv_id, last_action
 
 
-async def update_conv_users(conn: BuildPgConnection, conv_id: int):
+async def update_conv_users(conn: BuildPgConnection, conv_id: int) -> List[int]:
     """
     Update v on users participating in a conversation
     """
-    await conn.execute(
+    v = await conn.fetch(
         """
-        update users set v=v + 1
-          from participants
-          where participants.user_id = users.id and participants.conv = $1 and users.user_type = 'local';
+        update users set v=v + 1 from participants
+        where participants.user_id = users.id and participants.conv = $1 and users.user_type = 'local'
+        returning participants.user_id
         """,
         conv_id,
     )
+    return [r[0] for r in v]
 
 
 _prt_action_types = {a for a in ActionTypes if a.value.startswith('participant:')}
@@ -836,10 +837,17 @@ async def create_conv(
         )
         await update_conv_users(conn, conv_id)
 
-    updates = (
-        UpdateFlag(creator_id, [(ConvFlags.sent, 1), (ConvFlags.draft, -1)]),
-        *(UpdateFlag(u_id, [(ConvFlags.inbox, 1), (ConvFlags.unseen, 1)]) for u_id in other_user_ids),
-    )
+    if conv.publish:
+        updates = (
+            UpdateFlag(creator_id, [(ConvFlags.sent, 1), (ConvFlags.all, 1)]),
+            *(
+                UpdateFlag(u_id, [(ConvFlags.inbox, 1), (ConvFlags.unseen, 1), (ConvFlags.all, 1)])
+                for u_id in other_user_ids
+            ),
+        )
+    else:
+        updates = (UpdateFlag(creator_id, [(ConvFlags.draft, 1), (ConvFlags.all, 1)]),)
+
     await update_conv_flags(*updates, redis=redis)
     return conv_id, conv_key
 

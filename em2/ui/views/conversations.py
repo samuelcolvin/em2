@@ -207,7 +207,17 @@ class ConvPublish(ExecView):
                 ts,
                 conv_summary['subject'],
             )
-            await update_conv_users(self.conn, conv_id)
+            user_ids = await update_conv_users(self.conn, conv_id)
+
+        other_user_ids = set(user_ids) - {self.session.user_id}
+        updates = (
+            UpdateFlag(self.session.user_id, [(ConvFlags.draft, -1), (ConvFlags.sent, 1)]),
+            *(
+                UpdateFlag(u_id, [(ConvFlags.inbox, 1), (ConvFlags.unseen, 1), (ConvFlags.all, 1)])
+                for u_id in other_user_ids
+            ),
+        )
+        await update_conv_flags(*updates, redis=self.redis)
         await push_all(self.conn, self.app['redis'], conv_id)
         return dict(key=conv_key)
 
