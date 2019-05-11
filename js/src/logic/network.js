@@ -40,6 +40,7 @@ export class Requests {
         // TODO check and reauthenticate
         await this._main.session.delete()
       }
+      // TODO render error to the app
       throw e
     }
   }

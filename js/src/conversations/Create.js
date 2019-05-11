@@ -89,7 +89,7 @@ const Create = ({ctx, history}) => {
         function={window.logic.conversations.create}
         Buttons={FormButtons}
         RenderFields={RenderFields}
-        submitted={r => history.push(`/${r.data.key}/`)}
+        submitted={r => history.push(`/wait/${r.data.key}/`)}
         type_lookup={{participants: ParticipantsInput}}
         onChange={set_form_data}
       />

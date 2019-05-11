@@ -7,6 +7,7 @@ import {NotFound, WithContext, as_title} from 'reactstrap-toolbox'
 import ListConversations from './conversations/List'
 import ConversationDetails from './conversations/Details'
 import CreateConversation from './conversations/Create'
+import Wait from './conversations/Wait'
 
 const ListGroupItem = ({to, active, icon, title, count, count_unseen}) => (
   <BsListGroupItem tag={Link} to={to} action active={active}>
@@ -108,10 +109,11 @@ export default () => (
     </Col>
     <Col md="9">
       <Switch>
-        <Route exact path="/" render={ListConversations}/>
-        <Route exact path="/:flag(draft|sent|archive|all|spam|deleted)/" render={ListConversations}/>
-        <Route exact path="/create/" render={CreateConversation}/>
-        <Route path="/:key([a-f0-9]{10,64})/" render={ConversationDetails}/>
+        <Route exact path="/" component={ListConversations}/>
+        <Route exact path="/:flag(draft|sent|archive|all|spam|deleted)/" component={ListConversations}/>
+        <Route exact path="/create/" component={CreateConversation}/>
+        <Route path="/:key([a-f0-9]{10,64})/" component={ConversationDetails}/>
+        <Route path="/wait/:key([a-f0-9]{10,64})/" component={Wait}/>
         <Route component={NotFound}/>
       </Switch>
     </Col>
