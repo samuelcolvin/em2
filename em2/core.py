@@ -286,7 +286,7 @@ class _Act:
         self.conn = conn
         self.settings = settings
         self.actor_user_id = actor_user_id
-        self.conv_id: int = None
+        self.conv_id = None
         # ugly way of doing this, but less ugly than other approaches
         self.new_user_ids: Set[int] = set()
         self.spam = True if spam else None
@@ -399,8 +399,8 @@ class _Act:
 
         return await self.conn.fetchval(
             """
-            insert into actions (conv, act, actor, follows, participant_user, warnings)
-            values              ($1  , $2 , $3   , $4     , $5              , $6)
+            insert into actions (conv, act, actor, follows, participant_user)
+            values              ($1  , $2 , $3   , $4     , $5)
             returning id
             """,
             self.conv_id,
@@ -408,7 +408,6 @@ class _Act:
             self.actor_user_id,
             follows_pk,
             prt_user_id,
-            self.warnings,
         )
 
     async def _act_on_message(self, action: ActionModel) -> int:
@@ -464,8 +463,8 @@ class _Act:
 
         return await self.conn.fetchval(
             """
-            insert into actions (conv, actor, act, body, preview, follows, warnings)
-            values              ($1  , $2   , $3 , $4  , $5     , $6     , $7)
+            insert into actions (conv, actor, act, body, preview, follows)
+            values              ($1  , $2   , $3 , $4  , $5     , $6)
             returning id
             """,
             self.conv_id,
@@ -474,7 +473,6 @@ class _Act:
             action.body,
             message_preview(action.body, action.msg_format) if action.act == ActionTypes.msg_modify else None,
             follows_pk,
-            self.warnings,
         )
 
     async def _act_on_subject(self, action: ActionModel) -> int:
@@ -496,8 +494,8 @@ class _Act:
 
         return await self.conn.fetchval(
             """
-            insert into actions (conv, actor, act, body, follows, warnings)
-            values              ($1  , $2   , $3 , $4  , $5     , $6)
+            insert into actions (conv, actor, act, body, follows)
+            values              ($1  , $2   , $3 , $4  , $5)
             returning id
             """,
             self.conv_id,
@@ -505,7 +503,6 @@ class _Act:
             action.act,
             action.body,
             follows_pk,
-            self.warnings,
         )
 
     async def _get_follows(self, action: ActionModel, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
@@ -673,9 +670,9 @@ async def conv_actions_json(
             """
             select array_to_json(array_agg(json_strip_nulls(row_to_json(t))), true)
             from (
-              select a.id as id, c.key as conv, a.act as act, a.ts as ts, actor_user.email as actor,
-              a.body as body, a.msg_format as msg_format,
-              prt_user.email as participant, follows_action.id as follows, parent_action.id as parent,
+              select a.id, c.key conv, a.act, a.ts, actor_user.email actor,
+              a.body, a.msg_format, a.warnings,
+              prt_user.email participant, follows_action.id follows, parent_action.id parent,
               (select array_agg(row_to_json(f))
                 from (
                   select content_disp, hash, content_id, name, content_type

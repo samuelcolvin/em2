@@ -269,7 +269,7 @@ def test_finding_attachment(create_email, attachment, create_image):
     ]
 
 
-async def test_spam(fake_request, db_conn, create_email, factory: Factory, redis):
+async def test_spam(fake_request, db_conn, create_email, factory: Factory, cli, redis):
     user = await factory.create_user()
 
     counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
@@ -280,13 +280,15 @@ async def test_spam(fake_request, db_conn, create_email, factory: Factory, redis
 
     assert True is await db_conn.fetchval('select spam from participants where user_id = $1', user.id)
     assert None is await db_conn.fetchval('select spam from participants where user_id != $1', user.id)
-    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
-    body, warnings = await db_conn.fetchrow("select body, warnings from actions where act='message:add'")
-    assert body == 'this is spam'
-    assert json.loads(warnings) == {'testing': 'xxx'}
 
     counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
     assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 1, 'deleted': 0}
+
+    r = await cli.get(factory.url('ui:get', conv=await db_conn.fetchval('select key from conversations')))
+    assert r.status == 200, await r.text()
+    obj = await r.json()
+    assert obj[2]['body'] == 'this is spam'
+    assert obj[2]['warnings'] == {'testing': 'xxx'}
 
 
 async def test_spam_existing_conv(fake_request, db_conn, create_email, send_to_remote, factory: Factory, redis):

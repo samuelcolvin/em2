@@ -130,9 +130,9 @@ select json_build_object(
 from (
   select array_to_json(array_agg(json_strip_nulls(row_to_json(t)))) as actions
   from (
-    select a.id as id, a.act as act, a.ts as ts, actor_user.email as actor,
-    a.body as body, a.msg_format as msg_format,
-    prt_user.email as participant, follows_action.id as follows, parent_action.id as parent,
+    select a.id, a.act, a.ts, actor_user.email actor,
+    a.body, a.msg_format, a.warnings,
+    prt_user.email participant, follows_action.id follows, parent_action.id parent,
     c.key as conv,
     (select array_agg(row_to_json(f))
       from (
