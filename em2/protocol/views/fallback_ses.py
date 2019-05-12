@@ -89,7 +89,7 @@ async def _record_email_message(request, message: Dict):
         if status != 'PASS':
             warnings[k] = status
 
-    spam = 'spam' in warnings
+    spam = 'spam' in warnings or 'virus' in warnings
 
     s3_action = message['receipt']['action']
     bucket, prefix, path = s3_action['bucketName'], s3_action['objectKeyPrefix'], s3_action['objectKey']

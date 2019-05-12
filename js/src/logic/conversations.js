@@ -32,6 +32,77 @@ const _meta_action_types = new Set([
   'subject:release',
 ])
 
+
+function warning_msgs (w) {
+  if (!w) {
+    return null
+  }
+  let warnings = Object.assign({}, w)
+  const msgs = []
+  if (warnings.spam) {
+    msgs.push({
+      title: 'Spam',
+      message: {
+        FAIL: 'Message appears to be spam',
+        GRAY: 'Message may be spam',
+        PROCESSING_FAILED: 'Unable to scan the message, may be be spam'
+      }[warnings.spam] || `Message may be spam: ${warnings.spam}`
+    })
+    delete warnings.spam
+  }
+  if (warnings.virus) {
+    msgs.push({
+      title: 'Virus',
+      message: {
+        FAIL: "Message contains a virus",
+        GRAY: 'unable to determine with confidence if the message contains a virus',
+        PROCESSING_FAILED: 'Unable to scan the message for viruses'
+      }[warnings.virus] || `Virus failed: ${warnings.virus}`
+    })
+    delete warnings.virus
+  }
+  if (warnings.dkim) {
+    msgs.push({
+      title: 'DKIM',
+      message: {
+        FAIL: "Message failed DKIM verification, this message may not be from who it says it's from",
+        GRAY: 'Message not protected by DKIM',
+        PROCESSING_FAILED: "Unable to check if the message's DKIM signature is valid"
+      }[warnings.dkim] || `DKIM failed: ${warnings.dkim}`
+    })
+    delete warnings.dkim
+  }
+  if (warnings.spf) {
+    msgs.push({
+      title: 'SPF',
+      message: {
+        FAIL: "Message failed failed SPF authentication",
+        GRAY: 'no SPF policy setup for the sending domain',
+        PROCESSING_FAILED: "Unable to check if the message's SPF authentication is valid"
+      }[warnings.spf] || `SPF failed: ${warnings.spf}`
+    })
+    delete warnings.spf
+  }
+  if (warnings.dmarc) {
+    msgs.push({
+      title: 'DMARC',
+      message: {
+        FAIL: "Message failed failed DMARC authentication",
+        GRAY: 'Message failed DMARC authentication, and the sending domain does not have a DMARC policy',
+        PROCESSING_FAILED: "Unable to check if the message's DMARC authentication is valid"
+      }[warnings.dmarc] || `DMARC failed: ${warnings.dmarc}`
+    })
+    delete warnings.dmarc
+  }
+  for (let [title, value] of Object.entries(warnings)) {
+    msgs.push({
+      title,
+      message: `unknown warning: ${value}`
+    })
+  }
+  return msgs
+}
+
 // taken roughly from core.py:_construct_conv_actions
 function construct_conv (conv, actions) {
   let subject = null
@@ -48,16 +119,18 @@ function construct_conv (conv, actions) {
       subject = action.body
     } else if (act === 'message:add') {
       messages[action.id] = {
-        'first_action': action.id,
-        'last_action': action.id,
-        'body': action.body,
-        'creator': action.actor,
-        'created': action.ts,
-        'format': action.msg_format,
-        'parent': action.parent || null,
-        'active': true,
-        'files': action.files || null,
-        'comments': [],
+        first_action: action.id,
+        last_action: action.id,
+        body: action.body,
+        creator: action.actor,
+        created: action.ts,
+        format: action.msg_format,
+        parent: action.parent || null,
+        active: true,
+        files: action.files || null,
+        comments: [],
+        warnings: warning_msgs(action.warnings),
+        hide_warnings: action.hide_warnings,
       }
     } else if (_msg_action_types.has(act)) {
       const message = messages[action.follows]
@@ -276,6 +349,12 @@ export default class Conversations {
   pages = flag => {
     const counts = this._main.session.conv_counts()
     return Math.ceil(counts.flags[flag] / per_page)
+  }
+
+  toggle_warnings = async (conv, action_id, show) => {
+    // this is just saved locally, not on the server (for now?)
+    await this._main.session.db.actions.update({conv, id: action_id}, {hide_warnings: show})
+    this._main.fire('change', {conv})
   }
 
   _get_db_actions = conv => this._main.session.db.actions.where({conv}).sortBy('id')
