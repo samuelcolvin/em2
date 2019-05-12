@@ -72,7 +72,6 @@ async def _record_email_message(request, message: Dict):
         logger.info('SES setup notification, ignoring')
         return
 
-    # TODO check X-SES-Spam-Verdict, X-SES-Virus-Verdict from message['receipt']
     headers = {h['name']: h['value'] for h in mail['headers']}
     if headers.get('EM2-ID'):
         # this is an em2 message and should be received via the proper route too
@@ -84,6 +83,14 @@ async def _record_email_message(request, message: Dict):
     # make sure we don't process unnecessary messages
     recipients = await get_email_recipients(to, cc, message_id, request['conn'])
 
+    warnings = {}
+    for k in ('spam', 'virus', 'spf', 'dkim', 'dmarc'):
+        status = mail[k + 'Verdict']['status']
+        if status != 'PASS':
+            warnings[k] = status
+
+    spam = 'spam' in warnings
+
     s3_action = message['receipt']['action']
     bucket, prefix, path = s3_action['bucketName'], s3_action['objectKeyPrefix'], s3_action['objectKey']
     if prefix:
@@ -94,7 +101,7 @@ async def _record_email_message(request, message: Dict):
 
     msg = parse_smtp(body)
     del body
-    await process_smtp(request, msg, recipients, f's3://{bucket}/{path}')
+    await process_smtp(request, msg, recipients, f's3://{bucket}/{path}', spam=spam, warnings=warnings)
 
 
 async def _record_email_event(request, message: Dict):

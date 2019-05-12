@@ -33,6 +33,7 @@ async def test_msg_add(factory: Factory, db_conn):
         'preview': 'This is a test',
         'parent': None,
         'msg_format': 'markdown',
+        'warnings': None,
     }
 
 
@@ -56,6 +57,7 @@ async def test_msg_lock_msg(factory: Factory, db_conn):
         'preview': None,
         'parent': None,
         'msg_format': None,
+        'warnings': None,
     }
 
 
@@ -79,6 +81,7 @@ async def test_msg_add_child(factory: Factory, db_conn):
         'preview': 'This is a child message',
         'parent': await db_conn.fetchval('select pk from actions where id=2'),
         'msg_format': 'markdown',
+        'warnings': None,
     }
 
 
@@ -160,6 +163,7 @@ async def test_participant_add(factory: Factory, db_conn):
         'preview': None,
         'parent': None,
         'msg_format': None,
+        'warnings': None,
     }
 
 
@@ -186,6 +190,7 @@ async def test_participant_remove(factory: Factory, db_conn):
         'preview': None,
         'parent': None,
         'msg_format': None,
+        'warnings': None,
     }
 
 

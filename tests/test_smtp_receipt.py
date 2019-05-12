@@ -6,7 +6,7 @@ from arq.jobs import Job
 from pytest_toolbox.comparison import RegexStr
 
 from em2.background import push_all
-from em2.core import conv_actions_json
+from em2.core import conv_actions_json, get_flag_counts
 from em2.protocol.views.fallback_utils import process_smtp
 from em2.utils.smtp import CopyToTemp, File, find_smtp_files
 
@@ -121,15 +121,15 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, redis
             'conv': RegexStr('.*'),
             'act': 'participant:add',
             'ts': '2032-01-01T12:00:00+00:00',
-            'actor': 'whomever@remote.com',
-            'participant': 'whomever@remote.com',
+            'actor': 'sender@remote.com',
+            'participant': 'sender@remote.com',
         },
         {
             'id': 2,
             'conv': RegexStr('.*'),
             'act': 'participant:add',
             'ts': '2032-01-01T12:00:00+00:00',
-            'actor': 'whomever@remote.com',
+            'actor': 'sender@remote.com',
             'participant': 'testing-1@example.com',
         },
         {
@@ -137,7 +137,7 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, redis
             'conv': RegexStr('.*'),
             'act': 'message:add',
             'ts': '2032-01-01T12:00:00+00:00',
-            'actor': 'whomever@remote.com',
+            'actor': 'sender@remote.com',
             'body': 'This is the <b>message</b>.',
             'msg_format': 'html',
             'files': [
@@ -162,7 +162,7 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, redis
             'conv': RegexStr('.*'),
             'act': 'conv:publish',
             'ts': '2032-01-01T12:00:00+00:00',
-            'actor': 'whomever@remote.com',
+            'actor': 'sender@remote.com',
             'body': 'Test Subject',
         },
     ]
@@ -267,3 +267,59 @@ def test_finding_attachment(create_email, attachment, create_image):
             content=image_data,
         ),
     ]
+
+
+async def test_spam(fake_request, db_conn, create_email, factory: Factory, redis):
+    user = await factory.create_user()
+
+    counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 0, 'spam': 0, 'deleted': 0}
+
+    msg = create_email(html_body='this is spam')
+    await process_smtp(fake_request, msg, {user.email}, 's3://foobar/whatever', spam=True, warnings={'testing': 'xxx'})
+
+    assert True is await db_conn.fetchval('select spam from participants where user_id = $1', user.id)
+    assert None is await db_conn.fetchval('select spam from participants where user_id != $1', user.id)
+    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+    body, warnings = await db_conn.fetchrow("select body, warnings from actions where act='message:add'")
+    assert body == 'this is spam'
+    assert json.loads(warnings) == {'testing': 'xxx'}
+
+    counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 1, 'deleted': 0}
+
+
+async def test_spam_existing_conv(fake_request, db_conn, create_email, send_to_remote, factory: Factory, redis):
+    send_id, message_id = send_to_remote
+
+    u1 = factory.user
+    counts = await get_flag_counts(u1.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 1, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
+
+    assert 2 == await db_conn.fetchval('select count(*) from users')
+    u2_id = await db_conn.fetchval('select id from users where id != $1', u1.id)
+
+    u3 = await factory.create_user()
+    counts = await get_flag_counts(u3.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 0, 'spam': 0, 'deleted': 0}
+
+    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+    msg = create_email(html_body='reply', headers={'In-Reply-To': message_id})
+    await process_smtp(fake_request, msg, {u1.email, u3.email}, 's3://foobar/whatever', spam=True, warnings={'w': 'x'})
+
+    assert 2 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+
+    new_msg = await db_conn.fetchval("select pk from actions where act='message:add' order by pk desc limit 1")
+    assert 'reply' == await db_conn.fetchval('select body from actions where pk=$1', new_msg)
+    warnings = await db_conn.fetchval('select warnings from actions where pk=$1', new_msg)
+    assert json.loads(warnings) == {'w': 'x'}
+
+    assert None is await db_conn.fetchval('select spam from participants where user_id = $1', u1.id)
+    assert None is await db_conn.fetchval('select spam from participants where user_id = $1', u2_id)
+    assert True is await db_conn.fetchval('select spam from participants where user_id = $1', u3.id)
+
+    counts = await get_flag_counts(u1.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 1, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
+
+    counts = await get_flag_counts(u3.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 1, 'deleted': 0}

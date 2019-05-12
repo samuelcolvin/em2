@@ -248,7 +248,7 @@ class ActionModel(BaseModel):
         return v
 
     @validator('participant', always=True)
-    def check_participant(cls, v, values, **kwargs):
+    def check_participant(cls, v, values):
         act: ActionTypes = values.get('act')
         if act and not v and act in _prt_action_types:
             raise ValueError('participant is required for participant actions')
@@ -257,7 +257,7 @@ class ActionModel(BaseModel):
         return v
 
     @validator('body', always=True)
-    def check_body(cls, v, values, **kwargs):
+    def check_body(cls, v, values):
         act: ActionTypes = values.get('act')
         if act and v is None and act in with_body_actions:
             raise ValueError('body is required for message:add, message:modify and subject:modify')
@@ -266,7 +266,7 @@ class ActionModel(BaseModel):
         return v
 
     @validator('follows', always=True)
-    def check_follows(cls, v, values, **kwargs):
+    def check_follows(cls, v, values):
         act: ActionTypes = values.get('act')
         if act and v is None and act in _follow_action_types:
             raise ValueError('follows is required for this action')
@@ -278,17 +278,21 @@ class _Act:
     See act() below for details.
     """
 
-    __slots__ = 'conn', 'settings', 'actor_user_id', 'conv_id', 'new_user_ids'
+    __slots__ = 'conn', 'settings', 'actor_user_id', 'conv_id', 'new_user_ids', 'spam', 'warnings'
 
-    def __init__(self, conn: BuildPgConnection, settings: Settings, actor_user_id: int):
+    def __init__(
+        self, conn: BuildPgConnection, settings: Settings, actor_user_id: int, spam: bool, warnings: Dict[str, str]
+    ):
         self.conn = conn
         self.settings = settings
         self.actor_user_id = actor_user_id
         self.conv_id: int = None
         # ugly way of doing this, but less ugly than other approaches
         self.new_user_ids: Set[int] = set()
+        self.spam = True if spam else None
+        self.warnings = json.dumps(warnings) if warnings else None
 
-    async def prepare(self, conv_ref: StrInt) -> int:
+    async def prepare(self, conv_ref: StrInt) -> Tuple[int, int]:
         self.conv_id, last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_ref)
         if last_action:
             # if the usr has be removed from the conversation they can't act
@@ -296,8 +300,10 @@ class _Act:
 
         # we must be in a transaction
         # this is a hard check that conversations can only have on act applied at a time
-        await self.conn.fetchval('select 1 from conversations where id=$1 for no key update', self.conv_id)
-        return self.conv_id
+        creator = await self.conn.fetchval(
+            'select creator from conversations where id=$1 for no key update', self.conv_id
+        )
+        return self.conv_id, creator
 
     async def run(self, action: ActionModel) -> Optional[int]:
         if action.act is ActionTypes.seen:
@@ -358,11 +364,12 @@ class _Act:
             prt_user_id = await get_create_user(self.conn, action.participant)
             prt_id = await self.conn.fetchval(
                 """
-                insert into participants (conv, user_id) values ($1, $2)
+                insert into participants (conv, user_id, spam) values ($1, $2, $3)
                 on conflict (conv, user_id) do nothing returning id
                 """,
                 self.conv_id,
                 prt_user_id,
+                self.spam,
             )
             if not prt_id:
                 raise JsonErrors.HTTPConflict('user already a participant in this conversation')
@@ -392,8 +399,8 @@ class _Act:
 
         return await self.conn.fetchval(
             """
-            insert into actions (conv, act, actor, follows, participant_user)
-            values              ($1  , $2 , $3   , $4     , $5)
+            insert into actions (conv, act, actor, follows, participant_user, warnings)
+            values              ($1  , $2 , $3   , $4     , $5              , $6)
             returning id
             """,
             self.conv_id,
@@ -401,6 +408,7 @@ class _Act:
             self.actor_user_id,
             follows_pk,
             prt_user_id,
+            self.warnings,
         )
 
     async def _act_on_message(self, action: ActionModel) -> int:
@@ -420,8 +428,8 @@ class _Act:
             # checks that no message in the hierarchy has been deleted
             return await self.conn.fetchval(
                 """
-                insert into actions (conv, act          , actor, body, preview, parent, msg_format)
-                values              ($1  , 'message:add', $2   , $3  , $4     , $5        , $6)
+                insert into actions (conv, act          , actor, body, preview, parent, msg_format, warnings)
+                values              ($1  , 'message:add', $2   , $3  , $4     , $5    , $6        , $7)
                 returning id
                 """,
                 self.conv_id,
@@ -430,6 +438,7 @@ class _Act:
                 message_preview(action.body, action.msg_format),
                 parent_pk,
                 action.msg_format,
+                self.warnings,
             )
 
         follows_pk, follows_act, follows_actor, follows_age = await self._get_follows(action, _msg_action_types)
@@ -455,8 +464,8 @@ class _Act:
 
         return await self.conn.fetchval(
             """
-            insert into actions (conv, actor, act, body, preview, follows)
-            values              ($1  , $2   , $3 , $4  , $5     , $6)
+            insert into actions (conv, actor, act, body, preview, follows, warnings)
+            values              ($1  , $2   , $3 , $4  , $5     , $6     , $7)
             returning id
             """,
             self.conv_id,
@@ -465,6 +474,7 @@ class _Act:
             action.body,
             message_preview(action.body, action.msg_format) if action.act == ActionTypes.msg_modify else None,
             follows_pk,
+            self.warnings,
         )
 
     async def _act_on_subject(self, action: ActionModel) -> int:
@@ -486,8 +496,8 @@ class _Act:
 
         return await self.conn.fetchval(
             """
-            insert into actions (conv, actor, act, body, follows)
-            values              ($1  , $2   , $3 , $4  , $5)
+            insert into actions (conv, actor, act, body, follows, warnings)
+            values              ($1  , $2   , $3 , $4  , $5     , $6)
             returning id
             """,
             self.conv_id,
@@ -495,6 +505,7 @@ class _Act:
             action.act,
             action.body,
             follows_pk,
+            self.warnings,
         )
 
     async def _get_follows(self, action: ActionModel, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
@@ -541,6 +552,8 @@ async def apply_actions(
     actor_user_id: int,
     conv_ref: StrInt,
     actions: List[ActionModel],
+    spam: bool = False,
+    warnings: Dict[str, str] = None,
 ) -> Tuple[int, List[int]]:
     """
     Apply actions and return their ids.
@@ -548,13 +561,13 @@ async def apply_actions(
     Should be used for both remote platforms adding events and local users adding actions.
     """
     action_ids = []
-    act_cls = _Act(conn, settings, actor_user_id)
+    act_cls = _Act(conn, settings, actor_user_id, spam, warnings)
     actor_user_id_seen = None
     from_deleted, from_archive, already_inbox = [], [], []
     async with conn.transaction():
         # IMPORTANT we do nothing that could be slow (eg. networking) inside this transaction,
         # as the conv is locked for update from prepare onwards
-        conv_id = await act_cls.prepare(conv_ref)
+        conv_id, creator_id = await act_cls.prepare(conv_ref)
 
         for action in actions:
             action_id = await act_cls.run(action)
@@ -580,25 +593,25 @@ async def apply_actions(
                     from_deleted as (
                       -- user had previously deleted the conversation, move it back to the inbox
                       update participants p set seen=null, inbox=true, deleted=null from conv_prts where
-                      conv_prts.id=p.id and p.spam is not true and inbox is not true and p.deleted is true
+                      conv_prts.id=p.id and spam is not true and inbox is not true and p.deleted is true
                       returning p.user_id
                     ),
                     from_archive as (
                       -- conversation was previously in the archive for these users, move it back to the inbox
                       update participants p set seen=null, inbox=true from conv_prts where
-                      conv_prts.id=p.id and p.spam is not true and inbox is not true and p.deleted is not true
+                      conv_prts.id=p.id and spam is not true and inbox is not true and p.deleted is not true
                       returning p.user_id
                     ),
                     already_inbox as (
                       -- conversation was already in the inbox, just mark it as unseen
                       update participants p set seen=null from conv_prts where
-                      conv_prts.id=p.id and p.spam is not true and inbox is true and seen is true
+                      conv_prts.id=p.id and spam is not true and inbox is true and seen is true
                       returning p.user_id
                     ),
                     is_spam as (
                       -- conversation is marked as spam, just set it to unseen
                       update participants p set seen=null from conv_prts where
-                      conv_prts.id=p.id and p.spam is true
+                      conv_prts.id=p.id and spam is true
                       returning p.user_id
                     )
                     select from_deleted, from_archive, already_inbox
@@ -617,15 +630,22 @@ async def apply_actions(
             for u_id in from_deleted
         ),
         *(
-            UpdateFlag(u_id, [(ConvFlags.archive, -1), (ConvFlags.inbox, 1), (ConvFlags.unseen, 1)])
+            # if the user is the creator, archive shouldn't be decremented
+            UpdateFlag(
+                u_id, [creator_id != u_id and (ConvFlags.archive, -1), (ConvFlags.inbox, 1), (ConvFlags.unseen, 1)]
+            )
             for u_id in from_archive
         ),
         *(UpdateFlag(u_id, [(ConvFlags.unseen, 1)]) for u_id in already_inbox if u_id),
-        *(
-            UpdateFlag(u_id, [(ConvFlags.unseen, 1), (ConvFlags.all, 1), (ConvFlags.inbox, 1)])
-            for u_id in act_cls.new_user_ids
-        ),
     ]
+    if spam:
+        updates += [UpdateFlag(u_id, [(ConvFlags.spam, 1), (ConvFlags.all, 1)]) for u_id in act_cls.new_user_ids]
+    else:
+        updates += [
+            UpdateFlag(u_id, [(ConvFlags.unseen, 1), (ConvFlags.inbox, 1), (ConvFlags.all, 1)])
+            for u_id in act_cls.new_user_ids
+        ]
+
     if actor_user_id_seen:
         updates.append(UpdateFlag(actor_user_id_seen, [(ConvFlags.unseen, -1)]))
     if updates:
@@ -770,6 +790,8 @@ async def create_conv(
     creator_id: int,
     conv: CreateConvModel,
     ts: Optional[datetime] = None,
+    spam: bool = False,
+    warnings: Dict[str, str] = None,
 ):
     ts = ts or utcnow()
     conv_key = generate_conv_key(creator_email, ts, conv.subject) if conv.publish else draft_conv_key()
@@ -798,7 +820,10 @@ async def create_conv(
         )
         other_user_ids = list(part_users.values())
         await conn.execute(
-            'insert into participants (conv, user_id) (select $1, unnest($2::int[]))', conv_id, other_user_ids
+            'insert into participants (conv, user_id, spam) (select $1, unnest($2::int[]), $3)',
+            conv_id,
+            other_user_ids,
+            True if spam else None,
         )
         user_ids = [creator_id] + other_user_ids
         await conn.execute(
@@ -814,8 +839,8 @@ async def create_conv(
         )
         await conn.execute(
             """
-            insert into actions (conv, act          , actor, ts, body, preview, msg_format)
-            values              ($1  , 'message:add', $2   , $3, $4  , $5     , $6)
+            insert into actions (conv, act          , actor, ts, body, preview, msg_format, warnings)
+            values              ($1  , 'message:add', $2   , $3, $4  , $5     , $6, $7)
             """,
             conv_id,
             creator_id,
@@ -823,6 +848,7 @@ async def create_conv(
             conv.message,
             message_preview(conv.message, conv.msg_format),
             conv.msg_format,
+            json.dumps(warnings) if warnings else None,
         )
         await conn.execute(
             """
@@ -837,7 +863,14 @@ async def create_conv(
         )
         await update_conv_users(conn, conv_id)
 
-    if conv.publish:
+    if not conv.publish:
+        updates = (UpdateFlag(creator_id, [(ConvFlags.draft, 1), (ConvFlags.all, 1)]),)
+    elif spam:
+        updates = (
+            UpdateFlag(creator_id, [(ConvFlags.sent, 1), (ConvFlags.all, 1)]),
+            *(UpdateFlag(u_id, [(ConvFlags.spam, 1), (ConvFlags.all, 1)]) for u_id in other_user_ids),
+        )
+    else:
         updates = (
             UpdateFlag(creator_id, [(ConvFlags.sent, 1), (ConvFlags.all, 1)]),
             *(
@@ -845,8 +878,6 @@ async def create_conv(
                 for u_id in other_user_ids
             ),
         )
-    else:
-        updates = (UpdateFlag(creator_id, [(ConvFlags.draft, 1), (ConvFlags.all, 1)]),)
 
     await update_conv_flags(*updates, redis=redis)
     return conv_id, conv_key
@@ -954,9 +985,11 @@ async def update_conv_flags(*updates: UpdateFlag, redis: Redis):
     async def update(u: UpdateFlag):
         key = _flags_count_key(u.user_id)
         if await redis.exists(key):
-            await asyncio.gather(redis.expire(key, 86400), *(redis.hincrby(key, c[0].value, c[1]) for c in u.changes))
+            await asyncio.gather(
+                redis.expire(key, 86400), *(redis.hincrby(key, c[0].value, c[1]) for c in u.changes if c)
+            )
 
-    await asyncio.gather(*(update(u) for u in updates))
+    await asyncio.gather(*(update(u) for u in updates if u))
 
 
 def _label_count_key(user_id: int):

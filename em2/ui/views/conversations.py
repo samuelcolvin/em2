@@ -274,7 +274,7 @@ class SetConvFlag(View):
 
             values, changes = self.get_update_values(flag, inbox, seen, deleted, spam, sent, draft)
             await self.conn.execute_b('update participants set :values where id=:id', values=values, id=participant_id)
-        await update_conv_flags(UpdateFlag(self.session.user_id, filter(bool, changes)), redis=self.redis)
+        await update_conv_flags(UpdateFlag(self.session.user_id, changes), redis=self.redis)
 
         conv_flags = await self.conn.fetchrow(
             """
@@ -302,6 +302,7 @@ class SetConvFlag(View):
                 changes = [(ConvFlags.inbox, -1), not seen and (ConvFlags.unseen, -1)]
             else:
                 changes = [(ConvFlags.inbox, -1), (ConvFlags.archive, 1), not seen and (ConvFlags.unseen, -1)]
+
             return SetValues(inbox=None), changes
         elif flag is SetFlags.inbox:
             if deleted or spam or draft:
@@ -313,6 +314,7 @@ class SetConvFlag(View):
                 changes = [(ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1)]
             else:
                 changes = [(ConvFlags.archive, -1), (ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1)]
+
             return SetValues(inbox=True), changes
         elif flag is SetFlags.delete:
             if deleted:
@@ -332,6 +334,7 @@ class SetConvFlag(View):
             if sent:
                 # like this because conversations can show in inbox and sent
                 changes += [(ConvFlags.sent, -1)]
+
             return SetValues(deleted=True, deleted_ts=funcs.now()), changes
         elif flag is SetFlags.restore:
             if not deleted:
@@ -366,6 +369,7 @@ class SetConvFlag(View):
                 changes = [(ConvFlags.inbox, -1), not seen and (ConvFlags.unseen, -1), (ConvFlags.spam, 1)]
             else:
                 changes = [(ConvFlags.archive, -1), (ConvFlags.spam, 1)]
+
             return SetValues(spam=True), changes
         else:
             assert flag is SetFlags.ham, flag
@@ -379,6 +383,7 @@ class SetConvFlag(View):
                 changes = [(ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1), (ConvFlags.spam, -1)]
             else:
                 changes = [(ConvFlags.archive, 1), (ConvFlags.spam, -1)]
+
             return SetValues(spam=None), changes
 
 
