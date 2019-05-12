@@ -623,13 +623,27 @@ async def apply_actions(
 
     updates = [
         *(
-            UpdateFlag(u_id, [(ConvFlags.deleted, -1), (ConvFlags.inbox, 1), (ConvFlags.unseen, 1)])
+            UpdateFlag(
+                u_id,
+                [
+                    (ConvFlags.deleted, -1),
+                    (ConvFlags.inbox, 1),
+                    (ConvFlags.unseen, 1),
+                    # as the message is no longer deleted it must show in sent for the creator as well as inbox
+                    creator_id == u_id and (ConvFlags.sent, 1),
+                ],
+            )
             for u_id in from_deleted
         ),
         *(
-            # if the user is the creator, archive shouldn't be decremented
             UpdateFlag(
-                u_id, [creator_id != u_id and (ConvFlags.archive, -1), (ConvFlags.inbox, 1), (ConvFlags.unseen, 1)]
+                u_id,
+                [
+                    # archive shouldn't be decremented for the user since the conv was never in archive
+                    creator_id != u_id and (ConvFlags.archive, -1),
+                    (ConvFlags.inbox, 1),
+                    (ConvFlags.unseen, 1),
+                ],
             )
             for u_id in from_archive
         ),
