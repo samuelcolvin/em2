@@ -923,13 +923,13 @@ def _flags_count_key(user_id: int):
     return f'conv-counts-flags-{user_id}'
 
 
-async def get_flag_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> dict:
+async def get_flag_counts(user_id, *, conn: BuildPgConnection, redis: Redis, force_update=False) -> dict:
     """
     Get counts for participant flags. Data is cached to a redis hash and retrieved from there if it exists.
     """
     flag_key = _flags_count_key(user_id)
     flags = await redis.hgetall(flag_key)
-    if flags:
+    if flags and not force_update:
         flags = {k: int(v) for k, v in flags.items()}
     else:
         flags = dict(await conn.fetchrow(conv_flag_count_sql, user_id))

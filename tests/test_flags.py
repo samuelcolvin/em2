@@ -8,6 +8,104 @@ from em2.core import ActionModel, ActionTypes, get_flag_counts
 from .conftest import Factory
 
 
+@pytest.mark.parametrize(
+    'user_actions',
+    [
+        [
+            {'conv': 'sent', 'flag': 'delete', 'change': {'sent': -1, 'deleted': 1}},
+            {'conv': 'sent', 'flag': 'restore', 'change': {'sent': 1, 'deleted': -1}},
+        ],
+        [
+            {'conv': 'draft', 'flag': 'delete', 'change': {'draft': -1, 'deleted': 1}},
+            {'conv': 'draft', 'flag': 'restore', 'change': {'draft': 1, 'deleted': -1}},
+        ],
+        [
+            {'conv': 'sent', 'flag': 'inbox', 'change': {'inbox': 1}},
+            {'conv': 'sent', 'flag': 'archive', 'change': {'inbox': -1}},
+        ],
+        [{'conv': 'sent', 'flag': 'spam', 'status': 400, 'message': 'you cannot spam your own conversations'}],
+        [{'conv': 'inbox', 'flag': 'ham', 'status': 409, 'message': 'conversation not spam'}],
+        [
+            {'conv': 'inbox', 'flag': 'spam', 'change': {'inbox': -1, 'spam': 1}},
+            {'conv': 'inbox', 'flag': 'delete', 'change': {'deleted': 1, 'spam': -1}},
+            {'conv': 'inbox', 'flag': 'restore', 'change': {'deleted': -1, 'spam': 1}},
+        ],
+        [
+            {'conv': 'inbox_unseen', 'flag': 'delete', 'change': {'deleted': 1, 'inbox': -1, 'unseen': -1}},
+            {'conv': 'inbox_unseen', 'flag': 'spam', 'change': {}},
+            {'conv': 'inbox_unseen', 'flag': 'ham', 'change': {}},
+        ],
+        [
+            {'conv': 'inbox', 'flag': 'spam', 'change': {'inbox': -1, 'spam': 1}},
+            {'conv': 'inbox', 'flag': 'ham', 'change': {'inbox': 1, 'spam': -1}},
+        ],
+        [
+            {'conv': 'inbox_unseen', 'flag': 'archive', 'change': {'archive': 1, 'inbox': -1, 'unseen': -1}},
+            {'conv': 'inbox_unseen', 'flag': 'spam', 'change': {'archive': -1, 'spam': 1}},
+            {'conv': 'inbox_unseen', 'flag': 'ham', 'change': {'archive': 1, 'spam': -1}},
+        ],
+        [
+            {'conv': 'inbox_unseen', 'flag': 'archive', 'change': {'archive': 1, 'inbox': -1, 'unseen': -1}},
+            {'conv': 'inbox_unseen', 'flag': 'spam', 'change': {'archive': -1, 'spam': 1}},
+            {'conv': 'inbox_unseen', 'flag': 'spam', 'status': 409, 'message': 'conversation already spam'},
+        ],
+        [
+            {'conv': 'inbox', 'flag': 'archive', 'change': {'archive': 1, 'inbox': -1}},
+            {'conv': 'inbox', 'flag': 'archive', 'status': 409, 'message': 'conversation not in inbox'},
+        ],
+        [{'conv': 'inbox', 'flag': 'inbox', 'status': 409, 'message': 'conversation already in inbox'}],
+        [{'conv': 'inbox', 'flag': 'restore', 'status': 409, 'message': 'conversation not deleted'}],
+        [{'conv': 'inbox', 'flag': 'bad', 'status': 400, 'message': 'Invalid query data'}],
+        [
+            {'conv': 'inbox', 'flag': 'delete', 'change': {'deleted': 1, 'inbox': -1}},
+            {'conv': 'inbox', 'flag': 'inbox', 'status': 400, 'message': 'deleted, spam or draft conversation cannot'},
+        ],
+        [
+            {'conv': 'inbox', 'flag': 'delete', 'change': {'deleted': 1, 'inbox': -1}},
+            {'conv': 'inbox', 'flag': 'delete', 'status': 409, 'message': 'conversation already deleted'},
+        ],
+        [
+            {'conv': 'inbox', 'flag': 'archive', 'change': {'archive': 1, 'inbox': -1}},
+            {'conv': 'inbox', 'flag': 'delete', 'change': {'archive': -1, 'deleted': 1}},
+            {'conv': 'inbox', 'flag': 'restore', 'change': {'archive': 1, 'deleted': -1}},
+        ],
+    ],
+)
+async def test_set_flag(cli, factory: Factory, db_conn, redis, user_actions):
+    user = await factory.create_user()
+    other_user = await factory.create_user()
+    p = [{'email': user.email}]
+
+    convs = {
+        'draft': await factory.create_conv(),
+        'sent': await factory.create_conv(publish=True),
+        'inbox_unseen': await factory.create_conv(publish=True, session_id=other_user.session_id, participants=p),
+        'inbox': await factory.create_conv(publish=True, session_id=other_user.session_id, participants=p),
+    }
+
+    await factory.act(user.id, convs['inbox'].id, ActionModel(act=ActionTypes.seen))
+    counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 2, 'unseen': 1, 'draft': 1, 'sent': 1, 'archive': 0, 'all': 4, 'spam': 0, 'deleted': 0}
+
+    for i, action in enumerate(user_actions):
+        conv, flag = action['conv'], action['flag']
+        r = await cli.post_json(factory.url('ui:set-conv-flag', conv=convs[conv].key, query={'flag': flag}))
+        assert r.status == action.get('status', 200), await r.text()
+        obj = await r.json()
+        if r.status != 200:
+            assert obj['message'].startswith(action['message']), i
+            continue
+        changes = {}
+        for k, v in obj['counts'].items():
+            diff = v - counts[k]
+            if diff:
+                changes[k] = diff
+        assert changes == action.get('change', {}), (i, obj['counts'])
+        counts = obj['counts']
+        true_counts = await get_flag_counts(user.id, conn=db_conn, redis=redis, force_update=True)
+        assert true_counts == counts
+
+
 @pytest.fixture(name='conv')
 async def _fix_conv(cli, factory: Factory, db_conn):
     await factory.create_user()
@@ -24,20 +122,12 @@ async def test_flags_inbox(cli, factory: Factory, conv, db_conn, redis):
     assert flags == {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
     assert await db_conn.fetchval('select inbox from participants where user_id=$1', u_id) is True
 
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='foobar')))
-    assert r.status == 400, await r.text()
-
     r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='archive')))
     assert r.status == 200, await r.text()
     assert await r.json() == {
         'conv_flags': {'inbox': False, 'archive': True, 'deleted': False, 'spam': False},
         'counts': {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 1, 'all': 1, 'spam': 0, 'deleted': 0},
     }
-    assert await db_conn.fetchval('select inbox from participants where user_id=$1', u_id) is None
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='archive')))
-    assert r.status == 409, await r.text()
-    assert await r.json() == {'message': 'conversation not in inbox'}
     assert await db_conn.fetchval('select inbox from participants where user_id=$1', u_id) is None
 
     r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='inbox')))
@@ -47,17 +137,6 @@ async def test_flags_inbox(cli, factory: Factory, conv, db_conn, redis):
         'counts': {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0},
     }
     assert await db_conn.fetchval('select inbox from participants where user_id=$1', u_id) is True
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='inbox')))
-    assert r.status == 409, await r.text()
-    assert await r.json() == {'message': 'conversation already in inbox'}
-    assert await db_conn.fetchval('select inbox from participants where user_id=$1', u_id) is True
-
-    await db_conn.execute('update participants set inbox=false, deleted=true')
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='inbox')))
-    assert r.status == 409, await r.text()
-    assert await r.json() == {'message': 'deleted or spam conversation cannot be moved to inbox'}
 
 
 async def test_flags_deleted(cli, factory: Factory, db_conn, conv):
@@ -74,11 +153,6 @@ async def test_flags_deleted(cli, factory: Factory, db_conn, conv):
     assert await db_conn.fetchval('select deleted from participants where user_id=$1', u_id) is True
     assert await db_conn.fetchval('select deleted_ts from participants where user_id=$1', u_id) == CloseToNow()
 
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='delete')))
-    assert r.status == 409, await r.text()
-    assert await r.json() == {'message': 'conversation already deleted'}
-    assert await db_conn.fetchval('select deleted from participants where user_id=$1', u_id) is True
-
     r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='restore')))
     assert r.status == 200, await r.text()
     assert await r.json() == {
@@ -87,116 +161,6 @@ async def test_flags_deleted(cli, factory: Factory, db_conn, conv):
     }
     assert await db_conn.fetchval('select deleted from participants where user_id=$1', u_id) is None
     assert await db_conn.fetchval('select deleted_ts from participants where user_id=$1', u_id) is None
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='restore')))
-    assert r.status == 409, await r.text()
-    assert await r.json() == {'message': 'conversation not deleted'}
-    assert await db_conn.fetchval('select deleted from participants where user_id=$1', u_id) is None
-
-
-async def test_flags_spam(cli, factory: Factory, db_conn, conv):
-    u_id = factory.user.id
-    assert await db_conn.fetchval('select spam from participants where user_id=$1', u_id) is None
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='spam')))
-    assert r.status == 200, await r.text()
-    assert await r.json() == {
-        'conv_flags': {'inbox': False, 'archive': False, 'deleted': False, 'spam': True},
-        'counts': {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 1, 'deleted': 0},
-    }
-    assert await db_conn.fetchval('select spam from participants where user_id=$1', u_id) is True
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='spam')))
-    assert r.status == 409, await r.text()
-    assert await r.json() == {'message': 'conversation already spam'}
-    assert await db_conn.fetchval('select spam from participants where user_id=$1', u_id) is True
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='ham')))
-    assert r.status == 200, await r.text()
-    assert await r.json() == {
-        'conv_flags': {'inbox': True, 'archive': False, 'deleted': False, 'spam': False},
-        'counts': {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0},
-    }
-    assert await db_conn.fetchval('select spam from participants where user_id=$1', u_id) is None
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='ham')))
-    assert r.status == 409, await r.text()
-    assert await r.json() == {'message': 'conversation not spam'}
-    assert await db_conn.fetchval('select spam from participants where user_id=$1', u_id) is None
-
-
-async def test_flags_deleted_seen(cli, factory: Factory, db_conn, conv, redis):
-    u_id = factory.user.id
-
-    flags = await get_flag_counts(u_id, conn=db_conn, redis=redis)
-    assert flags == {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
-
-    await factory.act(u_id, conv.id, ActionModel(act=ActionTypes.seen))
-
-    flags = await get_flag_counts(u_id, conn=db_conn, redis=redis)
-    assert flags == {'inbox': 1, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='delete')))
-    assert r.status == 200, await r.text()
-    assert await r.json() == {
-        'conv_flags': {'inbox': False, 'archive': False, 'deleted': True, 'spam': False},
-        'counts': {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 1},
-    }
-
-
-async def test_flags_spam_deleted(cli, factory: Factory, conv):
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='spam')))
-    assert r.status == 200, await r.text()
-    assert await r.json() == {
-        'conv_flags': {'inbox': False, 'archive': False, 'deleted': False, 'spam': True},
-        'counts': {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 1, 'deleted': 0},
-    }
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='delete')))
-    assert r.status == 200, await r.text()
-    assert await r.json() == {
-        'conv_flags': {'inbox': False, 'archive': False, 'deleted': True, 'spam': True},
-        'counts': {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 1},
-    }
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='ham')))
-    assert r.status == 200, await r.text()
-    assert await r.json() == {
-        'conv_flags': {'inbox': False, 'archive': False, 'deleted': True, 'spam': False},
-        'counts': {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 1},
-    }
-
-
-async def test_flags_archive_deleted(cli, factory: Factory, conv):
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='archive')))
-    assert r.status == 200, await r.text()
-    assert await r.json() == {
-        'conv_flags': {'inbox': False, 'archive': True, 'deleted': False, 'spam': False},
-        'counts': {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 1, 'all': 1, 'spam': 0, 'deleted': 0},
-    }
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='delete')))
-    assert r.status == 200, await r.text()
-    assert await r.json() == {
-        'conv_flags': {'inbox': False, 'archive': False, 'deleted': True, 'spam': False},
-        'counts': {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 1},
-    }
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='restore')))
-    assert r.status == 200, await r.text()
-    assert await r.json() == {
-        'conv_flags': {'inbox': False, 'archive': True, 'deleted': False, 'spam': False},
-        'counts': {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 1, 'all': 1, 'spam': 0, 'deleted': 0},
-    }
-
-
-async def test_flags_sent(cli, factory: Factory):
-    await factory.create_user()
-    conv = await factory.create_conv()
-
-    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query=dict(flag='spam')))
-    assert r.status == 400, await r.text()
-    assert await r.json() == {'message': 'you cannot change labels on conversations you sent'}
 
 
 async def test_seen(factory: Factory, conv, db_conn, redis):
@@ -346,7 +310,7 @@ def query_display(v):
     ],
     ids=query_display,
 )
-async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, expected):
+async def test_filter_flags_conv_list(cli, factory: Factory, db_conn, query, expected):
     await factory.create_user()
     test_user = await factory.create_user()
 

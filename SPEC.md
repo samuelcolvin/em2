@@ -380,7 +380,7 @@ To choose folder:
 * `deleted`: has "deleted",
 * else `spam` if "spam",
 * else `inbox` if "inbox",
-* else `archive`
+* else `archive` if not `sent` or `draft`
 
 Which folder is not the same as which flags are set, eg. something can have "spam" but be in deleted
 

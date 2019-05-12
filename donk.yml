@@ -23,7 +23,7 @@ test:
 - pytest --cov=em2
 
 testcov:
-- +test
+- +test -- -n6
 - coverage html
 
 all:

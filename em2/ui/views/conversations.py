@@ -259,9 +259,9 @@ class SetConvFlag(View):
         flag = parse_request_query(self.request, self.QueryModel).flag
         conv_id, _ = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
         async with self.conn.transaction():
-            participant_id, inbox, seen, deleted, spam, self_created = await self.conn.fetchrow(
+            participant_id, inbox, seen, deleted, spam, self_created, draft = await self.conn.fetchrow(
                 """
-                select p.id, inbox, seen, deleted, spam, c.creator = $2
+                select p.id, inbox, seen, deleted, spam, c.creator = $2, c.publish_ts is null
                 from participants p
                 join conversations c on p.conv = c.id
                 where conv=$1 and user_id=$2 for no key update
@@ -269,10 +269,10 @@ class SetConvFlag(View):
                 conv_id,
                 self.session.user_id,
             )
-            if self_created:
-                raise JsonErrors.HTTPBadRequest('you cannot change labels on conversations you sent')
+            sent = self_created and not draft
+            draft = self_created and draft
 
-            values, changes = self.get_update_values(flag, inbox, seen, deleted, spam)
+            values, changes = self.get_update_values(flag, inbox, seen, deleted, spam, sent, draft)
             await self.conn.execute_b('update participants set :values where id=:id', values=values, id=participant_id)
         await update_conv_flags(UpdateFlag(self.session.user_id, filter(bool, changes)), redis=self.redis)
 
@@ -291,44 +291,76 @@ class SetConvFlag(View):
         return json_response(conv_flags=dict(conv_flags), counts=counts)
 
     @staticmethod  # noqa: 901
-    def get_update_values(flag: SetFlags, inbox: bool, seen: bool, deleted: bool, spam: bool) -> Tuple[SetValues, list]:
+    def get_update_values(
+        flag: SetFlags, inbox: bool, seen: bool, deleted: bool, spam: bool, sent: bool, draft: bool
+    ) -> Tuple[SetValues, list]:
         if flag is SetFlags.archive:
-            if not (inbox and not deleted and not spam):
+            if not inbox or deleted or spam or draft:
                 raise JsonErrors.HTTPConflict('conversation not in inbox')
-            changes = [(ConvFlags.inbox, -1), (ConvFlags.archive, 1), not seen and (ConvFlags.unseen, -1)]
+
+            if sent:
+                changes = [(ConvFlags.inbox, -1), not seen and (ConvFlags.unseen, -1)]
+            else:
+                changes = [(ConvFlags.inbox, -1), (ConvFlags.archive, 1), not seen and (ConvFlags.unseen, -1)]
             return SetValues(inbox=None), changes
         elif flag is SetFlags.inbox:
-            if inbox:
+            if deleted or spam or draft:
+                raise JsonErrors.HTTPBadRequest('deleted, spam or draft conversation cannot be moved to inbox')
+            elif inbox:
                 raise JsonErrors.HTTPConflict('conversation already in inbox')
-            elif deleted or spam:
-                raise JsonErrors.HTTPConflict('deleted or spam conversation cannot be moved to inbox')
-            changes = [(ConvFlags.archive, -1), (ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1)]
+
+            if sent:
+                changes = [(ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1)]
+            else:
+                changes = [(ConvFlags.archive, -1), (ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1)]
             return SetValues(inbox=True), changes
         elif flag is SetFlags.delete:
             if deleted:
                 raise JsonErrors.HTTPConflict('conversation already deleted')
+
             if spam:
                 changes = [(ConvFlags.spam, -1), (ConvFlags.deleted, 1)]
             elif inbox:
                 changes = [(ConvFlags.inbox, -1), not seen and (ConvFlags.unseen, -1), (ConvFlags.deleted, 1)]
-            else:
+            elif draft:
+                changes = [(ConvFlags.draft, -1), (ConvFlags.deleted, 1)]
+            elif not sent:
                 changes = [(ConvFlags.archive, -1), (ConvFlags.deleted, 1)]
+            else:
+                changes = [(ConvFlags.deleted, 1)]
+
+            if sent:
+                # like this because conversations can show in inbox and sent
+                changes += [(ConvFlags.sent, -1)]
             return SetValues(deleted=True, deleted_ts=funcs.now()), changes
         elif flag is SetFlags.restore:
             if not deleted:
                 raise JsonErrors.HTTPConflict('conversation not deleted')
+
             if spam:
                 changes = [(ConvFlags.spam, 1), (ConvFlags.deleted, -1)]
             elif inbox:
                 changes = [(ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1), (ConvFlags.deleted, -1)]
-            else:
+            elif draft:
+                changes = [(ConvFlags.draft, 1), (ConvFlags.deleted, -1)]
+            elif not sent:
                 changes = [(ConvFlags.archive, 1), (ConvFlags.deleted, -1)]
+            else:
+                changes = [(ConvFlags.deleted, -1)]
+
+            if sent:
+                # like this because conversations can show in inbox and sent
+                changes += [(ConvFlags.sent, 1)]
+
             return SetValues(deleted=None, deleted_ts=None), changes
         elif flag is SetFlags.spam:
             if spam:
                 raise JsonErrors.HTTPConflict('conversation already spam')
+            elif sent or draft:
+                raise JsonErrors.HTTPBadRequest('you cannot spam your own conversations')
+
             if deleted:
-                # deleted takes president over spam, so the conv is already "in deleted"
+                # deleted takes precedence over spam, so the conv is already "in deleted"
                 changes = []
             elif inbox:
                 changes = [(ConvFlags.inbox, -1), not seen and (ConvFlags.unseen, -1), (ConvFlags.spam, 1)]
@@ -339,8 +371,9 @@ class SetConvFlag(View):
             assert flag is SetFlags.ham, flag
             if not spam:
                 raise JsonErrors.HTTPConflict('conversation not spam')
+
             if deleted:
-                # deleted takes president over spam, so the conv is already "in deleted"
+                # deleted takes precedence over spam, so the conv is already "in deleted"
                 changes = []
             elif inbox:
                 changes = [(ConvFlags.inbox, 1), not seen and (ConvFlags.unseen, 1), (ConvFlags.spam, -1)]

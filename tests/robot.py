@@ -77,7 +77,7 @@ class Client:
         # devtools.debug(response)
         assert response
 
-    async def create(self, *, publish=None):
+    async def create(self, *, publish=True):
         print('creating a conv...')
         publish = choice([True, False]) if publish is None else publish
         msg_format, msg_body = self._msg_body()
