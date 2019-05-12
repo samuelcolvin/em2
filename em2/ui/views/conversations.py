@@ -43,7 +43,7 @@ class ConvList(View):
         select c.key, c.created_ts, c.updated_ts, c.publish_ts, c.last_action_id, c.details,
           p.seen is true seen,
           (p.inbox is true and p.deleted is not true and p.spam is not true) inbox,
-          -- TODO (p.inbox is not true and p.deleted is not true and p.spam is not true) archive,
+          (c.creator != p.user_id and p.inbox is not true and p.deleted is not true and p.spam is not true) archive,
           p.deleted is true deleted,
           p.spam is true spam,
           c.publish_ts is null draft,

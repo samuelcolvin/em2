@@ -154,6 +154,7 @@ async def test_conv_list(cli, factory: Factory, db_conn):
                 'deleted': False,
                 'spam': False,
                 'draft': True,
+                'archive': False,
                 'sent': False,
                 'labels': [],
                 'details': {

@@ -160,17 +160,13 @@ export default class Conversations {
               deleted: bool_int(c.deleted),
             })
         ))
-        await this._main.session.db.conversations.bulkPut(conversations)
+        await this._conv_db().bulkPut(conversations)
         this._main.session.current.cache.add(cache_key)
         await this._main.session.update({cache: this._main.session.current.cache})
       }
     }
-    const qs = this._main.session.db.conversations.where({[flag]: 1})
-    const count = await qs.count()
-    return {
-      conversations: offset_limit(await qs.reverse().sortBy('updated_ts'), page),
-      pages: Math.ceil(count / per_page),
-    }
+    const qs = this._conv_db().where({[flag]: 1})
+    return offset_limit(await qs.reverse().sortBy('updated_ts'), page)
   }
 
   update_counts = async () => {
@@ -241,7 +237,7 @@ export default class Conversations {
       draft: bool_int(r.data.conv_flags.draft),
       sent: bool_int(r.data.conv_flags.sent),
     }
-    await this._main.session.db.conversations.update(conv_key, update)
+    await this._conv_db().update(conv_key, update)
     this._main.fire('change', {conv: conv_key})
 
     if (this._main.session.current.flags !== r.data.counts) {
@@ -251,7 +247,7 @@ export default class Conversations {
   }
 
   seen = async conv_key => {
-    const conv = await this._main.session.db.conversations.get(conv_key)
+    const conv = await this._conv_db().get(conv_key)
     if (!conv.seen) {
       await this._requests.post('ui', `/${this._main.session.id}/conv/${conv_key}/act/`, {actions: [{act: 'seen'}]})
     }
@@ -259,7 +255,7 @@ export default class Conversations {
 
   publish = async conv => {
     const r = await this._requests.post('ui', `/${this._main.session.id}/conv/${conv}/publish/`, {publish: true})
-    await this._main.session.db.conversations.update(conv, {new_key: r.data.key})
+    await this._conv_db().update(conv, {new_key: r.data.key})
   }
 
   create = async data => (
@@ -275,12 +271,17 @@ export default class Conversations {
     return actions[0].id
   }
 
+  pages = flag => {
+    const counts = this._main.session.conv_counts()
+    return Math.ceil(counts.flags[flag] / per_page)
+  }
+
   _get_db_actions = conv => this._main.session.db.actions.where({conv}).sortBy('id')
 
   _get_conv = async key_prefix => {
-    const convs = await (
-      this._main.session.db.conversations.where('key').startsWith(key_prefix).reverse().sortBy('created_ts')
-    )
+    const convs = await this._conv_db().where('key').startsWith(key_prefix).reverse().sortBy('created_ts')
     return convs[0]
   }
+
+  _conv_db = () => this._main.session.db.conversations
 }

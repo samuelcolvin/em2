@@ -382,13 +382,15 @@ To choose folder:
 * else `inbox` if "inbox",
 * else `archive`
 
-Which folder is not the same as which flags are set, eg. something can have "spam" but be in deted
+Which folder is not the same as which flags are set, eg. something can have "spam" but be in deleted
 
 TODO muted: doesn't get inbox set and unseen doesn't get incremented
 
 Some labels have special effects, eg. "mute" labels prevent inbox being set, but don't effect the logic above.
 
 Marking conversations as spam or deleted doesn't remove inbox, so if you "un-delete" they go back to inbox.
+
+`sent` conversations can also be in `inbox` or `deleted`, but not `archive`
 
 # Labels
 

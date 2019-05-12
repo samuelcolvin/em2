@@ -390,23 +390,24 @@ async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, ex
     # all case check results
     d = {
         c['details']['sub']: {
-            'seen': c['seen'],
-            'inbox': c['inbox'],
-            'deleted': c['deleted'],
-            'spam': c['spam'],
-            'draft': c['draft'],
-            'sent': c['sent'],
+            'seen': int(c['seen']),  # use ints so the below fits on one line each
+            'inbox': int(c['inbox']),
+            'archive': int(c['archive']),
+            'deleted': int(c['deleted']),
+            'spam': int(c['spam']),
+            'draft': int(c['draft']),
+            'sent': int(c['sent']),
         }
         for c in data['conversations']
     }
     assert d == {
-        'anne': {'seen': False, 'inbox': False, 'deleted': False, 'spam': True, 'draft': False, 'sent': False},
-        'ben': {'seen': False, 'inbox': False, 'deleted': False, 'spam': False, 'draft': False, 'sent': False},
-        'charlie': {'seen': False, 'inbox': True, 'deleted': False, 'spam': False, 'draft': False, 'sent': False},
-        'dave': {'seen': False, 'inbox': False, 'deleted': True, 'spam': False, 'draft': False, 'sent': False},
-        'ed': {'seen': True, 'inbox': False, 'deleted': False, 'spam': False, 'draft': True, 'sent': False},
-        'fred': {'seen': True, 'inbox': False, 'deleted': False, 'spam': False, 'draft': False, 'sent': True},
-        'george': {'seen': True, 'inbox': True, 'deleted': False, 'spam': False, 'draft': False, 'sent': False},
+        'anne': {'seen': 0, 'inbox': 0, 'archive': 0, 'deleted': 0, 'spam': 1, 'draft': 0, 'sent': 0},
+        'ben': {'seen': 0, 'inbox': 0, 'archive': 1, 'deleted': 0, 'spam': 0, 'draft': 0, 'sent': 0},
+        'charlie': {'seen': 0, 'inbox': 1, 'archive': 0, 'deleted': 0, 'spam': 0, 'draft': 0, 'sent': 0},
+        'dave': {'seen': 0, 'inbox': 0, 'archive': 0, 'deleted': 1, 'spam': 0, 'draft': 0, 'sent': 0},
+        'ed': {'seen': 1, 'inbox': 0, 'archive': 0, 'deleted': 0, 'spam': 0, 'draft': 1, 'sent': 0},
+        'fred': {'seen': 1, 'inbox': 0, 'archive': 0, 'deleted': 0, 'spam': 0, 'draft': 0, 'sent': 1},
+        'george': {'seen': 1, 'inbox': 1, 'archive': 0, 'deleted': 0, 'spam': 0, 'draft': 0, 'sent': 0},
     }
 
 

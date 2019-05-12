@@ -3,7 +3,7 @@ import {Link} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {withRouter} from 'react-router-dom'
-import {WithContext, Loading, message_toast} from 'reactstrap-toolbox'
+import {WithContext, Loading} from 'reactstrap-toolbox'
 import {format_ts} from '../utils/dt'
 
 const ConvList = ({conversations, user_email}) => conversations.map((conv, i) => (
@@ -30,22 +30,24 @@ const ConvList = ({conversations, user_email}) => conversations.map((conv, i) =>
   </Link>
 ))
 
-const Paginate = ({current, onClick, state}) => (
-  <nav>
-    <ul className="pagination">
-      <li className={`page-item${current === 1 ? ' disabled' : ''}`}>
-        <Link className="page-link" onClick={onClick} to={`?page=${current - 1}`}>&laquo;</Link>
-      </li>
-      {[...Array(state.pages || current).keys()].map(i => i + 1).map(p => (
-        <li key={p} className={`page-item${p === current ? ' active' : ''}`}>
-          <Link className="page-link" onClick={onClick} to={`?page=${p}`}>{p}</Link>
-        </li>
-      ))}
-      <li className={`page-item${state.more_pages ? '' : ' disabled'}`}>
-        <Link className="page-link" onClick={onClick} to={`?page=${current + 1}`}>&raquo;</Link>
-      </li>
-    </ul>
-  </nav>
+const Paginate = ({current, onClick, pages}) => (
+  pages === 1 ? null : (
+      <nav>
+        <ul className="pagination">
+          <li className={`page-item${current === 1 ? ' disabled' : ''}`}>
+            <Link className="page-link" onClick={onClick} to={`?page=${current - 1}`}>&laquo;</Link>
+          </li>
+          {[...Array(pages).keys()].map(i => i + 1).map(p => (
+            <li key={p} className={`page-item${p === current ? ' active' : ''}`}>
+              <Link className="page-link" onClick={onClick} to={`?page=${p}`}>{p}</Link>
+            </li>
+          ))}
+          <li className={`page-item${current === pages ? ' disabled' : ''}`}>
+            <Link className="page-link" onClick={onClick} to={`?page=${current + 1}`}>&raquo;</Link>
+          </li>
+        </ul>
+      </nav>
+    )
 )
 
 const get_page = s => {
@@ -54,7 +56,7 @@ const get_page = s => {
 }
 
 class ConvListView extends React.Component {
-  state = {more_pages: true}
+  state = {}
 
   async componentDidMount () {
     this.mounted = true
@@ -84,7 +86,10 @@ class ConvListView extends React.Component {
       this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
       const flag = this.conv_flag()
       this.props.ctx.setMenuItem(flag)
-      this.setState(await window.logic.conversations.list({page: this.get_page(), flag}))
+      this.setState({
+        conversations: await window.logic.conversations.list({page: this.get_page(), flag}),
+        pages: window.logic.conversations.pages(flag),
+      })
     }
   }
 
@@ -92,19 +97,14 @@ class ConvListView extends React.Component {
 
   on_pagination_click = async e => {
     const link = e.target.getAttribute('href')
-    e.preventDefault()
     const page = get_page(link)
     if (page === this.get_page()) {
       return
     }
-    const r = await window.logic.conversations.list({page, flag: this.conv_flag()})
-    if (r.conversations.length) {
-      this.setState(r)
-      this.props.history.push(link)
-    } else {
-      message_toast({icon: fas.faTimes, title: 'No more Conversations', message: 'No more Conversations found'})
-      this.setState({more_pages: false})
-    }
+    e.preventDefault()
+    const conversations = await window.logic.conversations.list({page, flag: this.conv_flag()})
+    this.setState({conversations})
+    this.props.history.push(link)
   }
 
   render () {
@@ -125,7 +125,7 @@ class ConvListView extends React.Component {
           <ConvList conversations={conversations} user_email={user_email}/>
         </div>
         <div className="d-flex justify-content-center">
-          <Paginate current={this.get_page()} onClick={this.on_pagination_click} state={this.state}/>
+          <Paginate current={this.get_page()} onClick={this.on_pagination_click} pages={this.state.pages}/>
         </div>
       </div>
     )
