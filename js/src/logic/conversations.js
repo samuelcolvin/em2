@@ -137,36 +137,38 @@ export default class Conversations {
   }
 
   list = async (data) => {
-    const page = data.page
     const flag = data.flag
     let status = await this._main.get_conn_status()
     if (!this._main.session.current) {
       return {}
     }
     if (status === statuses.online) {
-      const cache_key = `page-${flag}-${page}`
-      if (!this._main.session.current.cache.has(cache_key)) {
-        const r = await this._requests.get('ui', `/${this._main.session.id}/conv/list/`, {page, flag})
-        const conversations = r.data.conversations.map(c => (
-            Object.assign({}, c, {
-              created_ts: unix_ms(c.created_ts),
-              updated_ts: unix_ms(c.updated_ts),
-              publish_ts: unix_ms(c.publish_ts),
-              inbox: bool_int(c.inbox),
-              draft: bool_int(c.draft),
-              sent: bool_int(c.sent),
-              archive: bool_int(c.archive),
-              spam: bool_int(c.spam),
-              deleted: bool_int(c.deleted),
-            })
-        ))
-        await this._conv_db().bulkPut(conversations)
-        this._main.session.current.cache.add(cache_key)
-        await this._main.session.update({cache: this._main.session.current.cache})
+      // have to get every page between 1 and the page requested to make sure the offset works correctly at the end
+      for (let page = 1; page <= data.page; page ++) {
+        const cache_key = `page-${flag}-${page}`
+        if (!this._main.session.current.cache.has(cache_key)) {
+          const r = await this._requests.get('ui', `/${this._main.session.id}/conv/list/`, {page, flag})
+          const conversations = r.data.conversations.map(c => (
+              Object.assign({}, c, {
+                created_ts: unix_ms(c.created_ts),
+                updated_ts: unix_ms(c.updated_ts),
+                publish_ts: unix_ms(c.publish_ts),
+                inbox: bool_int(c.inbox),
+                draft: bool_int(c.draft),
+                sent: bool_int(c.sent),
+                archive: bool_int(c.archive),
+                spam: bool_int(c.spam),
+                deleted: bool_int(c.deleted),
+              })
+          ))
+          await this._conv_table().bulkPut(conversations)
+          this._main.session.current.cache.add(cache_key)
+          await this._main.session.update({cache: this._main.session.current.cache})
+      }
       }
     }
-    const qs = this._conv_db().where({[flag]: 1})
-    return offset_limit(await qs.reverse().sortBy('updated_ts'), page)
+    const qs = this._conv_table().where({[flag]: 1})
+    return offset_limit(await qs.reverse().sortBy('updated_ts'), data.page)
   }
 
   update_counts = async () => {
@@ -237,7 +239,7 @@ export default class Conversations {
       draft: bool_int(r.data.conv_flags.draft),
       sent: bool_int(r.data.conv_flags.sent),
     }
-    await this._conv_db().update(conv_key, update)
+    await this._conv_table().update(conv_key, update)
     this._main.fire('change', {conv: conv_key})
 
     if (this._main.session.current.flags !== r.data.counts) {
@@ -247,7 +249,7 @@ export default class Conversations {
   }
 
   seen = async conv_key => {
-    const conv = await this._conv_db().get(conv_key)
+    const conv = await this._conv_table().get(conv_key)
     if (!conv.seen) {
       await this._requests.post('ui', `/${this._main.session.id}/conv/${conv_key}/act/`, {actions: [{act: 'seen'}]})
     }
@@ -255,7 +257,7 @@ export default class Conversations {
 
   publish = async conv => {
     const r = await this._requests.post('ui', `/${this._main.session.id}/conv/${conv}/publish/`, {publish: true})
-    await this._conv_db().update(conv, {new_key: r.data.key})
+    await this._conv_table().update(conv, {new_key: r.data.key})
   }
 
   create = async data => (
@@ -279,9 +281,9 @@ export default class Conversations {
   _get_db_actions = conv => this._main.session.db.actions.where({conv}).sortBy('id')
 
   _get_conv = async key_prefix => {
-    const convs = await this._conv_db().where('key').startsWith(key_prefix).reverse().sortBy('created_ts')
+    const convs = await this._conv_table().where('key').startsWith(key_prefix).reverse().sortBy('created_ts')
     return convs[0]
   }
 
-  _conv_db = () => this._main.session.db.conversations
+  _conv_table = () => this._main.session.db.conversations
 }

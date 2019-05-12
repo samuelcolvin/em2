@@ -52,7 +52,7 @@ class ConvList(View):
         from conversations c
         join participants p on c.id = p.conv
         where :where
-        order by c.created_ts, c.id desc
+        order by c.updated_ts
         limit 50
         offset :offset
       ) t
