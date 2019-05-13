@@ -45,8 +45,8 @@ function warning_msgs (w) {
       message: {
         FAIL: 'Message appears to be spam',
         GRAY: 'Message may be spam',
-        PROCESSING_FAILED: 'Unable to scan the message, may be be spam'
-      }[warnings.spam] || `Message may be spam: ${warnings.spam}`
+        PROCESSING_FAILED: 'Unable to scan the message, may be be spam',
+      }[warnings.spam] || `Message may be spam: ${warnings.spam}`,
     })
     delete warnings.spam
   }
@@ -56,8 +56,8 @@ function warning_msgs (w) {
       message: {
         FAIL: "Message contains a virus",
         GRAY: 'unable to determine with confidence if the message contains a virus',
-        PROCESSING_FAILED: 'Unable to scan the message for viruses'
-      }[warnings.virus] || `Virus failed: ${warnings.virus}`
+        PROCESSING_FAILED: 'Unable to scan the message for viruses',
+      }[warnings.virus] || `Virus failed: ${warnings.virus}`,
     })
     delete warnings.virus
   }
@@ -67,8 +67,8 @@ function warning_msgs (w) {
       message: {
         FAIL: "Message failed DKIM verification, this message may not be from who it says it's from",
         GRAY: 'Message not protected by DKIM',
-        PROCESSING_FAILED: "Unable to check if the message's DKIM signature is valid"
-      }[warnings.dkim] || `DKIM failed: ${warnings.dkim}`
+        PROCESSING_FAILED: "Unable to check if the message's DKIM signature is valid",
+      }[warnings.dkim] || `DKIM failed: ${warnings.dkim}`,
     })
     delete warnings.dkim
   }
@@ -78,8 +78,8 @@ function warning_msgs (w) {
       message: {
         FAIL: "Message failed failed SPF authentication",
         GRAY: 'no SPF policy setup for the sending domain',
-        PROCESSING_FAILED: "Unable to check if the message's SPF authentication is valid"
-      }[warnings.spf] || `SPF failed: ${warnings.spf}`
+        PROCESSING_FAILED: "Unable to check if the message's SPF authentication is valid",
+      }[warnings.spf] || `SPF failed: ${warnings.spf}`,
     })
     delete warnings.spf
   }
@@ -89,15 +89,15 @@ function warning_msgs (w) {
       message: {
         FAIL: "Message failed failed DMARC authentication",
         GRAY: 'Message failed DMARC authentication, and the sending domain does not have a DMARC policy',
-        PROCESSING_FAILED: "Unable to check if the message's DMARC authentication is valid"
-      }[warnings.dmarc] || `DMARC failed: ${warnings.dmarc}`
+        PROCESSING_FAILED: "Unable to check if the message's DMARC authentication is valid",
+      }[warnings.dmarc] || `DMARC failed: ${warnings.dmarc}`,
     })
     delete warnings.dmarc
   }
   for (let [title, value] of Object.entries(warnings)) {
     msgs.push({
       title,
-      message: `unknown warning: ${value}`
+      message: `unknown warning: ${value}`,
     })
   }
   return msgs
