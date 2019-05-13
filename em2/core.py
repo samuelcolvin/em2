@@ -851,7 +851,7 @@ async def create_conv(
         await conn.execute(
             """
             insert into actions (conv, act          , actor, ts, body, preview, msg_format, warnings)
-            values              ($1  , 'message:add', $2   , $3, $4  , $5     , $6, $7)
+            values              ($1  , 'message:add', $2   , $3, $4  , $5     , $6        , $7)
             """,
             conv_id,
             creator_id,
