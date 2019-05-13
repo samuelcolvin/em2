@@ -70,6 +70,7 @@ class ConvList(View):
         return raw_json_response(raw_json)
 
     def where_clause(self):
+        # FIXME this doesn't get conversation where the user has been removed
         where = funcs.AND(
             V('p.user_id') == self.session.user_id,
             funcs.OR(V('publish_ts').is_not(V('null')), V('creator') == self.session.user_id),
@@ -115,6 +116,33 @@ class ConvActions(View):
             self.conn, self.session.user_id, self.request.match_info['conv'], since_id=m.since, inc_seen=True
         )
         return raw_json_response(json_str)
+
+
+class ConvDetails(View):
+    sql = """
+    select row_to_json(conversation)
+    from (
+      select c.key, c.created_ts, c.updated_ts, c.publish_ts, c.last_action_id, c.details,
+        p.seen is true seen,
+        (p.inbox is true and p.deleted is not true and p.spam is not true) inbox,
+        (c.creator != p.user_id and p.inbox is not true and p.deleted is not true and p.spam is not true) archive,
+        p.deleted is true deleted,
+        p.spam is true spam,
+        c.publish_ts is null draft,
+        c.publish_ts is not null and c.creator = p.user_id sent,
+        coalesce(p.label_ids, '{}') labels
+      from conversations c
+      join participants p on c.id = p.conv
+      where c.id=$1 and p.user_id=$2
+    ) conversation
+    """
+
+    async def call(self):
+        conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
+        if last_action:
+            raise NotImplementedError()
+        else:
+            return raw_json_response(await self.conn.fetchval(self.sql, conv_id, self.session.user_id))
 
 
 class ConvCreate(ExecView):

@@ -190,7 +190,7 @@ async def test_conv_actions(cli, factory: Factory, db_conn):
     conv = await factory.create_conv()
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
-    r = await cli.get(factory.url('ui:get', conv=conv.key))
+    r = await cli.get(factory.url('ui:get-actions', conv=conv.key))
     assert r.status == 200, await r.text()
     obj = await r.json()
     assert obj == [
@@ -232,7 +232,7 @@ async def test_act(cli, factory: Factory):
     obj = await r.json()
     assert obj == {'action_ids': [4]}
 
-    r = await cli.get(factory.url('ui:get', conv=conv.key))
+    r = await cli.get(factory.url('ui:get-actions', conv=conv.key))
     assert r.status == 200, await r.text()
     obj = await r.json()
     assert len(obj) == 4
@@ -244,6 +244,39 @@ async def test_act(cli, factory: Factory):
         'actor': 'testing-1@example.com',
         'body': 'this is another message',
         'msg_format': 'markdown',
+    }
+
+
+async def test_conv_details(cli, factory: Factory, db_conn):
+    await factory.create_user()
+    conv = await factory.create_conv()
+    assert 1 == await db_conn.fetchval('select count(*) from conversations')
+
+    r = await cli.get(factory.url('ui:get-details', conv=conv.key))
+    assert r.status == 200, await r.text()
+    assert await r.json() == {
+        'key': await db_conn.fetchval('select key from conversations'),
+        'created_ts': CloseToNow(),
+        'updated_ts': CloseToNow(),
+        'publish_ts': None,
+        'last_action_id': 3,
+        'details': {
+            'act': 'conv:create',
+            'sub': 'Test Subject',
+            'email': 'testing-1@example.com',
+            'creator': 'testing-1@example.com',
+            'prev': 'Test Message',
+            'prts': 1,
+            'msgs': 1,
+        },
+        'seen': True,
+        'inbox': False,
+        'archive': False,
+        'deleted': False,
+        'spam': False,
+        'draft': True,
+        'sent': False,
+        'labels': [],
     }
 
 

@@ -1,7 +1,5 @@
 import {sleep} from 'reactstrap-toolbox'
 import {unix_ms, offset_limit, per_page, bool_int} from './utils'
-import {statuses} from './network'
-
 
 function actions_incomplete (actions) {
   // check we have all actions for a conversation, eg. ids are exactly incrementing
@@ -14,6 +12,23 @@ function actions_incomplete (actions) {
   }
   return null
 }
+
+const db_conv = c => ({
+  key: c.key,
+  details: c.details,
+  labels: c.labels,
+  last_action_id: c.last_action_id,
+  created_ts: unix_ms(c.created_ts),
+  updated_ts: unix_ms(c.updated_ts),
+  publish_ts: unix_ms(c.publish_ts),
+  seen: bool_int(c.seen),
+  inbox: bool_int(c.inbox),
+  draft: bool_int(c.draft),
+  sent: bool_int(c.sent),
+  archive: bool_int(c.archive),
+  spam: bool_int(c.spam),
+  deleted: bool_int(c.deleted),
+})
 
 
 const _msg_action_types = new Set([
@@ -211,30 +226,16 @@ export default class Conversations {
 
   list = async (data) => {
     const flag = data.flag
-    let status = await this._main.get_conn_status()
     if (!this._main.session.current) {
       return {}
     }
-    if (status === statuses.online) {
+    if (await this._main.online()) {
       // have to get every page between 1 and the page requested to make sure the offset works correctly at the end
       for (let page = 1; page <= data.page; page ++) {
         const cache_key = `page-${flag}-${page}`
         if (!this._main.session.current.cache.has(cache_key)) {
           const r = await this._requests.get('ui', `/${this._main.session.id}/conv/list/`, {page, flag})
-          const conversations = r.data.conversations.map(c => (
-              Object.assign({}, c, {
-                created_ts: unix_ms(c.created_ts),
-                updated_ts: unix_ms(c.updated_ts),
-                publish_ts: unix_ms(c.publish_ts),
-                inbox: bool_int(c.inbox),
-                draft: bool_int(c.draft),
-                sent: bool_int(c.sent),
-                archive: bool_int(c.archive),
-                spam: bool_int(c.spam),
-                deleted: bool_int(c.deleted),
-              })
-          ))
-          await this._conv_table().bulkPut(conversations)
+          await this._conv_table().bulkPut(r.data.conversations.map(db_conv))
           this._main.session.current.cache.add(cache_key)
           await this._main.session.update({cache: this._main.session.current.cache})
       }
@@ -245,46 +246,52 @@ export default class Conversations {
   }
 
   update_counts = async () => {
-    let status = await this._main.get_conn_status()
     if (!this._main.session.current) {
       return {flags: {}, labels: []}
     }
-    if (status === statuses.online && !this._main.session.current.cache.has('counts')) {
+    if (await this._main.online() && !this._main.session.current.cache.has('counts')) {
       const r = await this._requests.get('ui', `/${this._main.session.id}/conv/counts/`)
 
       this._main.session.current.cache.add('counts')
       await this._main.session.update({cache: this._main.session.current.cache, flags: r.data.flags})
       // TODO update labels, and return them
     }
-    return this._main.session.conv_counts()
+    return this.counts()
   }
 
-  get_conversation = async key_prefix => {
+  counts = () => ({
+    flags: this._main.session.current.flags || {},
+    labels: [],
+  })
+
+  get = async key_prefix => {
     // TODO also need to look at the conversation and see if there are any new actions we've missed
     // TODO If the conversation doesn't exist, we need to get it from the server
-    const conv = await this._get_conv(key_prefix)
+    let conv = await this._get_db(key_prefix)
+    const online = await this._main.online()
+    let actions
     if (!conv) {
-      return
-    }
-    let actions = await this._get_db_actions(conv.key)
-
-    const last_action = actions_incomplete(actions)
-    if (!actions.length || last_action !== null) {
-      let url = `/${this._main.session.id}/conv/${conv.key}/`
-      if (last_action) {
-        url += `?since=${last_action}`
+      if (!online) {
+        return
       }
-      const r = await this._requests.get('ui', url)
-      const new_actions = r.data.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
-      await this._main.session.db.actions.bulkPut(new_actions)
+      conv = await this._retrieve_details(key_prefix)
+      actions = await this._retrieve_actions(conv)
+    } else {
       actions = await this._get_db_actions(conv.key)
+
+      if (online) {
+        const last_action = actions_incomplete(actions)
+        if (!actions.length || last_action !== null) {
+          actions = await this._retrieve_actions(conv, last_action)
+        }
+      }
     }
     return construct_conv(conv, actions)
   }
 
-  wait_for_conversation  = async key_prefix => {
+  wait_for  = async key_prefix => {
     for (let i = 0; i < 50; i++) {
-      let conv = await this._get_conv(key_prefix)
+      let conv = await this._get_db(key_prefix)
       if (conv) {
         return conv
       }
@@ -317,7 +324,7 @@ export default class Conversations {
 
     if (this._main.session.current.flags !== r.data.counts) {
       await this._main.session.update({flags: r.data.counts})
-      this._main.fire('flag-change', this._main.session.conv_counts())
+      this._main.fire('flag-change', this.counts())
     }
   }
 
@@ -347,7 +354,7 @@ export default class Conversations {
   }
 
   pages = flag => {
-    const counts = this._main.session.conv_counts()
+    const counts = this.counts()
     return Math.ceil(counts.flags[flag] / per_page)
   }
 
@@ -359,10 +366,31 @@ export default class Conversations {
 
   _get_db_actions = conv => this._main.session.db.actions.where({conv}).sortBy('id')
 
-  _get_conv = async key_prefix => {
+  _get_db = async key_prefix => {
     const convs = await this._conv_table().where('key').startsWith(key_prefix).reverse().sortBy('created_ts')
     return convs[0]
   }
 
+  _retrieve_details = async key_prefix => {
+    let url = `/${this._main.session.id}/conv/${key_prefix}/details/`
+    const r = await this._requests.get('ui', url)
+    const conv = db_conv(r.data)
+    await this._conv_table().put(conv)
+    return conv
+  }
+
+  _retrieve_actions = async (conv, last_action=null) => {
+    let url = `/${this._main.session.id}/conv/${conv.key}/actions/`
+    if (last_action) {
+      url += `?since=${last_action}`
+    }
+    const r = await this._requests.get('ui', url)
+    const new_actions = r.data.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
+    await this._main.session.db.actions.bulkPut(new_actions)
+    return await this._get_db_actions(conv.key)
+  }
+
   _conv_table = () => this._main.session.db.conversations
 }
+
+

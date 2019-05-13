@@ -17,6 +17,7 @@ from .views.conversations import (
     ConvAct,
     ConvActions,
     ConvCreate,
+    ConvDetails,
     ConvList,
     ConvPublish,
     GetConvCounts,
@@ -47,7 +48,8 @@ async def create_app_ui(settings=None):
         web.get(s + 'conv/list/', ConvList.view(), name='list'),
         web.route('*', s + 'conv/create/', ConvCreate.view(), name='create'),
         web.get(s + 'conv/counts/', GetConvCounts.view(), name='conv-counts'),
-        web.get(s + f'conv/{conv_match}/', ConvActions.view(), name='get'),
+        web.get(s + f'conv/{conv_match}/actions/', ConvActions.view(), name='get-actions'),
+        web.get(s + f'conv/{conv_match}/details/', ConvDetails.view(), name='get-details'),
         # TODO most of these urls probably don't need to work with partial keys
         web.post(s + f'conv/{conv_match}/act/', ConvAct.view(), name='act'),
         web.post(s + f'conv/{conv_match}/publish/', ConvPublish.view(), name='publish'),

@@ -62,7 +62,7 @@ class ConvDetailsView extends React.Component {
     } else if (data && data.new_key) {
       this.props.history.push(`/${data.new_key.substr(0, 10)}/`)
     } else {
-      let conv = await window.logic.conversations.get_conversation(this.props.match.params.key)
+      let conv = await window.logic.conversations.get(this.props.match.params.key)
       if (!conv) {
         this.setState({not_found: true})
         return
