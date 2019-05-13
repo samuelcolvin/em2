@@ -96,6 +96,9 @@ create table actions (
   parent bigint references actions,
   msg_format MsgFormat,
 
+  -- user display of spam, virus, phishing, dkim failed etc.
+  warnings json,
+
   -- todo participant details, attachment details, perhaps json for other types
   -- could have json lump summarising files to improve performance
 

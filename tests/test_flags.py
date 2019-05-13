@@ -69,6 +69,12 @@ from .conftest import Factory
             {'conv': 'inbox', 'flag': 'delete', 'change': {'archive': -1, 'deleted': 1}},
             {'conv': 'inbox', 'flag': 'restore', 'change': {'archive': 1, 'deleted': -1}},
         ],
+        [
+            {'conv': 'sent', 'flag': 'inbox', 'change': {'inbox': 1}},
+            {'conv': 'sent', 'flag': 'archive', 'change': {'inbox': -1}},
+        ],
+        [{'conv': 'draft', 'flag': 'inbox', 'status': 400, 'message': 'deleted, spam or draft conversation cannot'}],
+        [{'conv': 'draft', 'flag': 'archive', 'status': 409, 'message': 'conversation not in inbox'}],
     ],
 )
 async def test_set_flag(cli, factory: Factory, db_conn, redis, user_actions):
@@ -215,6 +221,48 @@ async def test_flag_counts_publish(cli, factory: Factory):
         'flags': {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0},
         'labels': [],
     }
+
+
+async def test_send_reply(factory: Factory, db_conn, redis):
+    user = await factory.create_user()
+
+    counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 0, 'spam': 0, 'deleted': 0}
+
+    other_user = await factory.create_user()
+    conv = await factory.create_conv(publish=True, participants=[{'email': other_user.email}])
+
+    counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 1, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
+
+    await factory.act(other_user.id, conv.id, ActionModel(act=ActionTypes.msg_add, body='testing'))
+
+    counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 1, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
+
+
+async def test_send_delete_reply(cli, factory: Factory, db_conn, redis):
+    user = await factory.create_user()
+
+    counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 0, 'spam': 0, 'deleted': 0}
+
+    other_user = await factory.create_user()
+    conv = await factory.create_conv(publish=True, participants=[{'email': other_user.email}])
+
+    counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 1, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
+
+    r = await cli.post_json(factory.url('ui:set-conv-flag', conv=conv.key, query={'flag': 'delete'}))
+    assert r.status == 200, await r.text()
+
+    counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 1}
+
+    await factory.act(other_user.id, conv.id, ActionModel(act=ActionTypes.msg_add, body='testing'))
+
+    counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
+    assert counts == {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 1, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
 
 
 async def test_flag_counts_draft_publish(cli, factory: Factory, db_conn):

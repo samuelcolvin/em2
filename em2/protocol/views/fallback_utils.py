@@ -68,10 +68,12 @@ async def get_email_recipients(to: List[str], cc: List[str], message_id: str, co
     return recipients
 
 
-async def process_smtp(request: Request, msg: EmailMessage, recipients: Set[str], storage: str):
+async def process_smtp(
+    request: Request, msg: EmailMessage, recipients: Set[str], storage: str, *, spam: bool = None, warnings: dict = None
+):
     assert not msg['EM2-ID'], 'messages with EM2-ID header should be filtered out before this'
     p = ProcessSMTP(request)
-    await p.run(msg, recipients, storage)
+    await p.run(msg, recipients, storage, spam, warnings)
 
 
 inline_regex = re.compile(' src')
@@ -85,7 +87,7 @@ class ProcessSMTP:
         self.redis: ArqRedis = request.app['redis']
         self.settings: Settings = request.app['settings']
 
-    async def run(self, msg: EmailMessage, recipients: Set[str], storage: str):
+    async def run(self, msg: EmailMessage, recipients: Set[str], storage: str, spam: bool, warnings: dict):
         # TODO deal with non multipart
         _, actor_email = email.utils.parseaddr(msg['From'])
         assert actor_email, actor_email
@@ -116,13 +118,15 @@ class ProcessSMTP:
                     all_action_ids = []
 
                 new_prts = recipients - existing_prts
-                actions = [ActionModel(act=ActionTypes.prt_add, participant=addr) for addr in new_prts]
 
-                if body:
-                    msg_format = MsgFormat.html if is_html else MsgFormat.plain
-                    actions.append(ActionModel(act=ActionTypes.msg_add, body=body, msg_format=msg_format))
+                msg_format = MsgFormat.html if is_html else MsgFormat.plain
+                actions = [ActionModel(act=ActionTypes.msg_add, body=body or '', msg_format=msg_format)]
 
-                _, action_ids = await apply_actions(self.conn, self.redis, self.settings, actor_id, conv_id, actions)
+                actions += [ActionModel(act=ActionTypes.prt_add, participant=addr) for addr in new_prts]
+
+                _, action_ids = await apply_actions(
+                    self.conn, self.redis, self.settings, actor_id, conv_id, actions, spam, warnings
+                )
                 assert action_ids
 
                 all_action_ids += action_ids
@@ -157,6 +161,8 @@ class ProcessSMTP:
                     creator_id=actor_id,
                     conv=conv,
                     ts=timestamp,
+                    spam=spam,
+                    warnings=warnings,
                 )
                 send_id = await self.conn.fetchval(
                     """

@@ -309,7 +309,7 @@ async def _fix_ses_worker(redis, settings, db_conn):
 @pytest.fixture(name='send_to_remote')
 async def _fix_send_to_remote(factory: Factory, worker: Worker, db_conn):
     await factory.create_user()
-    await factory.create_conv(participants=[{'email': 'whomever@remote.com'}], publish=True)
+    await factory.create_conv(participants=[{'email': 'sender@remote.com'}], publish=True)
     assert 4 == await db_conn.fetchval('select count(*) from actions')
     await worker.async_run()
     assert (worker.jobs_complete, worker.jobs_failed, worker.jobs_retried) == (2, 0, 0)
@@ -362,7 +362,7 @@ def _fix_attachment():
 def _fix_create_email():
     def run(
         subject='Test Subject',
-        e_from='whomever@remote.com',
+        e_from='sender@remote.com',
         to=('testing-1@example.com',),
         text_body='this is a message.',
         html_body='this is an html <b>message</b>.',
@@ -396,17 +396,33 @@ def _fix_create_email():
 @pytest.fixture(name='create_ses_email')
 def _fix_create_ses_email(dummy_server, sns_data, create_email):
     def run(
-        *args, to=('testing-1@example.com',), key='foobar', headers=None, message_id='message-id@remote.com', **kwargs
+        *args,
+        to=('testing-1@example.com',),
+        key='foobar',
+        headers=None,
+        message_id='message-id@remote.com',
+        mail_extra=None,
+        **kwargs,
     ):
         msg = create_email(*args, to=to, message_id=message_id, headers=headers, **kwargs)
         dummy_server.app['s3_emails'][key] = msg.as_string()
 
         headers = headers or {}
         h = [{'name': 'Message-ID', 'value': message_id}] + [{'name': k, 'value': v} for k, v in headers.items()]
+        mail = dict(
+            headers=h,
+            commonHeaders={'to': list(to)},
+            spamVerdict={'status': 'PASS'},
+            virusVerdict={'status': 'PASS'},
+            spfVerdict={'status': 'PASS'},
+            dkimVerdict={'status': 'PASS'},
+            dmarcVerdict={'status': 'PASS'},
+        )
+        mail.update(mail_extra or {})
         return sns_data(
             message_id,
             notificationType='Received',
-            mail=dict(headers=h, commonHeaders={'to': list(to)}),
+            mail=mail,
             receipt={'action': {'type': 'S3', 'bucketName': 'em2-testing', 'objectKeyPrefix': '', 'objectKey': key}},
         )
 

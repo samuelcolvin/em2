@@ -68,7 +68,7 @@ async def test_ses_complaint_webhook(factory: Factory, db_conn, cli, url, sns_da
         message_id,
         eventType='Complaint',
         complaint={
-            'complainedRecipients': [{'emailAddress': 'whomever@remote.com'}],
+            'complainedRecipients': [{'emailAddress': 'sender@remote.com'}],
             'complaintFeedbackType': 'grumpy',
             'bounceType': 'bouncing-ball',
             'timestamp': '2032-10-16T12:00:00.000Z',
@@ -79,12 +79,12 @@ async def test_ses_complaint_webhook(factory: Factory, db_conn, cli, url, sns_da
     r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
     assert r.status == 204, await r.text()
     assert 1 == await db_conn.fetchval('select count(*) from participants where conv=$1', factory.conv.id)
-    user_id = await db_conn.fetchval('select id from users where email=$1', 'whomever@remote.com')
+    user_id = await db_conn.fetchval('select id from users where email=$1', 'sender@remote.com')
     r = await db_conn.fetchrow('select status, user_ids, extra from send_events where send=$1', send_id)
     assert r['status'] == 'Complaint'
     assert r['user_ids'] == [user_id]
     extra = json.loads(r['extra'])
-    assert extra == {'complaintFeedbackType': 'grumpy', 'emails': ['whomever@remote.com']}
+    assert extra == {'complaintFeedbackType': 'grumpy', 'emails': ['sender@remote.com']}
 
 
 async def test_ses_invalid_sig(cli, url, sns_data):
@@ -109,7 +109,7 @@ async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_ses_ema
     assert 2 == await db_conn.fetchval('select count(*) from users')
 
     conv_id = await db_conn.fetchval('select id from conversations')
-    new_user_id = await db_conn.fetchval('select id from users where email=$1', 'whomever@remote.com')
+    new_user_id = await db_conn.fetchval('select id from users where email=$1', 'sender@remote.com')
     obj = await construct_conv(db_conn, new_user_id, conv_id)
     assert obj == {
         'subject': 'Test Subject',
@@ -123,7 +123,7 @@ async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_ses_ema
                 'active': True,
             }
         ],
-        'participants': {'whomever@remote.com': {'id': 1}, 'testing-1@example.com': {'id': 2}},
+        'participants': {'sender@remote.com': {'id': 1}, 'testing-1@example.com': {'id': 2}},
     }
 
     r = await db_conn.fetchrow('select * from sends')
@@ -149,7 +149,7 @@ async def test_ses_reply(factory: Factory, db_conn, cli, url, create_ses_email, 
     assert r.status == 204, await r.text()
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
-    new_user_id = await db_conn.fetchval('select id from users where email=$1', 'whomever@remote.com')
+    new_user_id = await db_conn.fetchval('select id from users where email=$1', 'sender@remote.com')
     obj = await construct_conv(db_conn, new_user_id, factory.conv.id)
     assert obj == {
         'subject': 'Test Subject',
@@ -164,7 +164,7 @@ async def test_ses_reply(factory: Factory, db_conn, cli, url, create_ses_email, 
                 'active': True,
             },
         ],
-        'participants': {'testing-1@example.com': {'id': 1}, 'whomever@remote.com': {'id': 2}},
+        'participants': {'testing-1@example.com': {'id': 1}, 'sender@remote.com': {'id': 2}},
     }
 
 
@@ -181,7 +181,7 @@ async def test_ses_reply_different_email(factory: Factory, db_conn, cli, url, cr
     assert r.status == 204, await r.text()
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
-    new_user_id = await db_conn.fetchval('select id from users where email=$1', 'whomever@remote.com')
+    new_user_id = await db_conn.fetchval('select id from users where email=$1', 'sender@remote.com')
     obj = await construct_conv(db_conn, new_user_id, factory.conv.id)
     assert obj == {
         'subject': 'Test Subject',
@@ -198,7 +198,24 @@ async def test_ses_reply_different_email(factory: Factory, db_conn, cli, url, cr
         ],
         'participants': {
             'testing-1@example.com': {'id': 1},
-            'whomever@remote.com': {'id': 2},
+            'sender@remote.com': {'id': 2},
             'different@remote.com': {'id': 5},
         },
     }
+
+
+async def test_ses_new_spam(factory: Factory, db_conn, cli, url, create_ses_email):
+    user = await factory.create_user()
+
+    msg = create_ses_email(to=(user.email,), mail_extra=dict(spamVerdict={'status': 'FAIL'}))
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=msg)
+    assert r.status == 204, await r.text()
+
+    assert 1 == await db_conn.fetchval('select count(*) from conversations')
+
+    assert True is await db_conn.fetchval('select spam from participants where user_id=$1', user.id)
+
+    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+
+    warnings = await db_conn.fetchval("select warnings from actions where act='message:add'")
+    assert json.loads(warnings) == {'spam': 'FAIL'}

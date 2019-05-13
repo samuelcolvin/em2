@@ -1,5 +1,15 @@
 import React from 'react'
-import {Button, Tooltip, ListGroup, ListGroupItem} from 'reactstrap'
+import {
+  Button,
+  ButtonGroup,
+  Tooltip,
+  ListGroup,
+  ListGroupItem,
+  UncontrolledButtonDropdown,
+  DropdownToggle,
+  DropdownMenu,
+  DropdownItem,
+} from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {format_ts} from '../../utils/dt'
@@ -106,12 +116,64 @@ const Attachments = ({files, session_id, conv}) => {
   )
 }
 
+const MessageWarning = ({msg, conv}) => {
+  if (!msg.warnings || msg.hide_warnings) {
+    return null
+  }
+  return (
+    <div className="my-2 mx-3 bg-warning rounded py-2">
+      <b>Warning:</b>
+      <ul className="mb-1">
+        {msg.warnings.map((m, i) => (
+          <li key={i}><b>{m.title}:</b> {m.message}</li>
+        ))}
+      </ul>
+      <div className="text-right">
+        <ButtonGroup>
+          <Button size="sm" color="info" href="https://www.example.com/info" target="_blank" rel="noopener noreferrer">
+            More Information
+          </Button>
+          <Button size="sm" onClick={() => toggle_warnings(conv, msg, true)}>
+            Close
+          </Button>
+        </ButtonGroup>
+      </div>
+    </div>
+  )
+}
+
+const toggle_warnings = (conv, msg, show) => (
+   window.logic.conversations.toggle_warnings(conv, msg.first_action, show)
+)
+
 export default ({msg, ...props}) => (
   <div className="box no-pad msg-details">
-    <div className="border-bottom py-2" id="TestingElement">
-      <b className="mr-1">{msg.creator}</b>
-      <span className="text-muted small">{format_ts(msg.created)}</span>
+    <div className="border-bottom py-2 d-flex justify-content-between">
+      <div>
+        <b className="mr-1">{msg.creator}</b>
+        <span className="text-muted small">{format_ts(msg.created)}</span>
+      </div>
+      <div>
+        {msg.warnings && msg.hide_warnings ? (
+          <Button size="sm" color="warning" onClick={() => toggle_warnings(props.state.conv.key, msg, false)}>
+            Warnings
+            <FontAwesomeIcon icon={fas.faRadiation} className="ml-1"/>
+          </Button>
+        ) : null}
+        <UncontrolledButtonDropdown>
+          <DropdownToggle color="link" className="p-0 ml-2 text-muted text-decoration-none">
+            Options
+            <FontAwesomeIcon icon={fas.faCaretDown} className="ml-1"/>
+          </DropdownToggle>
+          <DropdownMenu right>
+            <DropdownItem>Edit Message</DropdownItem>
+            <DropdownItem>View Original</DropdownItem>
+            <DropdownItem>View History</DropdownItem>
+          </DropdownMenu>
+        </UncontrolledButtonDropdown>
+      </div>
     </div>
+    <MessageWarning msg={msg} conv={props.state.conv.key}/>
     <div className="mt-1">
       <MessageBody msg={msg} conv={props.state.conv.key} session_id={props.session_id}/>
       <Attachments files={msg.files} conv={props.state.conv.key} session_id={props.session_id}/>
