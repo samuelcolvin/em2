@@ -66,6 +66,8 @@ export default class LogicMain {
     return this._conn_status
   }
 
+  online = async () => statuses.online === await this.get_conn_status()
+
   add_listener = (channel, listener) => {
     const id = random()
     this.listeners[id] = {func: listener, channel}

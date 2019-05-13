@@ -204,7 +204,7 @@ export default class Websocket {
 
     if (this._main.session.current.flags !== data.flags) {
       await this._main.session.update({flags: data.flags})
-      this._main.fire('flag-change', this._main.session.conv_counts())
+      this._main.fire('flag-change', this._main.conversations.counts())
     }
 
     if (notify_details) {
