@@ -201,6 +201,7 @@ export default class Websocket {
       }
     }
     this._main.fire('change', {conv: action.conv})
+    await this._main.session.update_cache(`conv-${action.conv}`)
 
     if (this._main.session.current.flags !== data.flags) {
       await this._main.session.update({flags: data.flags})

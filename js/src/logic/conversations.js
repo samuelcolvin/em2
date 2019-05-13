@@ -236,8 +236,7 @@ export default class Conversations {
         if (!this._main.session.current.cache.has(cache_key)) {
           const r = await this._requests.get('ui', `/${this._main.session.id}/conv/list/`, {page, flag})
           await this._conv_table().bulkPut(r.data.conversations.map(db_conv))
-          this._main.session.current.cache.add(cache_key)
-          await this._main.session.update({cache: this._main.session.current.cache})
+          await this._main.session.update_cache(cache_key)
       }
       }
     }
@@ -252,8 +251,8 @@ export default class Conversations {
     if (await this._main.online() && !this._main.session.current.cache.has('counts')) {
       const r = await this._requests.get('ui', `/${this._main.session.id}/conv/counts/`)
 
-      this._main.session.current.cache.add('counts')
-      await this._main.session.update({cache: this._main.session.current.cache, flags: r.data.flags})
+      await this._main.session.update_cache('counts')
+      await this._main.session.update({flags: r.data.flags})
       // TODO update labels, and return them
     }
     return this.counts()
@@ -265,8 +264,6 @@ export default class Conversations {
   })
 
   get = async key_prefix => {
-    // TODO also need to look at the conversation and see if there are any new actions we've missed
-    // TODO If the conversation doesn't exist, we need to get it from the server
     let conv = await this._get_db(key_prefix)
     const online = await this._main.online()
     let actions
@@ -283,8 +280,15 @@ export default class Conversations {
         const last_action = actions_incomplete(actions)
         if (!actions.length || last_action !== null) {
           actions = await this._retrieve_actions(conv, last_action)
+        } else {
+          const cache_key = `conv-${conv.key}`
+          if (!this._main.session.current.cache.has(cache_key)) {
+            actions = await this._retrieve_actions(conv, last_action)
+            await this._main.session.update_cache(cache_key)
+          }
         }
       }
+
     }
     return construct_conv(conv, actions)
   }

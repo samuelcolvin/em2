@@ -54,6 +54,11 @@ export default class Session {
     await session_db.sessions.update(this.id, changes)
   }
 
+  update_cache = async cache_key => {
+    this.current.cache.add(cache_key)
+    await this.update({cache: this.current.cache})
+  }
+
   other_sessions = () => session_db.sessions.where('session_id').notEqual(this.id || -1).toArray()
   all_emails = () => session_db.sessions.orderBy('email').keys()
 
