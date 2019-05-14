@@ -196,9 +196,10 @@ create table files (
   hash varchar(63) not null,
   content_id varchar(255) not null,
   name varchar(1023),
-  content_type varchar(63)
-  -- TODO add size
+  content_type varchar(63),
+  size bigint
 );
+create index files_action ON files USING btree (action);
 create index files_content_id ON files USING btree (content_id);
 
 ----------------------------------------------------------------------------------

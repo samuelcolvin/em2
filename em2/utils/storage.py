@@ -1,9 +1,11 @@
 import base64
 import hashlib
 import hmac
+import json
 import re
+from datetime import timedelta
 from math import ceil
-from typing import Optional
+from typing import Dict, Optional
 from urllib.parse import urlencode
 
 import aiobotocore
@@ -72,19 +74,55 @@ class S3:
         await self._client.__aexit__(exc_type, exc_val, exc_tb)
         self._client = None
 
-    def sign_url(self, bucket: str, path: str, *, ttl: int = 10000) -> str:
+    def signed_download_url(self, bucket: str, path: str, *, ttl: int = 10000) -> str:
         """
         Sign a path to authenticate download.
 
-        The url is valid for between 30 seconds and ttl + 30 seconds, this is because hte signature is rounded
+        The url is valid for between 30 seconds and ttl + 30 seconds, this is because the signature is rounded
         so a CDN can better cache the content.
+
+        https://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html#RESTAuthenticationQueryStringAuth
         """
         assert not path.startswith('/'), 'path should not start with /'
         min_expires = to_unix_s(utcnow()) + 30
         expires = int(ceil(min_expires / ttl) * ttl)
         to_sign = f'GET\n\n\n{expires}\n/{bucket}/{path}'
-        signature = base64.b64encode(
-            hmac.new(self._settings.aws_secret_key.encode(), to_sign.encode(), hashlib.sha1).digest()
-        )
+        signature = self._signature(to_sign)
         args = {'AWSAccessKeyId': self._settings.aws_access_key, 'Signature': signature, 'Expires': expires}
         return f'https://{bucket}/{path}?{urlencode(args)}'
+
+    def signed_upload_url(
+        self, *, path: str, filename: str, content_type: str, content_disp: bool, max_size: int
+    ) -> Dict[str, str]:
+        """
+        https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-post-example.html
+        """
+        assert path.endswith('/'), 'path must end with "/"'
+        key = path + filename
+        policy = {
+            'expiration': f'{utcnow() + timedelta(hours=1):%Y-%m-%dT%H:%M:%SZ}',
+            'conditions': [
+                {'bucket': self._settings.s3_file_bucket},
+                {'key': key},
+                {'Content-Type': content_type},
+                ['content-length-range', 0, max_size],
+            ],
+        }
+
+        result = {'Key': key, 'Content-Type': content_type, 'AWSAccessKeyId': self._settings.aws_access_key}
+        if content_disp:
+            disp = {'Content-Disposition': f'attachment; filename="{filename}"'}
+            policy['conditions'].append(disp)
+            result.update(disp)
+
+        encoded_policy = base64.b64encode(json.dumps(policy).encode()).decode()
+        return dict(
+            url=f'https://s3.{self._settings.aws_region}.amazonaws.com/{self._settings.s3_file_bucket}',
+            Policy=encoded_policy,
+            Signature=self._signature(encoded_policy),
+            **result,
+        )
+
+    def _signature(self, to_sign: str) -> str:
+        s = hmac.new(self._settings.aws_secret_key.encode(), to_sign.encode(), hashlib.sha1).digest()
+        return base64.b64encode(s).decode()

@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     s3_endpoint_url: str = None  # only used when testing
     s3_temp_bucket: str = None
     s3_tmp_bucket_lifetime: timedelta = 'P30D'
+    s3_file_bucket: str = None
     # generate randomly to avoid leaking secrets:
     ses_url_token: str = token_urlsafe()
     aws_sns_signing_host = '.amazonaws.com'
