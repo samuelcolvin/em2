@@ -92,17 +92,18 @@ class S3:
         return f'https://{bucket}/{path}?{urlencode(args)}'
 
     def signed_upload_url(
-        self, *, path: str, filename: str, content_type: str, content_disp: bool, max_size: int
+        self, *, bucket: str, path: str, filename: str, content_type: str, content_disp: bool, max_size: int
     ) -> Dict[str, str]:
         """
         https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-post-example.html
         """
         assert path.endswith('/'), 'path must end with "/"'
+        assert not path.startswith('/'), 'path must not start with "/"'
         key = path + filename
         policy = {
             'expiration': f'{utcnow() + timedelta(hours=1):%Y-%m-%dT%H:%M:%SZ}',
             'conditions': [
-                {'bucket': self._settings.s3_file_bucket},
+                {'bucket': bucket},
                 {'key': key},
                 {'Content-Type': content_type},
                 ['content-length-range', 0, max_size],
@@ -117,7 +118,7 @@ class S3:
 
         encoded_policy = base64.b64encode(json.dumps(policy).encode()).decode()
         return dict(
-            url=f'https://s3.{self._settings.aws_region}.amazonaws.com/{self._settings.s3_file_bucket}',
+            url=f'https://s3.{self._settings.aws_region}.amazonaws.com/{bucket}',
             Policy=encoded_policy,
             Signature=self._signature(encoded_policy),
             **result,

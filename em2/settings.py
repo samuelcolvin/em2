@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     cookie_name = 'em2'
     sql_path = SRC_DIR / 'models.sql'
     create_app = 'em2.main.create_app'
-    worker_func = 'em2.protocol.worker.run_worker'
+    worker_func = 'em2.worker.run_worker'
     patch_paths = ['em2.auth.patches']
     auth_key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa='
 

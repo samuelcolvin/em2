@@ -9,8 +9,8 @@ from pydantic.utils import import_string
 
 from em2.settings import Settings
 
-from .fallback import BaseFallbackHandler, fallback_send
-from .push import push_actions
+from .protocol.fallback import BaseFallbackHandler, fallback_send
+from .protocol.push import push_actions
 
 
 async def startup(ctx):

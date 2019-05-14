@@ -1,37 +1,17 @@
-from datetime import datetime, timedelta
-from enum import Enum
-from typing import Any, Dict, List, Tuple
+from datetime import timedelta
 from uuid import uuid4
 
 from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
-from aiohttp.web_response import Response
-from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
-from buildpg import SetValues, V, funcs
+from atoolbox import JsonErrors, json_response, parse_request_query
 from pydantic import BaseModel, constr, validator
 
-from em2.background import push_all, push_multiple
-from em2.core import (
-    ActionModel,
-    ConvFlags,
-    CreateConvModel,
-    UpdateFlag,
-    apply_actions,
-    construct_conv,
-    conv_actions_json,
-    create_conv,
-    generate_conv_key,
-    get_conv_for_user,
-    get_flag_counts,
-    get_label_counts,
-    update_conv_flags,
-    update_conv_users,
-)
+from em2.core import get_conv_for_user
 from em2.utils.datetime import utcnow
 from em2.utils.db import or404
 from em2.utils.smtp import CopyToTemp
 from em2.utils.storage import S3, parse_storage_uri
 
-from .utils import ExecView, View
+from .utils import View
 
 
 class GetFile(View):
@@ -109,7 +89,9 @@ class UploadFile(View):
         conv_key = await self.conn.fetchval('select key from conversations where id=$1', conv_id)
         content_id = uuid4()
 
+        bucket = self.settings.s3_file_bucket
         d = S3(self.settings).signed_upload_url(
+            bucket=bucket,
             path=f'{conv_key}/{content_id}/',
             filename=m.filename,
             content_type=m.content_type,
@@ -117,14 +99,13 @@ class UploadFile(View):
             # default to 1 GiB
             max_size=1024 ** 3,
         )
-        url = d.pop('url')
-        inputs = '\n'.join(f"<input type='input' name='{k}' value='{v}' /><br />" for k, v in d.items())
-        html = f"""
-<form action="{url}" method="post" enctype="multipart/form-data">
-  {inputs}
-  <input type="file"  name="file" /> <br />
+        storage_path = f's3://{bucket}/{d["key"]}'
+        await self.redis.enqueue_job('delete_upload', conv_id, content_id, storage_path, _defer_by=3600)
+        return json_response(storage_path=storage_path, **d)
 
-  <input type="submit" name="submit" value="Upload to Amazon S3" />
-</form>
-        """
-        return Response(text=html, content_type='text/html')
+
+async def delete_upload(ctx, conv_id: int, content_id: str, storage_path: str):
+    """
+    Delete an uploaded file if it doesn't exist in the database.
+    """
+    #     _, bucket, path = parse_storage_uri(storage_path)

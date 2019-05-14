@@ -26,9 +26,9 @@ from em2.background import push_multiple
 from em2.core import ActionModel, apply_actions
 from em2.main import create_app
 from em2.protocol.fallback import LogFallbackHandler, SesFallbackHandler
-from em2.protocol.worker import worker_settings
 from em2.settings import Settings
 from em2.utils.web import MakeUrl
+from em2.worker import worker_settings
 
 from . import dummy_server
 

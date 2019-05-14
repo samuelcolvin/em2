@@ -139,6 +139,7 @@ from (
         select content_disp, hash, content_id, name, content_type
         from files
         where files.action = a.pk
+        order by content_id  -- TODO only used in tests I think, could be removed
       ) f
     ) as files
     from actions as a
