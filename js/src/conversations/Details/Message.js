@@ -100,7 +100,7 @@ const Attachments = ({files, session_id, conv}) => {
   if (!attachments.length) {
     return null
   }
-  const file_url = f => make_url('ui', `/${session_id}/img/${conv}/${f.content_id}`)
+  const file_url = f => make_url('ui', `/${session_id}/conv/${conv}/get-image/${f.content_id}`)
   return (
     <div>
       <span className="text-muted">Attachments</span>

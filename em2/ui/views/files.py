@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
 from atoolbox import JsonErrors, json_response, parse_request_query
-from pydantic import BaseModel, constr, validator
+from pydantic import BaseModel, conint, constr, validator
 
 from em2.core import get_conv_for_user
 from em2.utils.datetime import utcnow
@@ -65,8 +65,9 @@ main_content_types = {'application', 'audio', 'font', 'image', 'text', 'video'}
 
 class UploadFile(View):
     class QueryModel(BaseModel):
-        content_type: constr(max_length=20)
         filename: constr(max_length=100)
+        content_type: constr(max_length=20)
+        size: conint(le=1024 ** 3)
 
         @validator('content_type')
         def check_content_type(cls, v: str):
@@ -97,14 +98,13 @@ class UploadFile(View):
             content_type=m.content_type,
             content_disp=True,
             # default to 1 GB
-            max_size=1024 ** 3,
+            size=m.size,
         )
-        storage_path = f's3://{bucket}/{d["key"]}'
-        await self.redis.enqueue_job('delete_state_upload', conv_id, content_id, storage_path, _defer_by=3600)
-        return json_response(storage_path=storage_path, **d)
+        await self.redis.enqueue_job('delete_stale_upload', conv_id, content_id, d['storage_path'], _defer_by=3600)
+        return json_response(**d)
 
 
-async def delete_state_upload(ctx, conv_id: int, content_id: str, storage_path: str):
+async def delete_stale_upload(ctx, conv_id: int, content_id: str, storage_path: str):
     """
     Delete an uploaded file if it doesn't exist in the database.
     """

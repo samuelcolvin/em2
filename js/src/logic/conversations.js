@@ -368,6 +368,12 @@ export default class Conversations {
     this._main.fire('change', {conv})
   }
 
+  request_file_upload = async (conv, filename, content_type, size) => {
+    const args = {filename, content_type, size}
+    const r = await this._requests.get('ui', `/${this._main.session.id}/conv/${conv}/upload-file/`, args)
+    return r.data
+  }
+
   _get_db_actions = conv => this._main.session.db.actions.where({conv}).sortBy('id')
 
   _get_db = async key_prefix => {

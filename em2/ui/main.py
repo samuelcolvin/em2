@@ -56,8 +56,8 @@ async def create_app_ui(settings=None):
         web.post(s + f'conv/{conv_match}/set-label/', AddRemoveLabel.view(), name='add-remove-label'),
         *LabelBread.routes(s + 'labels/', name='labels'),
         # no trailing slash so we capture everything and deal with weird/ugly content ids
-        web.get(s + fr'img/{conv_match}/file-upload/', UploadFile.view(), name='upload-file'),
-        web.get(s + fr'img/{conv_match}/{{content_id:.*}}', GetFile.view(), name='get-file'),
+        web.get(s + fr'conv/{conv_match}/get-image/{{content_id:.*}}', GetFile.view(), name='get-file'),
+        web.get(s + fr'conv/{conv_match}/upload-file/', UploadFile.view(), name='upload-file'),
         web.get(s + 'ws/', websocket, name='websocket'),
         # ui auth views:
         web.route('*', '/auth/token/', AuthExchangeToken.view(), name='auth-token'),

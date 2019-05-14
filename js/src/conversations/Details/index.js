@@ -7,6 +7,7 @@ import {WithContext, sleep, Loading} from 'reactstrap-toolbox'
 import Message from './Message'
 import RightPanel from './RightPanel'
 import Subject from './Subject'
+import Drop from './Drop'
 
 
 class ConvDetailsView extends React.Component {
@@ -185,6 +186,7 @@ class ConvDetailsView extends React.Component {
                           value={this.state.new_message || ''}
                           onChange={e => this.setState({new_message: e.target.value})}/>
 
+                <Drop conv={this.state.conv.key}/>
                 <div className="text-right">
                   <Button color="primary"
                           disabled={this.state.locked || !this.state.new_message}

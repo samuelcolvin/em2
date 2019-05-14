@@ -10,7 +10,7 @@ from pydantic.utils import import_string
 from em2.protocol.fallback import BaseFallbackHandler, fallback_send
 from em2.protocol.push import push_actions
 from em2.settings import Settings
-from em2.ui.views.files import delete_upload
+from em2.ui.views.files import delete_stale_upload
 
 
 async def startup(ctx):
@@ -31,7 +31,7 @@ async def shutdown(ctx):
     await asyncio.gather(ctx['session'].close(), ctx['pg'].close(), ctx['fallback_handler'].shutdown())
 
 
-functions = [fallback_send, push_actions, delete_upload]
+functions = [fallback_send, push_actions, delete_stale_upload]
 worker_settings = dict(functions=functions, on_startup=startup, on_shutdown=shutdown)
 
 

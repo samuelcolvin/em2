@@ -5,7 +5,7 @@ import json
 import re
 from datetime import timedelta
 from math import ceil
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
 import aiobotocore
@@ -95,8 +95,8 @@ class S3:
         return f'https://{bucket}/{path}?{urlencode(args)}'
 
     def signed_upload_url(
-        self, *, bucket: str, path: str, filename: str, content_type: str, content_disp: bool, max_size: int
-    ) -> Dict[str, str]:
+        self, *, bucket: str, path: str, filename: str, content_type: str, content_disp: bool, size: int
+    ) -> Dict[str, Any]:
         """
         https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-post-example.html
         """
@@ -104,27 +104,27 @@ class S3:
         assert not path.startswith('/'), 'path must not start with "/"'
         key = path + filename
         policy = {
-            'expiration': f'{utcnow() + timedelta(seconds=30):%Y-%m-%dT%H:%M:%SZ}',
+            'expiration': f'{utcnow() + timedelta(seconds=60):%Y-%m-%dT%H:%M:%SZ}',
             'conditions': [
                 {'bucket': bucket},
                 {'key': key},
                 {'Content-Type': content_type},
-                ['content-length-range', 0, max_size],
+                ['content-length-range', size, size],
             ],
         }
 
-        result = {'Key': key, 'Content-Type': content_type, 'AWSAccessKeyId': self._settings.aws_access_key}
+        fields = {'Key': key, 'Content-Type': content_type, 'AWSAccessKeyId': self._settings.aws_access_key}
         if content_disp:
             disp = {'Content-Disposition': f'attachment; filename="{filename}"'}
             policy['conditions'].append(disp)
-            result.update(disp)
+            fields.update(disp)
 
         encoded_policy = base64.b64encode(json.dumps(policy).encode()).decode()
+        fields.update(Policy=encoded_policy, Signature=self._signature(encoded_policy))
         return dict(
             url=f'https://s3.{self._settings.aws_region}.amazonaws.com/{bucket}',
-            Policy=encoded_policy,
-            Signature=self._signature(encoded_policy),
-            **result,
+            storage_path='s3://{}/{}'.format(bucket, key),
+            fields=fields,
         )
 
     def _signature(self, to_sign: str) -> str:
