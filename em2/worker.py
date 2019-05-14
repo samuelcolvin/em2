@@ -7,10 +7,10 @@ from arq import Worker
 from buildpg import asyncpg
 from pydantic.utils import import_string
 
+from em2.protocol.fallback import BaseFallbackHandler, fallback_send
+from em2.protocol.push import push_actions
 from em2.settings import Settings
-
-from .protocol.fallback import BaseFallbackHandler, fallback_send
-from .protocol.push import push_actions
+from em2.ui.views.files import delete_upload
 
 
 async def startup(ctx):
@@ -31,7 +31,8 @@ async def shutdown(ctx):
     await asyncio.gather(ctx['session'].close(), ctx['pg'].close(), ctx['fallback_handler'].shutdown())
 
 
-worker_settings = dict(functions=[fallback_send, push_actions], on_startup=startup, on_shutdown=shutdown)
+functions = [fallback_send, push_actions, delete_upload]
+worker_settings = dict(functions=functions, on_startup=startup, on_shutdown=shutdown)
 
 
 def run_worker(settings: Settings):

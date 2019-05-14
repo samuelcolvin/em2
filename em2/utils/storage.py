@@ -47,6 +47,9 @@ class S3Client:
             Bucket=bucket, Key=path, Body=content, ContentType=content_type, ContentDisposition=content_disposition
         )
 
+    async def delete(self, bucket: str, path: str):
+        await self._client.delete_object(Bucket=bucket, Key=path),
+
 
 class S3:
     __slots__ = '_settings', '_session', '_client'
@@ -101,7 +104,7 @@ class S3:
         assert not path.startswith('/'), 'path must not start with "/"'
         key = path + filename
         policy = {
-            'expiration': f'{utcnow() + timedelta(hours=1):%Y-%m-%dT%H:%M:%SZ}',
+            'expiration': f'{utcnow() + timedelta(seconds=30):%Y-%m-%dT%H:%M:%SZ}',
             'conditions': [
                 {'bucket': bucket},
                 {'key': key},

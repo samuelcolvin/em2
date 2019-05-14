@@ -188,6 +188,7 @@ create type ContentDisposition as enum ('attachment', 'inline');
 
 create table files (
   id bigserial primary key,
+  conv bigint not null references conversations on delete restrict,
   action bigint references actions not null,
   send bigint references sends,
   storage varchar(255),
@@ -197,10 +198,10 @@ create table files (
   content_id varchar(255) not null,
   name varchar(1023),
   content_type varchar(63),
-  size bigint
+  size bigint,
+  unique (conv, content_id)
 );
 create index files_action ON files USING btree (action);
-create index files_content_id ON files USING btree (content_id);
 
 ----------------------------------------------------------------------------------
 -- auth tables, currently in the the same database as everything else, but with --

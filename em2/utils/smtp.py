@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from email import policy as email_policy
 from email.message import EmailMessage
 from email.parser import BytesParser
-from typing import Generator, Optional
+from typing import Generator, Optional, Tuple
 
 from aiohttp.web_exceptions import HTTPGatewayTimeout
 from aioredis import Redis
@@ -107,18 +107,18 @@ class CopyToTemp:
             results = await asyncio.gather(
                 *(self._upload_file(s3_client, conv_key, send_path, f) for f in find_smtp_files(msg, True))
             )
-        for content_id, storage in results:
+        for content_id, storage, size in results:
             v = await self.conn.execute(
-                'update files set storage=$1, storage_expires=$2 where send=$3 and content_id=$4',
+                'update files set storage=$1, storage_expires=$2, size=$3 where send=$4 and content_id=$5',
                 storage,
                 expires,
+                size,
                 send_id,
                 content_id,
             )
             assert v
-            # debug(ref, storage, v)
 
-    async def _upload_file(self, s3_client: S3Client, conv_key, send_path, file: File):
+    async def _upload_file(self, s3_client: S3Client, conv_key, send_path, file: File) -> Tuple[str, str, int]:
         path = f'{conv_key}/{send_path}/{file.content_id}/{file.name}'
         bucket = self.settings.s3_temp_bucket
         assert bucket, 's3_temp_bucket not set'
@@ -126,7 +126,7 @@ class CopyToTemp:
         if file.content_disp == 'attachment':
             content_disposition = f'attachment; filename="{file.name}"'
         await s3_client.upload(bucket, path, file.content, file.content_type, content_disposition)
-        return file.content_id, f's3://{bucket}/{path}'
+        return file.content_id, f's3://{bucket}/{path}', len(file.content)
 
     async def _await_ongoing(self, key, sleep=0.5):
         for i in range(20):

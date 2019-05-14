@@ -32,7 +32,7 @@ class GetFile(View):
                 from files f
                 join actions a on f.action = a.pk
                 join sends s on a.pk = s.action
-                where a.conv=$1 and f.content_id=$2
+                where f.conv=$1 and f.content_id=$2
                 order by f.id
                 limit 1
                 """,
@@ -96,16 +96,21 @@ class UploadFile(View):
             filename=m.filename,
             content_type=m.content_type,
             content_disp=True,
-            # default to 1 GiB
+            # default to 1 GB
             max_size=1024 ** 3,
         )
         storage_path = f's3://{bucket}/{d["key"]}'
-        await self.redis.enqueue_job('delete_upload', conv_id, content_id, storage_path, _defer_by=3600)
+        await self.redis.enqueue_job('delete_state_upload', conv_id, content_id, storage_path, _defer_by=3600)
         return json_response(storage_path=storage_path, **d)
 
 
-async def delete_upload(ctx, conv_id: int, content_id: str, storage_path: str):
+async def delete_state_upload(ctx, conv_id: int, content_id: str, storage_path: str):
     """
     Delete an uploaded file if it doesn't exist in the database.
     """
-    #     _, bucket, path = parse_storage_uri(storage_path)
+    file_exists = await ctx['pg'].fetchval('select 1 from files where conv=$1 and content_id=$2', conv_id, content_id)
+    if file_exists:
+        return
+    _, bucket, path = parse_storage_uri(storage_path)
+    async with S3(ctx['settings']) as s3_client:
+        await s3_client.delete(bucket, path)
