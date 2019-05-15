@@ -131,7 +131,8 @@ export default class Drop extends React.Component {
     xhr.open('POST', data.url, true)
     xhr.onload = event => {
       if (xhr.status === 204) {
-        this.update_file_state(key, {progress: null, icon: fas.faCheck})
+        this.update_file_state(key, {progress: null, icon: fas.faCheck, content_id: data.content_id})
+        this.set_files()
       } else {
         // const response_data = error_response(xhr)
         console.warn('uploading file failed at end', xhr)
@@ -151,6 +152,10 @@ export default class Drop extends React.Component {
     this.uploads[key] = xhr
   }
 
+  set_files = () => (
+    this.props.set_files(Object.values(this.state).filter(i => i && i.content_id).map(i => i.content_id))
+  )
+
   onDrop = (accepted_files, refused_files) => {
     const extra_state = {already_uploaded: false, dragging: false}
     for (let file of accepted_files) {
@@ -158,7 +163,6 @@ export default class Drop extends React.Component {
       if (this.state[key]) {
         extra_state.already_uploaded = true
       } else {
-        console.log(file)
         extra_state[key] = {filename: file.name, size: file_size(file.size), file_key: key, progress: 1}
         if (file.type.startsWith('image/')) {
           extra_state[key].preview = URL.createObjectURL(file)
@@ -185,7 +189,8 @@ export default class Drop extends React.Component {
   }
 
   remove_file = key => {
-    this.setState(Object.assign({}, this.state, {[key]: null, already_uploaded: false}))
+    const new_state = Object.assign({}, this.state, {[key]: null, already_uploaded: false})
+    this.setState(new_state, () => this.set_files())
     this.uploads[key].abort()
   }
 
@@ -202,7 +207,8 @@ export default class Drop extends React.Component {
               {this.props.children}
               <input {...getInputProps()} />
               <span className="text-muted">
-                Drop files here, or click <a href="." onClick={this.onClickAttach}>here</a> to select a file to attach.
+                Drag and drop files, or click <a href="." onClick={this.onClickAttach}>here</a>
+                &nbsp;to select a file to attach.
               </span>
               <div className="previews">
                 {Object.values(this.state).filter(item => item && item.filename).map((item, i) => (

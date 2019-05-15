@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 import aiobotocore
 from aiobotocore import AioSession
 from aiobotocore.client import AioBaseClient
+from botocore.exceptions import ClientError as BotoClientError
 
 from em2.settings import Settings
 
@@ -27,6 +28,10 @@ def parse_storage_uri(uri):
         raise RuntimeError(f'url not recognised: {uri!r}')
     service, bucket, path = m.groups()
     return service, bucket, path
+
+
+class StorageNotFound(RuntimeError):
+    pass
 
 
 class S3Client:
@@ -48,7 +53,19 @@ class S3Client:
         )
 
     async def delete(self, bucket: str, path: str):
-        await self._client.delete_object(Bucket=bucket, Key=path),
+        return await self._client.delete_object(Bucket=bucket, Key=path)
+
+    async def head(self, bucket: str, path: str):
+        try:
+            d = await self._client.head_object(Bucket=bucket, Key=path)
+        except BotoClientError as exc:
+            code = exc.response.get('Error', {}).get('Code', 'Unknown')
+            if code == '404':
+                raise StorageNotFound()
+            else:
+                raise
+        d.pop('ResponseMetadata')
+        return d
 
 
 class S3:
@@ -121,11 +138,7 @@ class S3:
 
         b64_policy = base64.b64encode(json.dumps(policy).encode()).decode()
         fields.update(Policy=b64_policy, Signature=self._signature(b64_policy))
-        return dict(
-            url=f'https://s3.{self._settings.aws_region}.amazonaws.com/{bucket}',
-            storage_path='s3://{}/{}'.format(bucket, key),
-            fields=fields,
-        )
+        return dict(url=f'https://s3.{self._settings.aws_region}.amazonaws.com/{bucket}', fields=fields)
 
     def _signature(self, to_sign: str) -> str:
         s = hmac.new(self._settings.aws_secret_key.encode(), to_sign.encode(), hashlib.sha1).digest()

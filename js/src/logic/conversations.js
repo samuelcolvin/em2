@@ -303,8 +303,12 @@ export default class Conversations {
     }
   }
 
-  act = async (conv, actions) => {
-    return await this._requests.post('ui', `/${this._main.session.id}/conv/${conv}/act/`, {actions: actions})
+  act = async (conv, actions, files) => {
+    const d = {actions}
+    if (files) {
+      d['files'] = files
+    }
+    return await this._requests.post('ui', `/${this._main.session.id}/conv/${conv}/act/`, d)
   }
 
   set_flag = async (conv_key, flag) => {

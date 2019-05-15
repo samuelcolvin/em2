@@ -11,7 +11,7 @@ import Drop from './Drop'
 
 
 class ConvDetailsView extends React.Component {
-  state = {}
+  state = {files: []}
   marked_seen = false
   comment_ref = React.createRef()
 
@@ -96,11 +96,14 @@ class ConvDetailsView extends React.Component {
     if (!this.state.locked && this.state.new_message) {
       this.setState({locked: true})
       const actions = [{act: 'message:add', body: this.state.new_message}]
-      const r = await window.logic.conversations.act(this.state.conv.key, actions)
+      console.log('files', this.state.files)
+      const r = await window.logic.conversations.act(this.state.conv.key, actions, this.state.files)
       this.action_ids = r.data.action_ids
-      this.setState({new_message: null})
+      this.setState({new_message: null, files: []})
     }
   }
+
+  set_files = files => this.setState({files})
 
   add_comment = async () => {
     if (!this.state.locked && this.state.comment && this.state.comment_parent) {
@@ -181,7 +184,7 @@ class ConvDetailsView extends React.Component {
                 </span>
               </div>
               <div className="py-2">
-                <Drop conv={this.state.conv.key}>
+                <Drop conv={this.state.conv.key} set_files={this.set_files}>
                   <textarea placeholder="reply to all..." className="msg"
                             disabled={!!(this.state.locked || this.state.comment_parent || this.state.extra_prts)}
                             value={this.state.new_message || ''}

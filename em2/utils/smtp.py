@@ -48,7 +48,7 @@ def find_smtp_files(m: EmailMessage, inc_content=False, *, _msg_id=None, _cids=N
             content_type = part.get_content_type()
             content = part.get_payload(decode=True)
 
-            hash = hashlib.sha1(f'{name or ""}/{content_type or ""}/'.encode() + content).hexdigest()
+            hash = hashlib.md5(content).hexdigest()
             content_id = part['Content-ID']
             if content_id:
                 content_id = content_id.strip('<>')

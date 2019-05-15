@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from uuid import uuid4
 
@@ -11,7 +12,7 @@ from em2.utils.db import or404
 from em2.utils.smtp import CopyToTemp
 from em2.utils.storage import S3, parse_storage_uri
 
-from .utils import View
+from .utils import View, file_upload_cache_key
 
 
 class GetFile(View):
@@ -56,6 +57,7 @@ class GetFile(View):
         return storage
 
 
+upload_pending_ttl = 3600
 main_content_types = {'application', 'audio', 'font', 'image', 'text', 'video'}
 
 
@@ -63,6 +65,7 @@ class UploadFile(View):
     class QueryModel(BaseModel):
         filename: constr(max_length=100)
         content_type: constr(max_length=20)
+        # default to 1 GB, could change per use in future
         size: conint(le=1024 ** 3)
 
         @validator('content_type')
@@ -84,7 +87,7 @@ class UploadFile(View):
 
         m = parse_request_query(self.request, self.QueryModel)
         conv_key = await self.conn.fetchval('select key from conversations where id=$1', conv_id)
-        content_id = uuid4()
+        content_id = str(uuid4())
 
         bucket = self.settings.s3_file_bucket
         d = S3(self.settings).signed_upload_url(
@@ -93,11 +96,14 @@ class UploadFile(View):
             filename=m.filename,
             content_type=m.content_type,
             content_disp=True,
-            # default to 1 GB
             size=m.size,
         )
-        await self.redis.enqueue_job('delete_stale_upload', conv_id, content_id, d['storage_path'], _defer_by=3600)
-        return json_response(**d)
+        storage_path = 's3://{}/{}'.format(bucket, d['fields']['Key'])
+        await self.redis.setex(file_upload_cache_key(conv_id, content_id), upload_pending_ttl, storage_path)
+        await self.redis.enqueue_job(
+            'delete_stale_upload', conv_id, content_id, storage_path, _defer_by=upload_pending_ttl
+        )
+        return json_response(content_id=content_id, **d)
 
 
 async def delete_stale_upload(ctx, conv_id: int, content_id: str, storage_path: str):
@@ -110,3 +116,4 @@ async def delete_stale_upload(ctx, conv_id: int, content_id: str, storage_path: 
     _, bucket, path = parse_storage_uri(storage_path)
     async with S3(ctx['settings']) as s3_client:
         await s3_client.delete(bucket, path)
+    return 1
