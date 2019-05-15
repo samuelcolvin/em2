@@ -23,8 +23,6 @@ class GetFile(View):
         conv_prefix = self.request.match_info['conv']
         conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, conv_prefix)
 
-        # order by f.id so that if some email system is dumb and repeats a content_id, we always use the first
-        # one we received
         file_id, action_id, file_storage, storage_expires, send_id, send_storage = await or404(
             self.conn.fetchrow(
                 """
@@ -33,8 +31,6 @@ class GetFile(View):
                 join actions a on f.action = a.pk
                 join sends s on a.pk = s.action
                 where f.conv=$1 and f.content_id=$2
-                order by f.id
-                limit 1
                 """,
                 conv_id,
                 self.request.match_info['content_id'],

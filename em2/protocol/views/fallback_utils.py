@@ -193,6 +193,7 @@ class ProcessSMTP:
                 (conv_id, action_pk, send_id, f.content_disp, f.hash, f.content_id, f.name, f.content_type)
                 for f in files
             ]
+            # TODO cope with repeated content_id
             await self.conn.executemany(
                 """
                 insert into files (conv  , action, send, content_disp, hash, content_id, name, content_type)

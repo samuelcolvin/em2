@@ -3,31 +3,119 @@ import {Progress} from 'reactstrap'
 import Dropzone from 'react-dropzone'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
+import file_icon from './file_icons'
 
 const file_key = f => `${f.name}-${f.size}-${f.lastModified}`
-
+const is_file_drag = e => e.dataTransfer.types.length === 1 && e.dataTransfer.types[0] === 'Files'
 const failed_icon = fas.faMinusCircle
 
+
+const FileSummary = ({preview, preview_icon, progress, filename, size, icon, message, file_key, remove_file}) => {
+  const [over, setOver] = React.useState(false)
+  const ref = React.createRef()
+  const set_over = e => setOver(e.type === 'mouseenter')
+  React.useEffect(() => {
+    const node = ref.current
+    node.addEventListener('mouseenter', set_over)
+    node.addEventListener('mouseleave', set_over)
+    return () => {
+      node.removeEventListener('mouseenter', set_over)
+      node.removeEventListener('mouseleave', set_over)
+    }
+  })
+  return (
+    <div ref={ref} className="file-summary">
+      <div className="file-summary-main">
+        <div className="file-preview">
+          {preview ? (
+            <img src={preview} alt={filename} className="rounded"/>
+          ) : (
+            <FontAwesomeIcon icon={preview_icon} size="3x"/>
+          )}
+        </div>
+        {filename}
+        <div>
+          {progress ? (
+            <Progress value={progress} className="mt-1"/>
+          ): (
+            message ? (
+              <span>{icon && <FontAwesomeIcon icon={icon}/>} {message}</span>
+            ) : (
+              <div className="font-weight-bold">{size}</div>
+            )
+          )}
+        </div>
+        <div>
+        </div>
+      </div>
+      <div className={`preview-overlay ${over ? 'd-flex' : 'd-none'}`} onClick={() => remove_file(file_key)}>
+        <FontAwesomeIcon icon={fas.faTimes} size="3x"/>
+      </div>
+    </div>
+  )
+}
+
+
+const kb = 1024
+const mb = kb ** 2
+const gb = kb ** 3
+const round_to = (s, dp) => dp === 0 ? Math.round(s) : Math.round(s * dp ** 2) / dp ** 2
+
+function file_size (s) {
+  if (s < kb) {
+    return `${s}B`
+  } else if (s < mb) {
+    return `${round_to(s / kb, 0)}KB`
+  } else if (s < gb) {
+    return `${round_to(s / mb, 2)}MB`
+  } else {
+    return `${round_to(s / gb, 3)}GB`
+  }
+}
 
 export default class Drop extends React.Component {
   constructor (props) {
     super(props)
     this.state = {}
-    this.uploads = []
+    this.uploads = {}
+    this.drop_ref = React.createRef()
+  }
+
+  componentDidMount () {
+    document.addEventListener('dragenter', this.onWindowDragEnter)
+    document.addEventListener('dragleave', this.onWindowDragLeave)
+    document.addEventListener('drop', this.onWindowDrop)
   }
 
   componentWillUnmount () {
-    for (let xhr of this.uploads) {
+    document.removeEventListener('dragenter', this.onWindowDragEnter)
+    document.removeEventListener('dragleave', this.onWindowDragLeave)
+    document.removeEventListener('drop', this.onWindowDrop)
+    for (let xhr of Object.values(this.uploads)) {
       xhr.abort()
     }
   }
+
+  onWindowDragEnter = e => {
+    if (is_file_drag(e)) {
+      this.setState({dragging: true})
+    }
+  }
+
+  onWindowDragLeave = e => {
+    if (is_file_drag(e) && e.target.id === 'root' && e.relatedTarget === null) {
+      this.setState({dragging: false})
+    }
+  }
+
+  onWindowDrop = () => this.setState({dragging: false})
 
   update_file_state = (k, changes) => {
     this.setState({[k]: Object.assign({}, this.state[k], changes)})
   }
 
   show_error = (key, reason) => {
-    this.update_file_state(key, {icon: failed_icon, message: reason || 'A problem occurred'})
+    this.update_file_state(key, {progress: null, icon: failed_icon, message: reason || 'A problem occurred'})
   }
 
   upload_file = async (key, file) => {
@@ -43,8 +131,7 @@ export default class Drop extends React.Component {
     xhr.open('POST', data.url, true)
     xhr.onload = event => {
       if (xhr.status === 204) {
-      this.update_file_state(key, {progress: 100, icon: fas.faCheck})
-        this.props.update && this.props.update()
+        this.update_file_state(key, {progress: null, icon: fas.faCheck})
       } else {
         // const response_data = error_response(xhr)
         console.warn('uploading file failed at end', xhr)
@@ -61,18 +148,24 @@ export default class Drop extends React.Component {
       }
     }
     xhr.send(form_data)
-    this.uploads.push(xhr)
+    this.uploads[key] = xhr
   }
 
   onDrop = (accepted_files, refused_files) => {
-    const extra_state = {already_uploaded: false}
+    const extra_state = {already_uploaded: false, dragging: false}
     for (let file of accepted_files) {
-      const k = file_key(file)
-      if (Object.keys(this.state).includes(k)) {
+      const key = file_key(file)
+      if (this.state[key]) {
         extra_state.already_uploaded = true
       } else {
-        extra_state[k] = {filename: file.name, preview: URL.createObjectURL(file)}
-        this.upload_file(k, file)
+        console.log(file)
+        extra_state[key] = {filename: file.name, size: file_size(file.size), file_key: key, progress: 1}
+        if (file.type.startsWith('image/')) {
+          extra_state[key].preview = URL.createObjectURL(file)
+        } else {
+          extra_state[key].preview_icon = file_icon(file.type)
+        }
+        this.upload_file(key, file)
       }
     }
     for (let file of refused_files) {
@@ -86,28 +179,39 @@ export default class Drop extends React.Component {
     this.setState(extra_state)
   }
 
+  onClickAttach = e => {
+    e.preventDefault()
+    this.drop_ref.current && this.drop_ref.current.open()
+  }
+
+  remove_file = key => {
+    this.setState(Object.assign({}, this.state, {[key]: null, already_uploaded: false}))
+    this.uploads[key].abort()
+  }
+
   render () {
     return (
       <div>
-        <Dropzone onDrop={this.onDrop} maxSize={1024**3}>
+        <Dropzone ref={this.drop_ref}
+                  onDrop={this.onDrop}
+                  noClick={true}
+                  maxSize={1024**3}
+                  onDragStart={e => console.log('onDragStart', e)}>
           {({getRootProps, getInputProps}) => (
-            <div>
-              <div className="dropzone" {...getRootProps()}>
-                <input {...getInputProps()} />
-                <p>Drop images here, or click to select images to upload.</p>
-                <div className="previews">
-                  {Object.values(this.state).filter(item => item.filename).map((item, i) => (
-                    <div key={i} className="file-preview">
-                      <div>
-                        <img src={item.preview} alt={item.filename} className="img-thumbnail"/>
-                      </div>
-                      <div>
-                        {item.progress && <Progress value={item.progress} className="mt-1"/>}
-                      </div>
-                      {item.icon && <FontAwesomeIcon icon={item.icon} className="mt-1"/>}
-                      {item.message && <div className="mt-1">{item.message}</div>}
-                    </div>
-                  ))}
+            <div className="dropzone mb-1" {...getRootProps()}>
+              {this.props.children}
+              <input {...getInputProps()} />
+              <span className="text-muted">
+                Drop files here, or click <a href="." onClick={this.onClickAttach}>here</a> to select a file to attach.
+              </span>
+              <div className="previews">
+                {Object.values(this.state).filter(item => item && item.filename).map((item, i) => (
+                  <FileSummary key={i} {...item} remove_file={this.remove_file}/>
+                ))}
+              </div>
+              <div className={`full-overlay ${this.state.dragging ? 'd-flex': 'd-none'}`}>
+                <div className="h1">
+                  Drop files here
                 </div>
               </div>
             </div>

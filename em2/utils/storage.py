@@ -119,8 +119,8 @@ class S3:
             policy['conditions'].append(disp)
             fields.update(disp)
 
-        encoded_policy = base64.b64encode(json.dumps(policy).encode()).decode()
-        fields.update(Policy=encoded_policy, Signature=self._signature(encoded_policy))
+        b64_policy = base64.b64encode(json.dumps(policy).encode()).decode()
+        fields.update(Policy=b64_policy, Signature=self._signature(b64_policy))
         return dict(
             url=f'https://s3.{self._settings.aws_region}.amazonaws.com/{bucket}',
             storage_path='s3://{}/{}'.format(bucket, key),

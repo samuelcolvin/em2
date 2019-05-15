@@ -181,12 +181,12 @@ class ConvDetailsView extends React.Component {
                 </span>
               </div>
               <div className="py-2">
-                <textarea placeholder="reply to all..." className="msg"
-                          disabled={!!(this.state.locked || this.state.comment_parent || this.state.extra_prts)}
-                          value={this.state.new_message || ''}
-                          onChange={e => this.setState({new_message: e.target.value})}/>
-
-                <Drop conv={this.state.conv.key}/>
+                <Drop conv={this.state.conv.key}>
+                  <textarea placeholder="reply to all..." className="msg"
+                            disabled={!!(this.state.locked || this.state.comment_parent || this.state.extra_prts)}
+                            value={this.state.new_message || ''}
+                            onChange={e => this.setState({new_message: e.target.value})}/>
+                </Drop>
                 <div className="text-right">
                   <Button color="primary"
                           disabled={this.state.locked || !this.state.new_message}
