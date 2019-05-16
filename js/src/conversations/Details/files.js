@@ -19,6 +19,8 @@ const full_types = {
   'application/rtf': fas.faFileAlt,
   'application/sql': fas.faFileCode,
   'application/vnd.ms-excel': fas.faFileExcel,
+  'application/vnd.ms-excel.sheet.macroEnabled.12': fas.faFileExcel,
+  'application/vnd.ms-excel.template.macroEnabled.12': fas.faFileExcel,
   'application/vnd.ms-powerpoint': fas.faFilePowerpoint,
   'application/vnd.oasis.opendocument.presentation': fas.faFilePowerpoint,
   'application/vnd.oasis.opendocument.spreadsheet': fas.faFileExcel,

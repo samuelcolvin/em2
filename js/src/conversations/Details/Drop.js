@@ -10,7 +10,7 @@ const is_file_drag = e => e.dataTransfer.types.length === 1 && e.dataTransfer.ty
 const failed_icon = fas.faMinusCircle
 
 
-const FileSummary = ({preview, preview_icon, progress, filename, size, icon, message, file_key, remove_file}) => {
+const FileSummary = props => {
   const [over, setOver] = React.useState(false)
   const ref = React.createRef()
   const set_over = e => setOver(e.type === 'mouseenter')
@@ -27,28 +27,29 @@ const FileSummary = ({preview, preview_icon, progress, filename, size, icon, mes
     <div ref={ref} className="file-summary">
       <div className="file-summary-main">
         <div className="file-preview">
-          {preview ? (
-            <img src={preview} alt={filename} className="rounded"/>
+          {props.preview ? (
+            <img src={props.preview} alt={props.filename} className="rounded"/>
           ) : (
-            <FontAwesomeIcon icon={preview_icon} size="3x"/>
+            <FontAwesomeIcon icon={props.preview_icon} size="3x"/>
           )}
         </div>
-        {filename}
+        {props.filename}
         <div>
-          {progress ? (
-            <Progress value={progress} className="mt-1"/>
+          {props.progress ? (
+            <Progress value={props.progress} className="mt-1"/>
           ): (
-            message ? (
-              <span>{icon && <FontAwesomeIcon icon={icon}/>} {message}</span>
+            props.message ? (
+              <span>{props.icon && <FontAwesomeIcon icon={props.icon}/>} {props.message}</span>
             ) : (
-              <div className="font-weight-bold">{size}</div>
+              <div className="font-weight-bold">{props.size}</div>
             )
           )}
         </div>
         <div>
         </div>
       </div>
-      <div className={`preview-overlay ${over ? 'd-flex' : 'd-none'}`} onClick={() => remove_file(file_key)}>
+      <div className={`preview-overlay ${!props.locked && over ? 'd-flex' : 'd-none'}`}
+           onClick={() => props.remove_file(file_key)}>
         <FontAwesomeIcon icon={fas.faTimes} size="3x"/>
       </div>
     </div>
@@ -56,12 +57,9 @@ const FileSummary = ({preview, preview_icon, progress, filename, size, icon, mes
 }
 
 export default class Drop extends React.Component {
-  constructor (props) {
-    super(props)
-    this.state = {}
-    this.uploads = {}
-    this.drop_ref = React.createRef()
-  }
+  state = {}
+  uploads = {}
+  drop_ref = React.createRef()
 
   componentDidMount () {
     document.addEventListener('dragenter', this.onWindowDragEnter)
@@ -134,6 +132,9 @@ export default class Drop extends React.Component {
   )
 
   onDrop = (accepted_files, refused_files) => {
+    if (this.props.locked) {
+      return
+    }
     this.setState({already_uploaded: false, dragging: false})
     for (let file of accepted_files) {
       const key = file_key(file)
@@ -157,13 +158,17 @@ export default class Drop extends React.Component {
 
   onClickAttach = e => {
     e.preventDefault()
-    this.drop_ref.current && this.drop_ref.current.open()
+    if (!this.props.locked) {
+      this.drop_ref.current && this.drop_ref.current.open()
+    }
   }
 
   remove_file = key => {
-    this.props.remove_file(key)
-    this.setState({already_uploaded: false})
-    this.uploads[key].abort()
+    if (!this.props.locked) {
+      this.props.remove_file(key)
+      this.setState({already_uploaded: false})
+      this.uploads[key].abort()
+    }
   }
 
   render () {
@@ -177,17 +182,17 @@ export default class Drop extends React.Component {
           {({getRootProps, getInputProps}) => (
             <div className="dropzone mb-1" {...getRootProps()}>
               {this.props.children}
-              <input {...getInputProps()} />
+              <input {...getInputProps()}/>
               <span className="text-muted">
                 Drag and drop files, or click <a href="." onClick={this.onClickAttach}>here</a>
                 &nbsp;to select a file to attach.
               </span>
               <div className="previews">
                 {this.props.files.map((file, i) => (
-                  <FileSummary key={i} {...file} remove_file={this.remove_file}/>
+                  <FileSummary key={i} {...file} locked={this.props.locked} remove_file={this.remove_file}/>
                 ))}
               </div>
-              <div className={`full-overlay ${this.state.dragging ? 'd-flex': 'd-none'}`}>
+              <div className={`full-overlay ${!this.props.locked && this.state.dragging ? 'd-flex': 'd-none'}`}>
                 <div className="h1">
                   Drop files here
                 </div>

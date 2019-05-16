@@ -193,6 +193,7 @@ class ConvDetailsView extends React.Component {
               <div className="py-2">
                 <Drop conv={this.state.conv.key}
                       files={this.state.files}
+                      locked={this.state.locked}
                       add_file={this.add_file}
                       remove_file={this.remove_file}
                       update_file={this.update_file}>
