@@ -58,6 +58,7 @@ def _fix_settings_session():
         internal_auth_key='testing' * 6,
         auth_key=Fernet.generate_key(),
         s3_temp_bucket='s3_temp_bucket.example.com',
+        s3_file_bucket='s3_files_bucket.example.com',
     )
 
 

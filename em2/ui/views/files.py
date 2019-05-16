@@ -16,7 +16,8 @@ from .utils import View, file_upload_cache_key
 
 class GetFile(View):
     async def call(self):
-        if not all((self.settings.aws_secret_key, self.settings.aws_access_key, self.settings.s3_temp_bucket)):
+        s = self.settings
+        if not all((s.aws_secret_key, s.aws_access_key, s.s3_temp_bucket)):  # pragma: no cover
             raise HTTPNotImplemented(text="Storage keys not set, can't display images")
         # in theory we might need to add action_id here to specify the file via content_id, but in practice probably
         # not necessary (until it is)
@@ -47,7 +48,7 @@ class GetFile(View):
             storage_ref = await self.copy_to_temp(conv_id, send_id, file_id, send_storage)
 
         _, bucket, path = parse_storage_uri(storage_ref)
-        url = S3(self.settings).signed_download_url(bucket, path)
+        url = S3(s).signed_download_url(bucket, path)
         raise HTTPFound(url)
 
     async def copy_to_temp(self, conv_id: int, send_id: int, file_id: int, send_storage: str) -> str:
@@ -78,20 +79,21 @@ class UploadFile(View):
             return v
 
     async def call(self):
-        if not all((self.settings.aws_secret_key, self.settings.aws_access_key, self.settings.s3_file_bucket)):
+        s = self.settings
+        if not all((s.aws_secret_key, s.aws_access_key, s.s3_file_bucket)):  # pragma: no cover
             raise HTTPNotImplemented(text="Storage keys not set, can't upload files")
 
         conv_prefix = self.request.match_info['conv']
         conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, conv_prefix)
         if last_action:
-            raise JsonErrors.HTTPForbidden()
+            raise JsonErrors.HTTPForbidden(message='file attachment not permitted')
 
         m = parse_request_query(self.request, self.QueryModel)
         conv_key = await self.conn.fetchval('select key from conversations where id=$1', conv_id)
         content_id = str(uuid4())
 
-        bucket = self.settings.s3_file_bucket
-        d = S3(self.settings).signed_upload_url(
+        bucket = s.s3_file_bucket
+        d = S3(s).signed_upload_url(
             bucket=bucket,
             path=f'{conv_key}/{content_id}/',
             filename=m.filename,

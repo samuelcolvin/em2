@@ -2,7 +2,7 @@ import base64
 from email import message_from_bytes
 
 from aiohttp import web
-from aiohttp.hdrs import METH_GET
+from aiohttp.hdrs import METH_GET, METH_HEAD
 from aiohttp.web_response import Response
 
 
@@ -66,7 +66,13 @@ async def s3_endpoint(request):
     # very VERY simple mock of s3
     if request.method == METH_GET:
         return Response(text=request.app['s3_emails'][request.match_info['key']])
-    return Response(text='')
+    if request.method == METH_HEAD:
+        return Response(
+            text='dummy head response',
+            headers={'ETag': 'foobar', 'ContentDisposition': f'attachment; filename="dummy.txt"'},
+        )
+    else:
+        return Response(text='')
 
 
 routes = [
