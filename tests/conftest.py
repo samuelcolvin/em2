@@ -74,7 +74,7 @@ def _fix_clean_db(settings_session):
 
 @pytest.fixture(name='dummy_server')
 async def _fix_dummy_server(loop, aiohttp_server):
-    ctx = {'smtp': [], 's3_emails': {}}
+    ctx = {'smtp': [], 's3_files': {}}
     return await create_dummy_server(aiohttp_server, extra_routes=dummy_server.routes, extra_context=ctx)
 
 
@@ -406,7 +406,7 @@ def _fix_create_ses_email(dummy_server, sns_data, create_email):
         **kwargs,
     ):
         msg = create_email(*args, to=to, message_id=message_id, headers=headers, **kwargs)
-        dummy_server.app['s3_emails'][key] = msg.as_string()
+        dummy_server.app['s3_files'][key] = msg.as_string()
 
         headers = headers or {}
         h = [{'name': 'Message-ID', 'value': message_id}] + [{'name': k, 'value': v} for k, v in headers.items()]

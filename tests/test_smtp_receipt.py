@@ -199,7 +199,7 @@ async def test_get_file(fake_request, factory: Factory, db_conn, create_email, a
             'content_type': 'text/plain',
         }
     ]
-    dummy_server.app['s3_emails']['s3-test-path'] = msg.as_string()
+    dummy_server.app['s3_files']['s3-test-path'] = msg.as_string()
 
     url = factory.url('ui:get-file', conv=conv_key, content_id='testing-hello2')
     r1 = await cli.get(url, allow_redirects=False)

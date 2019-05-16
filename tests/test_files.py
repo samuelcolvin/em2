@@ -90,14 +90,16 @@ async def test_delete_stale_upload_file_exists(settings, db_conn, factory: Facto
     assert len(dummy_server.log) == 0
 
 
-async def test_message_with_attachment(cli, factory: Factory, db_conn):
+async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_server):
     await factory.create_user()
     conv = await factory.create_conv(publish=True)
 
-    q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
+    q = dict(filename='testing.png', content_type='image/jpeg', size='14')
     r = await cli.get(factory.url('ui:upload-file', conv=conv.key, query=q))
     assert r.status == 200, await r.text()
     content_id = (await r.json())['content_id']
+
+    dummy_server.app['s3_files'][f'{conv.key}/{content_id}/testing.png'] = 'this is a test'
 
     data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': [content_id]}
     r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
@@ -113,8 +115,33 @@ async def test_message_with_attachment(cli, factory: Factory, db_conn):
         'storage_expires': None,
         'content_disp': 'inline',
         'hash': 'foobar',
-        'content_id': RegexStr('.{36}'),
+        'content_id': content_id,
         'name': 'testing.png',
         'content_type': 'text/plain; charset=utf-8',
-        'size': 19,
+        'size': 14,
     }
+
+
+async def test_message_with_attachment_no_file(cli, factory: Factory):
+    await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+
+    data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': ['foobar']}
+    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
+    assert r.status == 400, await r.text()
+    assert await r.json() == {'message': "no file found for content id 'foobar'"}
+
+
+async def test_message_with_attachment_not_uploaded(cli, factory: Factory):
+    await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+
+    q = dict(filename='testing.png', content_type='image/jpeg', size='14')
+    r = await cli.get(factory.url('ui:upload-file', conv=conv.key, query=q))
+    assert r.status == 200, await r.text()
+    content_id = (await r.json())['content_id']
+
+    data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': [content_id]}
+    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
+    assert r.status == 400, await r.text()
+    assert await r.json() == {'message': 'file not uploaded'}

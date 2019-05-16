@@ -65,12 +65,15 @@ async def sns_signing_endpoint(request):
 async def s3_endpoint(request):
     # very VERY simple mock of s3
     if request.method == METH_GET:
-        return Response(text=request.app['s3_emails'][request.match_info['key']])
+        return Response(text=request.app['s3_files'][request.match_info['key']])
     if request.method == METH_HEAD:
-        return Response(
-            text='dummy head response',
-            headers={'ETag': 'foobar', 'ContentDisposition': f'attachment; filename="dummy.txt"'},
-        )
+        f = request.app['s3_files'].get(request.match_info['key'])
+        if f:
+            return Response(
+                text=f, headers={'ETag': 'foobar', 'ContentDisposition': f'attachment; filename="dummy.txt"'}
+            )
+        else:
+            return Response(text='', status=404)
     else:
         return Response(text='')
 
