@@ -3,7 +3,7 @@ import {Progress} from 'reactstrap'
 import Dropzone from 'react-dropzone'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
-import file_icon from './file_icons'
+import {file_icon, file_size} from './files'
 
 const file_key = f => `${f.name}-${f.size}-${f.lastModified}`
 const is_file_drag = e => e.dataTransfer.types.length === 1 && e.dataTransfer.types[0] === 'Files'
@@ -55,24 +55,6 @@ const FileSummary = ({preview, preview_icon, progress, filename, size, icon, mes
   )
 }
 
-
-const kb = 1024
-const mb = kb ** 2
-const gb = kb ** 3
-const round_to = (s, dp) => dp === 0 ? Math.round(s) : Math.round(s * dp ** 2) / dp ** 2
-
-function file_size (s) {
-  if (s < kb) {
-    return `${s}B`
-  } else if (s < mb) {
-    return `${round_to(s / kb, 0)}KB`
-  } else if (s < gb) {
-    return `${round_to(s / mb, 2)}MB`
-  } else {
-    return `${round_to(s / gb, 3)}GB`
-  }
-}
-
 export default class Drop extends React.Component {
   constructor (props) {
     super(props)
@@ -110,12 +92,8 @@ export default class Drop extends React.Component {
 
   onWindowDrop = () => this.setState({dragging: false})
 
-  update_file_state = (k, changes) => {
-    this.setState({[k]: Object.assign({}, this.state[k], changes)})
-  }
-
   show_error = (key, reason) => {
-    this.update_file_state(key, {progress: null, icon: failed_icon, message: reason || 'A problem occurred'})
+    this.props.update_file(key, {progress: null, icon: failed_icon, message: reason || 'A problem occurred'})
   }
 
   upload_file = async (key, file) => {
@@ -131,8 +109,7 @@ export default class Drop extends React.Component {
     xhr.open('POST', data.url, true)
     xhr.onload = event => {
       if (xhr.status === 204) {
-        this.update_file_state(key, {progress: null, icon: fas.faCheck, content_id: data.content_id})
-        this.set_files()
+        this.props.update_file(key, {progress: null, icon: fas.faCheck, content_id: data.content_id, done: true})
       } else {
         // const response_data = error_response(xhr)
         console.warn('uploading file failed at end', xhr)
@@ -145,7 +122,7 @@ export default class Drop extends React.Component {
     }
     xhr.upload.onprogress = e => {
       if (e.lengthComputable) {
-        this.update_file_state(key, {progress: e.loaded / e.total * 100})
+        this.props.update_file(key, {progress: e.loaded / e.total * 100})
       }
     }
     xhr.send(form_data)
@@ -157,30 +134,25 @@ export default class Drop extends React.Component {
   )
 
   onDrop = (accepted_files, refused_files) => {
-    const extra_state = {already_uploaded: false, dragging: false}
+    this.setState({already_uploaded: false, dragging: false})
     for (let file of accepted_files) {
       const key = file_key(file)
       if (this.state[key]) {
-        extra_state.already_uploaded = true
+        this.setState({already_uploaded: true})
       } else {
-        extra_state[key] = {filename: file.name, size: file_size(file.size), file_key: key, progress: 1}
+        const f = {key, filename: file.name, size: file_size(file.size), file_key: key, progress: 1}
         if (file.type.startsWith('image/')) {
-          extra_state[key].preview = URL.createObjectURL(file)
+          f.preview = URL.createObjectURL(file)
         } else {
-          extra_state[key].preview_icon = file_icon(file.type)
+          f.preview_icon = file_icon(file.type)
         }
+        this.props.add_file(f)
         this.upload_file(key, file)
       }
     }
-    for (let file of refused_files) {
-      extra_state[file_key(file)] = {
-        filename: file.name,
-        preview: URL.createObjectURL(file),
-        icon: failed_icon,
-        message: 'Not a valid file',
-      }
+    if (refused_files.length) {
+      throw Error('refused files not supported')
     }
-    this.setState(extra_state)
   }
 
   onClickAttach = e => {
@@ -189,8 +161,8 @@ export default class Drop extends React.Component {
   }
 
   remove_file = key => {
-    const new_state = Object.assign({}, this.state, {[key]: null, already_uploaded: false})
-    this.setState(new_state, () => this.set_files())
+    this.props.remove_file(key)
+    this.setState({already_uploaded: false})
     this.uploads[key].abort()
   }
 
@@ -211,8 +183,8 @@ export default class Drop extends React.Component {
                 &nbsp;to select a file to attach.
               </span>
               <div className="previews">
-                {Object.values(this.state).filter(item => item && item.filename).map((item, i) => (
-                  <FileSummary key={i} {...item} remove_file={this.remove_file}/>
+                {this.props.files.map((file, i) => (
+                  <FileSummary key={i} {...file} remove_file={this.remove_file}/>
                 ))}
               </div>
               <div className={`full-overlay ${this.state.dragging ? 'd-flex': 'd-none'}`}>

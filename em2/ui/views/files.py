@@ -29,26 +29,28 @@ class GetFile(View):
                 select f.id, a.id, f.storage, f.storage_expires, send, s.storage
                 from files f
                 join actions a on f.action = a.pk
-                join sends s on a.pk = s.action
+                left join sends s on f.send = s.id
                 where f.conv=$1 and f.content_id=$2
                 """,
                 conv_id,
                 self.request.match_info['content_id'],
-            )
+            ),
+            msg='unable to find file',
         )
         if last_action and action_id > last_action:
             raise JsonErrors.HTTPForbidden("You're not permitted to view this file")
 
-        if file_storage and storage_expires > (utcnow() + timedelta(seconds=30)):
+        if file_storage and (storage_expires is None or storage_expires > (utcnow() + timedelta(seconds=30))):
             storage_ref = file_storage
         else:
-            storage_ref = await self.get_file_url(conv_id, send_id, file_id, send_storage)
+            assert send_storage, "send_storage should be set if file_storage isn't"
+            storage_ref = await self.copy_to_temp(conv_id, send_id, file_id, send_storage)
 
         _, bucket, path = parse_storage_uri(storage_ref)
         url = S3(self.settings).signed_download_url(bucket, path)
         raise HTTPFound(url)
 
-    async def get_file_url(self, conv_id: int, send_id: int, file_id: int, send_storage: str) -> str:
+    async def copy_to_temp(self, conv_id: int, send_id: int, file_id: int, send_storage: str) -> str:
         await CopyToTemp(self.settings, self.conn, self.redis).run(conv_id, send_id, send_storage)
 
         storage = await self.conn.fetchval('select storage from files where id=$1', file_id)

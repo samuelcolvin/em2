@@ -17,7 +17,7 @@ from em2.settings import Settings
 from .datetime import utcnow
 from .storage import S3, S3Client, parse_storage_uri
 
-__all__ = ('parse_smtp', 'File', 'find_smtp_files')
+__all__ = ('parse_smtp', 'File', 'find_smtp_files', 'CopyToTemp')
 
 logger = logging.getLogger('em2.utils.smtp')
 email_parser = BytesParser(policy=email_policy.default)
@@ -104,7 +104,7 @@ class CopyToTemp:
             body = await s3_client.download(bucket, send_path)
             msg = parse_smtp(body)
             del body
-            expires = utcnow() + self.settings.s3_tmp_bucket_lifetime
+            expires = utcnow() + self.settings.s3_temp_bucket_lifetime
             results = await asyncio.gather(
                 *(self._upload_file(s3_client, conv_key, send_path, f) for f in find_smtp_files(msg, True))
             )

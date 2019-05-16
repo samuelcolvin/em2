@@ -93,17 +93,24 @@ class ConvDetailsView extends React.Component {
   }
 
   add_msg = async () => {
-    if (!this.state.locked && this.state.new_message) {
+    if (!this.state.locked && !this.upload_ongoing() && this.state.new_message) {
       this.setState({locked: true})
       const actions = [{act: 'message:add', body: this.state.new_message}]
-      console.log('files', this.state.files)
-      const r = await window.logic.conversations.act(this.state.conv.key, actions, this.state.files)
+      const files = this.state.files.filter(f => f.done).map(f => f.content_id)
+      const r = await window.logic.conversations.act(this.state.conv.key, actions, files)
       this.action_ids = r.data.action_ids
       this.setState({new_message: null, files: []})
     }
   }
 
-  set_files = files => this.setState({files})
+  add_file = f => this.setState({files: [...this.state.files, f]})
+
+  remove_file = key => this.setState({files: this.state.files.filter(f => f.key !== key)})
+
+  update_file = (key, update) => (
+    this.setState({files: this.state.files.map(f => f.key === key ? Object.assign({}, f, update) : f)})
+  )
+  upload_ongoing = () => !!this.state.files.filter(f => f.progress).length
 
   add_comment = async () => {
     if (!this.state.locked && this.state.comment && this.state.comment_parent) {
@@ -184,7 +191,11 @@ class ConvDetailsView extends React.Component {
                 </span>
               </div>
               <div className="py-2">
-                <Drop conv={this.state.conv.key} set_files={this.set_files}>
+                <Drop conv={this.state.conv.key}
+                      files={this.state.files}
+                      add_file={this.add_file}
+                      remove_file={this.remove_file}
+                      update_file={this.update_file}>
                   <textarea placeholder="reply to all..." className="msg"
                             disabled={!!(this.state.locked || this.state.comment_parent || this.state.extra_prts)}
                             value={this.state.new_message || ''}
@@ -192,7 +203,7 @@ class ConvDetailsView extends React.Component {
                 </Drop>
                 <div className="text-right">
                   <Button color="primary"
-                          disabled={this.state.locked || !this.state.new_message}
+                          disabled={this.state.locked || this.upload_ongoing() || !this.state.new_message}
                           onClick={this.add_msg}>
                     <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/>
                     {this.state.conv.draft ? 'Add Message' : 'Send'}

@@ -45,7 +45,26 @@ const full_types = {
   'text/plain': fas.faFileAlt,
 }
 
-export default function (content_type) {
+export function file_icon (content_type) {
   const ct = content_type.toLowerCase()
   return main_types[ct.match(/.*\//)[0]] || full_types[ct.trim()] || fas.faFile
+}
+
+
+
+const kb = 1024
+const mb = kb ** 2
+const gb = kb ** 3
+const round_to = (s, dp) => dp === 0 ? Math.round(s) : Math.round(s * dp ** 2) / dp ** 2
+
+export function file_size (size) {
+  if (size < kb) {
+    return `${size}B`
+  } else if (size < mb) {
+    return `${round_to(size / kb, 0)}KB`
+  } else if (size < gb) {
+    return `${round_to(size / mb, 2)}MB`
+  } else {
+    return `${round_to(size / gb, 3)}GB`
+  }
 }

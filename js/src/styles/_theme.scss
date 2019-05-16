@@ -213,6 +213,7 @@ $file-summary-height: $item-height + 40px;
   .file-summary-main {
     height: 100%;
     width: $item-width;
+    white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
   }
@@ -250,8 +251,8 @@ $file-summary-height: $item-height + 40px;
     top: 0;
     left: 0;
     z-index: 999;
-    border: 8px dashed #ccc;
-    color: #888;
+    border: 4px dashed #ccc;
+    color: #ccc;
     border-radius: 4px;
     background: rgba(255, 255, 255, 0.8);
   }

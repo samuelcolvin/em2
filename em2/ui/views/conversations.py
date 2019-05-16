@@ -192,9 +192,7 @@ class ConvAct(ExecView):
             values = await asyncio.gather(
                 *(self.prepare_file(s3_client, conv_id, action_pk, content_id) for content_id in file_content_ids)
             )
-        await self.conn.executemany_b(
-            'insert into labels (:values__names) values :values returning id', MultipleValues(values)
-        )
+        await self.conn.execute_b('insert into files (:values__names) values :values', values=MultipleValues(*values))
 
     async def prepare_file(self, s3_client, conv_id, action_pk: int, content_id: str):
         storage_path = await self.redis.get(file_upload_cache_key(conv_id, content_id))
@@ -212,7 +210,7 @@ class ConvAct(ExecView):
                 action=action_pk,
                 content_id=content_id,
                 storage=storage_path,
-                name=path.rsplit('/', 1)[0],
+                name=path.rsplit('/', 1)[1],
                 content_disp='attachment' if 'ContentDisposition' in head else 'inline',
                 hash=head['ETag'].strip('"'),
                 content_type=head['ContentType'],
