@@ -6,6 +6,7 @@ from email import policy as email_policy
 from email.message import EmailMessage
 from email.parser import BytesParser
 from typing import Generator, Optional, Tuple
+from uuid import uuid4
 
 from aiohttp.web_exceptions import HTTPGatewayTimeout
 from aioredis import Redis
@@ -53,7 +54,7 @@ def find_smtp_files(m: EmailMessage, inc_content=False, *, _msg_id=None, _cids=N
             if content_id:
                 content_id = content_id.strip('<>')
             else:
-                content_id = hash
+                content_id = str(uuid4())
 
             if content_id in cids:
                 logger.warning('msg %s, duplicate content_id: %r', msg_id, content_id)
