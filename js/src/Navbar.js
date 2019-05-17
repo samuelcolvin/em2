@@ -142,5 +142,5 @@ export default ({app_state}) => ([
       {app_state.user ? <NavbarUser app_state={app_state}/> : <NavbarBrand tag={Link} to="/">em2</NavbarBrand>}
     </div>
   </NavbarBootstrap>,
-  <StatusBar key="status" {...app_state}/>
+  <StatusBar key="status" {...app_state}/>,
 ])
