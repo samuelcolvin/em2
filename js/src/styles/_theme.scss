@@ -1,7 +1,7 @@
 @import 'variables';
 
 body {
-  padding-top: 5.5rem;
+  padding-top: 92px;
   background-color: $body-back;
   padding-bottom: 3rem;
   overflow-y: scroll;
@@ -19,6 +19,22 @@ body {
 
   .navbar-nav .navbar-dropdown {
     position: absolute;
+  }
+}
+
+$status-top: 56px;
+$status-height: 28px;
+.status-bar {
+  position: fixed;
+  top: $status-top - $status-height;
+  right: 0;
+  left: 0;
+  z-index: 1029;
+  color: white;
+  height: $status-height;
+  transition: top 500ms ease;
+  &.show {
+    top: $status-top;
   }
 }
 

@@ -14,6 +14,7 @@ export function make_url (app_name, path) {
 
 export const statuses = {
   offline: 'offline',
+  problem: 'problem',
   connecting: 'connecting',
   online: 'online',
 }
@@ -33,15 +34,19 @@ export class Requests {
 
   _request = async (method, app_name, path, config) => {
     const url = make_url(app_name, path)
+    let r
     try {
-      return await request(method, url, config)
+      r = await request(method, url, config)
     } catch (e) {
       if (e.status === 401) {
         // TODO check and reauthenticate
         await this._main.session.delete()
+      } else if (e.status > 501) {
+        this._main.set_conn_status(statuses.problem)
       }
-      // TODO render error to the app
       throw e
     }
+    this._main.set_conn_status(statuses.online)
+    return r
   }
 }

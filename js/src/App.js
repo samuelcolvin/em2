@@ -43,6 +43,7 @@ class App extends React.Component {
     other_sessions: [],
     conn_status: null,
     menu_item: null,
+    conv_title: null,
   }
 
   componentDidMount () {
@@ -55,6 +56,7 @@ class App extends React.Component {
     document.title = this.state.title ? this.state.title : 'em2'
     if (this.props.location !== prevProps.location) {
       this.state.error && this.setState({error: null})
+      this.state.conv_title && this.setState({conv_title: null})
     }
     if (!this.state.user && this.state.conn_status && this.props.location.pathname !== '/login/') {
       this.props.history.push('/login/')
@@ -87,6 +89,7 @@ class App extends React.Component {
     const ctx = {
       setError: error => this.setError(error),
       setTitle: title => this.setState({title}),
+      setConvTitle: conv_title => this.setState({conv_title}),
       setMenuItem: menu_item => this.setState({menu_item}),
       menu_item: this.state.menu_item,
       user: this.state.user,
