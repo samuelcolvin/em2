@@ -120,7 +120,7 @@ const StatusBar = ({conn_status, conv_title}) => {
   const show = (down_page && conv_title) || error_msg
 
   return (
-    <div className={`status-bar ${show ? 'show' : ''} ${error_msg ? 'bg-danger' : 'bg-primary'}`}>
+    <div className={`status-bar${show ? ' show' : ''} ${error_msg ? 'bg-danger' : 'bg-primary'}`}>
       <div className="container h-100">
         <Row className="align-items-center h-100">
           <Col md="3"/>
@@ -128,7 +128,7 @@ const StatusBar = ({conn_status, conv_title}) => {
             {conv_title}
           </Col>
           <Col md="3" className="text-right">
-            {error_msg}
+            {error_msg || (conv_title ? null : 'Online')}
           </Col>
         </Row>
       </div>

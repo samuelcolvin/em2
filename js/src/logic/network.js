@@ -41,7 +41,7 @@ export class Requests {
       if (e.status === 401) {
         // TODO check and reauthenticate
         await this._main.session.delete()
-      } else if (e.status > 501) {
+      } else if (e.status === 0 || e.status > 501) {
         this._main.set_conn_status(statuses.problem)
       }
       throw e

@@ -30,7 +30,6 @@ export default class Websocket {
       console.warn('ws already connected, not connecting again')
       return
     }
-    this._main.set_conn_status(statuses.connecting)
     this._socket = this._connect()
   }
 
@@ -39,7 +38,7 @@ export default class Websocket {
       console.warn('session null, not connecting to ws')
       return
     }
-    let ws_url = make_url('ui', `/${this._main.session.id}/ws/`).replace('http', 'ws')
+    let ws_url = make_url('ui', `/${this._main.session.id}/ws/`).replace(/^http/, 'ws')
     let socket
     try {
       socket = new WebSocket(ws_url)
@@ -48,6 +47,7 @@ export default class Websocket {
       this._main.set_conn_status(statuses.offline)
       return null
     }
+    this._main.set_conn_status(statuses.connecting)
 
     socket.onopen = this._on_open
     socket.onclose = this._on_close
