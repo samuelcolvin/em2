@@ -49,7 +49,6 @@ class App extends React.Component {
   componentDidMount () {
     window.logic = new Logic(this.props.history)
     window.logic.add_listener('setState', s => this.setState(s))
-    window.logic.add_listener('setUser', u => this.setUser(u))
   }
 
   componentDidUpdate (prevProps) {

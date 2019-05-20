@@ -115,7 +115,7 @@ export default class Websocket {
     if (e.code === 4403) {
       console.debug('websocket closed with 4403, not authorised')
       this._main.set_conn_status(statuses.online)
-      await this._main.session.session_expired()
+      await this._main.session.expired()
     } else {
       console.debug(`websocket closed, reconnecting in ${reconnect_in}ms`, e)
       setTimeout(this.connect, reconnect_in)

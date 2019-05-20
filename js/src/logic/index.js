@@ -23,11 +23,8 @@ export default class LogicMain {
   }
 
   _start = async () => {
-    const session_id = JSON.parse(sessionStorage['session_id'] || 'null')
-    await this.session.set(session_id)
-    if (this.session.id) {
-      await this.update_sessions()
-    } else {
+    await this.session.init()
+    if (!this.session.id) {
       // no session, check the internet connection
       const url = make_url('ui', '/online/')
       try {
@@ -43,13 +40,8 @@ export default class LogicMain {
     }
   }
 
-  update_sessions = async () => {
-    this.fire('setUser', this.session.current)
-    this.fire('setState', {other_sessions: await this.session.other_sessions()})
-    await this.ws.connect()
-  }
-
   set_conn_status = conn_status => {
+    console.log('set_conn_status', conn_status)
     if (conn_status !== this._conn_status) {
       this._conn_status = conn_status
       this.fire('setState', {conn_status})

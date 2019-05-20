@@ -39,7 +39,7 @@ export class Requests {
       r = await request(method, url, config)
     } catch (e) {
       if (e.status === 401) {
-        await this._main.session.session_expired()
+        await this._main.session.expired()
       } else if (!e.status || e.status > 501) {
         this._main.set_conn_status(statuses.problem)
       }
