@@ -1,6 +1,6 @@
 import React from 'react'
 import {Route, Switch, withRouter} from 'react-router-dom'
-import {GlobalContext, Error} from 'reactstrap-toolbox'
+import {GlobalContext} from 'reactstrap-toolbox'
 
 import Logic from './logic'
 import {statuses} from './logic/network'
@@ -8,12 +8,12 @@ import Login from './auth/Login'
 import Logout from './auth/Logout'
 import SwitchSession from './auth/SwitchSession'
 import Navbar from './Navbar'
-import WithMenu from './WithMenu'
+import {RoutesWithMenu, ErrorWithMenu} from './WithMenu'
 
 
 const Main = ({app_state}) => {
   if (app_state.error) {
-    return <Error error={app_state.error}/>
+    return <ErrorWithMenu error={app_state.error}/>
   } else if (!app_state.conn_status) {
     // this should happen very briefly, don't show loading to avoid FOUC
     return null
@@ -29,7 +29,7 @@ const Main = ({app_state}) => {
         <Route exact path="/login/" component={Login}/>
         <Route exact path="/logout/" component={Logout}/>
         <Route exact path="/switch/:id(\d+)/" component={SwitchSession}/>
-        <Route component={WithMenu}/>
+        <Route component={RoutesWithMenu}/>
       </Switch>
     )
   }
@@ -49,6 +49,7 @@ class App extends React.Component {
   componentDidMount () {
     window.logic = new Logic(this.props.history)
     window.logic.add_listener('setState', s => this.setState(s))
+    window.logic.add_listener('setError', e => this.setError(e))
   }
 
   componentDidUpdate (prevProps) {
@@ -60,11 +61,6 @@ class App extends React.Component {
     if (!this.state.user && this.state.conn_status && this.props.location.pathname !== '/login/') {
       this.props.history.push('/login/')
     }
-  }
-
-  setUser = user => {
-    this.setState({user})
-    sessionStorage['session_id'] = JSON.stringify(user ? user.session_id : null)
   }
 
   componentDidCatch (error, info) {

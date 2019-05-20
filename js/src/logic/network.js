@@ -43,6 +43,7 @@ export class Requests {
       } else if (!e.status || e.status > 501) {
         this._main.set_conn_status(statuses.problem)
       }
+      this._main.fire('setError', e)
       throw e
     }
     this._main.set_conn_status(statuses.online)

@@ -28,7 +28,6 @@ export default class Session {
   }
 
   new = async session => {
-    console.log(session)
     await session_db.sessions.add(session)
     await this._set(session.session_id)
   }

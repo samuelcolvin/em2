@@ -3,7 +3,7 @@ import {Link, Route, Switch} from 'react-router-dom'
 import {Row, Col, ListGroup, ListGroupItem as BsListGroupItem} from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
-import {NotFound, WithContext, as_title} from 'reactstrap-toolbox'
+import {Error, NotFound, WithContext, as_title} from 'reactstrap-toolbox'
 import ListConversations from './conversations/List'
 import ConversationDetails from './conversations/Details'
 import CreateConversation from './conversations/Create'
@@ -102,7 +102,7 @@ class LeftMenu_ extends React.Component {
 
 const LeftMenu = WithContext(LeftMenu_)
 
-export default () => (
+export const RoutesWithMenu = () => (
   <Row>
     <Col md="3">
       <LeftMenu/>
@@ -116,6 +116,17 @@ export default () => (
         <Route path="/wait/:key([a-f0-9]{10,64})/" component={Wait}/>
         <Route component={NotFound}/>
       </Switch>
+    </Col>
+  </Row>
+)
+
+export const ErrorWithMenu = ({error}) => (
+  <Row>
+    <Col md="3">
+      <LeftMenu/>
+    </Col>
+    <Col md="9">
+      <Error className="box" error={error}/>
     </Col>
   </Row>
 )
