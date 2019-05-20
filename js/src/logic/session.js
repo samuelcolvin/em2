@@ -49,6 +49,20 @@ export default class Session {
     await this.set()
   }
 
+  session_expired = async () => {
+    await this.delete()
+    this.id = null
+    this.current = null
+    this.db = null
+    this._main.fire('setUser', null)
+    this._main.fire('setState', {other_sessions: []})
+
+    this._main.notify.notify({
+      title: 'Session Expired',
+      message: 'Session expired, please log in again.',
+    })
+  }
+
   update = async changes => {
     Object.assign(this.current, changes)
     await session_db.sessions.update(this.id, changes)

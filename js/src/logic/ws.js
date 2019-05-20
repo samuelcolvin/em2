@@ -34,7 +34,7 @@ export default class Websocket {
   }
 
   _connect = () => {
-    if (!this._main.session) {
+    if (!this._main.session.id) {
       console.warn('session null, not connecting to ws')
       return
     }
@@ -115,9 +115,7 @@ export default class Websocket {
     if (e.code === 4403) {
       console.debug('websocket closed with 4403, not authorised')
       this._main.set_conn_status(statuses.online)
-      await this._main.session.delete()
-      this._main.fire('setState', {user: null})
-      this._main.fire('setState', {other_sessions: []})
+      await this._main.session.session_expired()
     } else {
       console.debug(`websocket closed, reconnecting in ${reconnect_in}ms`, e)
       setTimeout(this.connect, reconnect_in)

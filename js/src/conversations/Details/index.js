@@ -160,7 +160,7 @@ class ConvDetailsView extends React.Component {
           <p>Unable to find conversation <code>{this.props.match.params.key}</code>.</p>
         </div>
       )
-    } else if (!this.state.conv) {
+    } else if (!this.state.conv || !this.props.ctx.user) {
       return <Loading/>
     }
     return (

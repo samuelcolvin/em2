@@ -39,9 +39,8 @@ export class Requests {
       r = await request(method, url, config)
     } catch (e) {
       if (e.status === 401) {
-        // TODO check and reauthenticate
-        await this._main.session.delete()
-      } else if (e.status === 0 || e.status > 501) {
+        await this._main.session.session_expired()
+      } else if (!e.status || e.status > 501) {
         this._main.set_conn_status(statuses.problem)
       }
       throw e
