@@ -69,15 +69,10 @@ class App extends React.Component {
   }
 
   setError = error => {
-    if (error.status === 401 && this.props.location.pathname !== '/login/') {
-      this.props.history.push('/login/')
-    } else {
-      console.warn('setting error:', error)
-      // Raven.captureMessage(`caught error: ${error.message || error.toString()}`, {
-      //   stacktrace: true, level: 'warning', extra: error
-      // })
-      this.setState({error})
-    }
+    // Raven.captureMessage(`caught error: ${error.message || error.toString()}`, {
+    //   stacktrace: true, level: 'warning', extra: error
+    // })
+    this.setState({error})
   }
 
   render () {
