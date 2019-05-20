@@ -26,9 +26,9 @@ from em2.background import push_multiple
 from em2.core import ActionModel, apply_actions
 from em2.main import create_app
 from em2.protocol.fallback import LogFallbackHandler, SesFallbackHandler
-from em2.protocol.worker import worker_settings
 from em2.settings import Settings
 from em2.utils.web import MakeUrl
+from em2.worker import worker_settings
 
 from . import dummy_server
 
@@ -58,6 +58,7 @@ def _fix_settings_session():
         internal_auth_key='testing' * 6,
         auth_key=Fernet.generate_key(),
         s3_temp_bucket='s3_temp_bucket.example.com',
+        s3_file_bucket='s3_files_bucket.example.com',
     )
 
 
@@ -73,7 +74,7 @@ def _fix_clean_db(settings_session):
 
 @pytest.fixture(name='dummy_server')
 async def _fix_dummy_server(loop, aiohttp_server):
-    ctx = {'smtp': [], 's3_emails': {}}
+    ctx = {'smtp': [], 's3_files': {}}
     return await create_dummy_server(aiohttp_server, extra_routes=dummy_server.routes, extra_context=ctx)
 
 
@@ -405,7 +406,7 @@ def _fix_create_ses_email(dummy_server, sns_data, create_email):
         **kwargs,
     ):
         msg = create_email(*args, to=to, message_id=message_id, headers=headers, **kwargs)
-        dummy_server.app['s3_emails'][key] = msg.as_string()
+        dummy_server.app['s3_files'][key] = msg.as_string()
 
         headers = headers or {}
         h = [{'name': 'Message-ID', 'value': message_id}] + [{'name': k, 'value': v} for k, v in headers.items()]

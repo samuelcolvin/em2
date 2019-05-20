@@ -4,7 +4,6 @@ import {sleep} from 'reactstrap-toolbox'
 import {make_url} from '../../logic/network'
 
 
-
 class Html extends React.Component {
   iframe_ref = React.createRef()
   loaded = false
@@ -40,7 +39,7 @@ class Html extends React.Component {
   build_body = () => this.props.msg.body.replace(/src="cid:(.+?)"/g, this.replace_id)
 
   replace_id = (m, cid) => {
-    const url = make_url('ui', `/${this.props.session_id}/img/${this.props.conv}/${cid}`)
+    const url = make_url('ui', `/${this.props.session_id}/conv/${this.props.conv}/get-image/${cid}`)
     return `src="${url}"`
   }
 

@@ -180,12 +180,24 @@ class ProcessSMTP:
     async def store_attachments(self, send_id: int, msg: EmailMessage):
         files = list(find_smtp_files(msg))
         if files:
-            action_pk = await self.conn.fetchval('select action from sends where id=$1', send_id)
-            files = [(action_pk, send_id, f.content_disp, f.hash, f.content_id, f.name, f.content_type) for f in files]
+            action_pk, conv_id = await self.conn.fetchrow(
+                """
+                select s.action, a.conv
+                from sends s
+                join actions a on s.action = a.pk
+                where s.id=$1
+                """,
+                send_id,
+            )
+            files = [
+                (conv_id, action_pk, send_id, f.content_disp, f.hash, f.content_id, f.name, f.content_type)
+                for f in files
+            ]
+            # TODO cope with repeated content_id
             await self.conn.executemany(
                 """
-                insert into files (action, send, content_disp, hash, content_id, name, content_type)
-                values            ($1    , $2  , $3          , $4  , $5        , $6  , $7)
+                insert into files (conv  , action, send, content_disp, hash, content_id, name, content_type)
+                values            ($1    , $2    , $3  , $4          , $5  , $6        , $7  , $8)
                 """,
                 files,
             )

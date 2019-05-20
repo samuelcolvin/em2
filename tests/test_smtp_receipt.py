@@ -75,7 +75,7 @@ async def test_attachment_content_id(fake_request, factory: Factory, db_conn, cr
         'action': await db_conn.fetchval("select pk from actions where act='message:add'"),
         'storage': None,
         'content_disp': 'inline',
-        'hash': 'fc0f9baebcd2abc35d49151df755603d1c52fe4b',
+        'hash': 'f1684d46ae5b40a4b0c7c06eb19282d0',
         'content_id': 'foobar-123',
         'name': None,
         'content_type': 'image/jpeg',
@@ -108,8 +108,8 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, redis
         'action': await db_conn.fetchval("select pk from actions where act='message:add'"),
         'storage': None,
         'content_disp': 'attachment',
-        'hash': '9a712614320fa93e81eca8408f32c9c1fde6bdc1',
-        'content_id': '9a712614320fa93e81eca8408f32c9c1fde6bdc1',
+        'hash': 'b52731692f35498bba7e4660142129d2',
+        'content_id': RegexStr('.{36}'),
         'name': 'testing1.txt',
         'content_type': 'text/plain',
     }
@@ -143,14 +143,14 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, redis
             'files': [
                 {
                     'content_disp': 'attachment',
-                    'hash': '9a712614320fa93e81eca8408f32c9c1fde6bdc1',
-                    'content_id': '9a712614320fa93e81eca8408f32c9c1fde6bdc1',
+                    'hash': 'b52731692f35498bba7e4660142129d2',
+                    'content_id': RegexStr('.{36}'),
                     'name': 'testing1.txt',
                     'content_type': 'text/plain',
                 },
                 {
                     'content_disp': 'attachment',
-                    'hash': 'a69dd0da865b28d7d215a2ec84623d191059aafe',
+                    'hash': 'a10edbbb8f28f8e98ee6b649ea2556f4',
                     'content_id': 'testing-hello2',
                     'name': 'testing2.txt',
                     'content_type': 'text/plain',
@@ -193,13 +193,13 @@ async def test_get_file(fake_request, factory: Factory, db_conn, create_email, a
     assert data[2]['files'] == [
         {
             'content_disp': 'attachment',
-            'hash': '874f36549f57ff5d6596dd153cb94524f1eeebc1',
+            'hash': 'b1946ac92492d2347c6235b4d2611184',
             'content_id': 'testing-hello2',
             'name': 'testing.txt',
             'content_type': 'text/plain',
         }
     ]
-    dummy_server.app['s3_emails']['s3-test-path'] = msg.as_string()
+    dummy_server.app['s3_files']['s3-test-path'] = msg.as_string()
 
     url = factory.url('ui:get-file', conv=conv_key, content_id='testing-hello2')
     r1 = await cli.get(url, allow_redirects=False)
@@ -243,15 +243,15 @@ def test_finding_attachment(create_email, attachment, create_image):
     attachments = list(find_smtp_files(msg, True))
     assert attachments == [
         File(
-            hash='816f0241b8a5f206b224197b87b2cbc464e626a9',
+            hash='3858f62230ac3c915f300c664312c63f',
             name='testing.tff',
-            content_id='816f0241b8a5f206b224197b87b2cbc464e626a9',
+            content_id=RegexStr('.{36}'),
             content_disp='attachment',
             content_type='font/ttf',
             content=b'foobar',
         ),
         File(
-            hash='874f36549f57ff5d6596dd153cb94524f1eeebc1',
+            hash='b1946ac92492d2347c6235b4d2611184',
             name='testing.txt',
             content_id='testing-hello2',
             content_disp='attachment',
@@ -259,7 +259,7 @@ def test_finding_attachment(create_email, attachment, create_image):
             content=b'hello\n',
         ),
         File(
-            hash='fc0f9baebcd2abc35d49151df755603d1c52fe4b',
+            hash='f1684d46ae5b40a4b0c7c06eb19282d0',
             name=None,
             content_id='foobar-123',
             content_disp='inline',

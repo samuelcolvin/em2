@@ -136,9 +136,10 @@ from (
     c.key as conv,
     (select array_agg(row_to_json(f))
       from (
-        select content_disp, hash, content_id, name, content_type
+        select content_disp, hash, content_id, name, content_type, size
         from files
         where files.action = a.pk
+        order by content_id  -- TODO only used in tests I think, could be removed
       ) f
     ) as files
     from actions as a

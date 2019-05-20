@@ -15,7 +15,7 @@ import * as fas from '@fortawesome/free-solid-svg-icons'
 import {format_ts} from '../../utils/dt'
 import {make_url} from '../../logic/network'
 import MessageBody from './MessageBody'
-import file_icon from './file_icons'
+import {file_icon, file_size} from './files'
 
 const CommentButton = ({msg, state, setState, comment_ref, children}) => {
   const btn_id = `msg-${msg.last_action}`
@@ -100,15 +100,16 @@ const Attachments = ({files, session_id, conv}) => {
   if (!attachments.length) {
     return null
   }
-  const file_url = f => make_url('ui', `/${session_id}/img/${conv}/${f.content_id}`)
+  const file_url = f => make_url('ui', `/${session_id}/conv/${conv}/get-image/${f.content_id}`)
   return (
     <div>
-      <span className="text-muted">Attachments</span>
+      <span className="text-muted small">Attachments</span>
       <ListGroup>
         {attachments.map(f => (
           <ListGroupItem key={f.hash} tag="a" href={file_url(f)} action download>
             <FontAwesomeIcon icon={file_icon(f.content_type)} className="mr-2"/>
             <span data-content-type={f.content_type}>{f.name}</span>
+            {f.size ? <b className="ml-2">{file_size(f.size)}</b> : null}
           </ListGroupItem>
         ))}
       </ListGroup>

@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from email import policy as email_policy
 from email.message import EmailMessage
 from email.parser import BytesParser
-from typing import Generator, Optional
+from typing import Generator, Optional, Tuple
+from uuid import uuid4
 
 from aiohttp.web_exceptions import HTTPGatewayTimeout
 from aioredis import Redis
@@ -16,7 +17,7 @@ from em2.settings import Settings
 from .datetime import utcnow
 from .storage import S3, S3Client, parse_storage_uri
 
-__all__ = ('parse_smtp', 'File', 'find_smtp_files')
+__all__ = ('parse_smtp', 'File', 'find_smtp_files', 'CopyToTemp')
 
 logger = logging.getLogger('em2.utils.smtp')
 email_parser = BytesParser(policy=email_policy.default)
@@ -48,12 +49,12 @@ def find_smtp_files(m: EmailMessage, inc_content=False, *, _msg_id=None, _cids=N
             content_type = part.get_content_type()
             content = part.get_payload(decode=True)
 
-            hash = hashlib.sha1(f'{name or ""}/{content_type or ""}/'.encode() + content).hexdigest()
+            hash = hashlib.md5(content).hexdigest()
             content_id = part['Content-ID']
             if content_id:
                 content_id = content_id.strip('<>')
             else:
-                content_id = hash
+                content_id = str(uuid4())
 
             if content_id in cids:
                 logger.warning('msg %s, duplicate content_id: %r', msg_id, content_id)
@@ -103,22 +104,22 @@ class CopyToTemp:
             body = await s3_client.download(bucket, send_path)
             msg = parse_smtp(body)
             del body
-            expires = utcnow() + self.settings.s3_tmp_bucket_lifetime
+            expires = utcnow() + self.settings.s3_temp_bucket_lifetime
             results = await asyncio.gather(
                 *(self._upload_file(s3_client, conv_key, send_path, f) for f in find_smtp_files(msg, True))
             )
-        for content_id, storage in results:
+        for content_id, storage, size in results:
             v = await self.conn.execute(
-                'update files set storage=$1, storage_expires=$2 where send=$3 and content_id=$4',
+                'update files set storage=$1, storage_expires=$2, size=$3 where send=$4 and content_id=$5',
                 storage,
                 expires,
+                size,
                 send_id,
                 content_id,
             )
             assert v
-            # debug(ref, storage, v)
 
-    async def _upload_file(self, s3_client: S3Client, conv_key, send_path, file: File):
+    async def _upload_file(self, s3_client: S3Client, conv_key, send_path, file: File) -> Tuple[str, str, int]:
         path = f'{conv_key}/{send_path}/{file.content_id}/{file.name}'
         bucket = self.settings.s3_temp_bucket
         assert bucket, 's3_temp_bucket not set'
@@ -126,7 +127,7 @@ class CopyToTemp:
         if file.content_disp == 'attachment':
             content_disposition = f'attachment; filename="{file.name}"'
         await s3_client.upload(bucket, path, file.content, file.content_type, content_disposition)
-        return file.content_id, f's3://{bucket}/{path}'
+        return file.content_id, f's3://{bucket}/{path}', len(file.content)
 
     async def _await_ongoing(self, key, sleep=0.5):
         for i in range(20):

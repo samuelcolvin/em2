@@ -303,8 +303,12 @@ export default class Conversations {
     }
   }
 
-  act = async (conv, actions) => {
-    return await this._requests.post('ui', `/${this._main.session.id}/conv/${conv}/act/`, {actions: actions})
+  act = async (conv, actions, files) => {
+    const d = {actions}
+    if (files) {
+      d['files'] = files
+    }
+    return await this._requests.post('ui', `/${this._main.session.id}/conv/${conv}/act/`, d)
   }
 
   set_flag = async (conv_key, flag) => {
@@ -366,6 +370,12 @@ export default class Conversations {
     // this is just saved locally, not on the server (for now?)
     await this._main.session.db.actions.update({conv, id: action_id}, {hide_warnings: show})
     this._main.fire('change', {conv})
+  }
+
+  request_file_upload = async (conv, filename, content_type, size) => {
+    const args = {filename, content_type, size}
+    const r = await this._requests.get('ui', `/${this._main.session.id}/conv/${conv}/upload-file/`, args)
+    return r.data
   }
 
   _get_db_actions = conv => this._main.session.db.actions.where({conv}).sortBy('id')

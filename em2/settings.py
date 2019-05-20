@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     cookie_name = 'em2'
     sql_path = SRC_DIR / 'models.sql'
     create_app = 'em2.main.create_app'
-    worker_func = 'em2.protocol.worker.run_worker'
+    worker_func = 'em2.worker.run_worker'
     patch_paths = ['em2.auth.patches']
     auth_key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa='
 
@@ -52,7 +52,8 @@ class Settings(BaseSettings):
     smtp_message_id_domain = 'email.amazonses.com'
     s3_endpoint_url: str = None  # only used when testing
     s3_temp_bucket: str = None
-    s3_tmp_bucket_lifetime: timedelta = 'P30D'
+    s3_temp_bucket_lifetime: timedelta = 'P30D'
+    s3_file_bucket: str = None
     # generate randomly to avoid leaking secrets:
     ses_url_token: str = token_urlsafe()
     aws_sns_signing_host = '.amazonaws.com'
