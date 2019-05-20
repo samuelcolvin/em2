@@ -83,6 +83,7 @@ class App extends React.Component {
       setMenuItem: menu_item => this.setState({menu_item}),
       menu_item: this.state.menu_item,
       user: this.state.user,
+      other_sessions: this.state.other_sessions,
     }
     return (
       <GlobalContext.Provider value={ctx}>

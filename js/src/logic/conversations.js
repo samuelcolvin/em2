@@ -247,7 +247,7 @@ export default class Conversations {
 
   update_counts = async () => {
     const online = await this._main.online()
-    if (!this._main.session.current) {
+    if (!await this._main.session.active()) {
       return {flags: {}, labels: []}
     }
     if (online && !this._main.session.current.cache.has('counts')) {
@@ -267,8 +267,8 @@ export default class Conversations {
 
   get = async key_prefix => {
     const online = await this._main.online()
-    if (!this._main.session.current) {
-      return {}
+    if (!await this._main.session.active()) {
+      return
     }
     let conv = await this._get_db(key_prefix)
     let actions

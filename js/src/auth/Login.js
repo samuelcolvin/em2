@@ -68,6 +68,15 @@ class Login extends React.Component {
     window.removeEventListener('message', this.on_message)
   }
 
+  set_session = async e => {
+    if (!this.props.ctx.user) {
+      // user not set, need to activate the session before following link
+      e.preventDefault()
+      await window.logic.session.init()
+      this.props.history.push('/')
+    }
+  }
+
   render () {
     let head = (
       <div>
@@ -77,13 +86,14 @@ class Login extends React.Component {
     const next = next_url(this.props.location)
     if (next) {
       head = <div>Login to view <code>{next}</code>.</div>
-    } else if (this.props.ctx.user) {
+    } else if (this.props.ctx.user || this.props.ctx.other_sessions.length) {
+      const user = this.props.ctx.user || this.props.ctx.other_sessions[0]
       head = (
         <div>
-          You're currently logged in as <b>{this.props.ctx.user.name} ({this.props.ctx.user.email})</b>,
+          You're currently logged in as <b>{user.name} ({user.email})</b>,
           logging in again will create another session as a different user,
           <br/>
-          or go to <Link to="/">your dashboard</Link>.
+          or go to <Link to="/" onClick={this.set_session}>your dashboard</Link>.
         </div>
       )
     }
