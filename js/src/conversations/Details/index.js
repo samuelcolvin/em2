@@ -70,6 +70,7 @@ class ConvDetailsView extends React.Component {
       }
       this.props.ctx.setMenuItem(conv.primary_flag)
       this.props.ctx.setTitle(conv.subject)
+      this.props.ctx.setConvTitle(conv.subject)
       this.setState({conv})
       if (this.action_ids && this.state.locked && this.action_ids.filter(id => conv.action_ids.has(id))) {
         this.action_ids = null
@@ -159,7 +160,7 @@ class ConvDetailsView extends React.Component {
           <p>Unable to find conversation <code>{this.props.match.params.key}</code>.</p>
         </div>
       )
-    } else if (!this.state.conv) {
+    } else if (!this.state.conv || !this.props.ctx.user) {
       return <Loading/>
     }
     return (

@@ -30,16 +30,15 @@ export default class Websocket {
       console.warn('ws already connected, not connecting again')
       return
     }
-    this._main.set_conn_status(statuses.connecting)
     this._socket = this._connect()
   }
 
   _connect = () => {
-    if (!this._main.session) {
+    if (!this._main.session.id) {
       console.warn('session null, not connecting to ws')
       return
     }
-    let ws_url = make_url('ui', `/${this._main.session.id}/ws/`).replace('http', 'ws')
+    let ws_url = make_url('ui', `/${this._main.session.id}/ws/`).replace(/^http/, 'ws')
     let socket
     try {
       socket = new WebSocket(ws_url)
@@ -48,6 +47,7 @@ export default class Websocket {
       this._main.set_conn_status(statuses.offline)
       return null
     }
+    this._main.set_conn_status(statuses.connecting)
 
     socket.onopen = this._on_open
     socket.onclose = this._on_close
@@ -115,9 +115,7 @@ export default class Websocket {
     if (e.code === 4403) {
       console.debug('websocket closed with 4403, not authorised')
       this._main.set_conn_status(statuses.online)
-      await this._main.session.delete()
-      this._main.fire('setState', {user: null})
-      this._main.fire('setState', {other_sessions: []})
+      await this._main.session.expired()
     } else {
       console.debug(`websocket closed, reconnecting in ${reconnect_in}ms`, e)
       setTimeout(this.connect, reconnect_in)

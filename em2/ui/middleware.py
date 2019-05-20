@@ -43,20 +43,21 @@ async def finish_session(request, session_id, action):
 
 async def load_session(request) -> Session:
     raw_session = await get_session(request)
-    session = raw_session.get(request.match_info['session_id'])
+    session_key = request.match_info['session_id']
+    session = raw_session.get(session_key)
     if not session:
         raise JsonErrors.HTTPUnauthorized('Authorisation required')
 
-    session_id = int(request.match_info['session_id'])
+    session_id = int(session_key)
     if await request.app['redis'].exists(dead_session_key(session_id)):
         raise JsonErrors.HTTPUnauthorized('Session dead')
 
     settings: Settings = request.app['settings']
-    now = int(time())
-    if session['ts'] >= now + settings.session_expiry:
+    session_age = int(time()) - session['ts']
+    if session_age >= settings.session_expiry:
         await finish_session(request, session_id, 'expired')
         raise JsonErrors.HTTPUnauthorized('Session expired, authorisation required')
-    elif session['ts'] >= now + settings.micro_session_duration:
+    elif session_age >= settings.micro_session_duration:
         url = full_url(settings, 'auth', '/session/update/')
         data = session_event(request, session_id)
         headers = internal_request_headers(settings)
@@ -64,6 +65,7 @@ async def load_session(request) -> Session:
             data = await r.json()
 
         session['ts'] = data['ts']
+        raw_session.changed()
 
     return Session(session_id=session_id, **dict(session))
 

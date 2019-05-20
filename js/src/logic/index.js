@@ -23,30 +23,22 @@ export default class LogicMain {
   }
 
   _start = async () => {
-    const session_id = JSON.parse(sessionStorage['session_id'] || 'null')
-    await this.session.set(session_id)
+    await this.session.init()
     if (this.session.id) {
-      await this.update_sessions()
-    } else {
-      // no session, check the internet connection
-      const url = make_url('ui', '/online/')
-      try {
-        await fetch(url, {method: 'HEAD'})
-      } catch (error) {
-        // generally TypeError: failed to fetch, also CSP if rules are messed up
-        this.set_conn_status(statuses.offline)
-        console.debug(`checking connection status at ${url}: offline`)
-        return
-      }
-      console.debug(`checking connection status at ${url}: online`)
-      this.set_conn_status(statuses.online)
+      return
     }
-  }
-
-  update_sessions = async () => {
-    this.fire('setUser', this.session.current)
-    this.fire('setState', {other_sessions: await this.session.other_sessions()})
-    await this.ws.connect()
+    // no session, check the internet connection
+    const url = make_url('ui', '/online/')
+    try {
+      await fetch(url, {method: 'HEAD'})
+    } catch (error) {
+      // generally TypeError: failed to fetch, also CSP if rules are messed up
+      this.set_conn_status(statuses.offline)
+      console.debug(`checking connection status at ${url}: offline`)
+      return
+    }
+    console.debug(`checking connection status at ${url}: online`)
+    this.set_conn_status(statuses.online)
   }
 
   set_conn_status = conn_status => {

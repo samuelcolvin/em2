@@ -1,6 +1,6 @@
 import React from 'react'
 import {Route, Switch, withRouter} from 'react-router-dom'
-import {GlobalContext, Error} from 'reactstrap-toolbox'
+import {GlobalContext} from 'reactstrap-toolbox'
 
 import Logic from './logic'
 import {statuses} from './logic/network'
@@ -8,12 +8,12 @@ import Login from './auth/Login'
 import Logout from './auth/Logout'
 import SwitchSession from './auth/SwitchSession'
 import Navbar from './Navbar'
-import WithMenu from './WithMenu'
+import {RoutesWithMenu, ErrorWithMenu} from './WithMenu'
 
 
 const Main = ({app_state}) => {
   if (app_state.error) {
-    return <Error error={app_state.error}/>
+    return <ErrorWithMenu error={app_state.error}/>
   } else if (!app_state.conn_status) {
     // this should happen very briefly, don't show loading to avoid FOUC
     return null
@@ -29,7 +29,7 @@ const Main = ({app_state}) => {
         <Route exact path="/login/" component={Login}/>
         <Route exact path="/logout/" component={Logout}/>
         <Route exact path="/switch/:id(\d+)/" component={SwitchSession}/>
-        <Route component={WithMenu}/>
+        <Route component={RoutesWithMenu}/>
       </Switch>
     )
   }
@@ -43,27 +43,24 @@ class App extends React.Component {
     other_sessions: [],
     conn_status: null,
     menu_item: null,
+    conv_title: null,
   }
 
   componentDidMount () {
     window.logic = new Logic(this.props.history)
     window.logic.add_listener('setState', s => this.setState(s))
-    window.logic.add_listener('setUser', u => this.setUser(u))
+    window.logic.add_listener('setError', e => this.setError(e))
   }
 
   componentDidUpdate (prevProps) {
     document.title = this.state.title ? this.state.title : 'em2'
     if (this.props.location !== prevProps.location) {
       this.state.error && this.setState({error: null})
+      this.state.conv_title && this.setState({conv_title: null})
     }
     if (!this.state.user && this.state.conn_status && this.props.location.pathname !== '/login/') {
       this.props.history.push('/login/')
     }
-  }
-
-  setUser = user => {
-    this.setState({user})
-    sessionStorage['session_id'] = JSON.stringify(user ? user.session_id : null)
   }
 
   componentDidCatch (error, info) {
@@ -72,24 +69,21 @@ class App extends React.Component {
   }
 
   setError = error => {
-    if (error.status === 401 && this.props.location.pathname !== '/login/') {
-      this.props.history.push('/login/')
-    } else {
-      console.warn('setting error:', error)
-      // Raven.captureMessage(`caught error: ${error.message || error.toString()}`, {
-      //   stacktrace: true, level: 'warning', extra: error
-      // })
-      this.setState({error})
-    }
+    // Raven.captureMessage(`caught error: ${error.message || error.toString()}`, {
+    //   stacktrace: true, level: 'warning', extra: error
+    // })
+    this.setState({error})
   }
 
   render () {
     const ctx = {
       setError: error => this.setError(error),
       setTitle: title => this.setState({title}),
+      setConvTitle: conv_title => this.setState({conv_title}),
       setMenuItem: menu_item => this.setState({menu_item}),
       menu_item: this.state.menu_item,
       user: this.state.user,
+      other_sessions: this.state.other_sessions,
     }
     return (
       <GlobalContext.Provider value={ctx}>

@@ -11,6 +11,8 @@ import {
   DropdownToggle,
   DropdownMenu,
   DropdownItem,
+  Row,
+  Col,
 } from 'reactstrap'
 import {statuses} from './logic/network'
 
@@ -25,6 +27,9 @@ const AccountSummary = ({conn_status, user}) => {
   } else if (conn_status === statuses.offline) {
     connection_status_text = 'offline'
     connection_status_icon = fas.faTimes
+  } else if (conn_status === statuses.problem) {
+    connection_status_text = 'connection problems'
+    connection_status_icon = fas.faMinusCircle
   } else {
     connection_status_text = 'online'
     connection_status_icon = fas.faCircle
@@ -32,7 +37,7 @@ const AccountSummary = ({conn_status, user}) => {
   return (
     <span>
       <FontAwesomeIcon id="status-icon" icon={connection_status_icon}/>
-      <Tooltip placement="bottom"
+      <Tooltip placement="left"
                isOpen={show_tooltip}
                trigger="hover"
                target="status-icon"
@@ -89,10 +94,53 @@ const NavbarUser = ({app_state}) => (
   </div>
 )
 
-export default ({app_state}) => (
-  <NavbarBootstrap color="dark" dark fixed="top" expand="md">
+const StatusBar = ({conn_status, conv_title}) => {
+  const scroll_threshold = 50
+  const [down_page, set_down_page] = React.useState(false)
+
+  const on_scroll = () => {
+    const scroll_y = window.scrollY
+    if (!down_page && scroll_y > scroll_threshold) {
+      set_down_page(true)
+    } else if (down_page && scroll_y <= scroll_threshold) {
+      set_down_page(false)
+    }
+  }
+
+  React.useEffect(() => {
+    on_scroll()
+    window.addEventListener('scroll', on_scroll)
+    return () => window.removeEventListener('scroll', on_scroll)
+  })
+
+  const error_msg = {
+    [statuses.problem]: 'Connection Problems',
+    [statuses.offline]: 'Offline',
+  }[conn_status] || null
+  const show = (down_page && conv_title) || error_msg
+
+  return (
+    <div className={`status-bar${show ? ' show' : ''} ${error_msg ? 'bg-danger' : 'bg-primary'}`}>
+      <div className="container h-100">
+        <Row className="align-items-center h-100">
+          <Col md="3"/>
+          <Col md="6">
+            {conv_title}
+          </Col>
+          <Col md="3" className="text-right">
+            {error_msg || (conv_title ? null : 'Online')}
+          </Col>
+        </Row>
+      </div>
+    </div>
+  )
+}
+
+export default ({app_state}) => ([
+  <NavbarBootstrap key="nb" color="dark" dark fixed="top" expand="md">
     <div className="container">
       {app_state.user ? <NavbarUser app_state={app_state}/> : <NavbarBrand tag={Link} to="/">em2</NavbarBrand>}
     </div>
-  </NavbarBootstrap>
-)
+  </NavbarBootstrap>,
+  <StatusBar key="status" {...app_state}/>,
+])

@@ -225,11 +225,12 @@ export default class Conversations {
   }
 
   list = async (data) => {
-    const flag = data.flag
+    const online = await this._main.online()
     if (!this._main.session.current) {
-      return {}
+      return []
     }
-    if (await this._main.online()) {
+    const flag = data.flag
+    if (online) {
       // have to get every page between 1 and the page requested to make sure the offset works correctly at the end
       for (let page = 1; page <= data.page; page ++) {
         const cache_key = `page-${flag}-${page}`
@@ -245,10 +246,11 @@ export default class Conversations {
   }
 
   update_counts = async () => {
-    if (!this._main.session.current) {
+    const online = await this._main.online()
+    if (!await this._main.session.active()) {
       return {flags: {}, labels: []}
     }
-    if (await this._main.online() && !this._main.session.current.cache.has('counts')) {
+    if (online && !this._main.session.current.cache.has('counts')) {
       const r = await this._requests.get('ui', `/${this._main.session.id}/conv/counts/`)
 
       await this._main.session.update_cache('counts')
@@ -264,8 +266,11 @@ export default class Conversations {
   })
 
   get = async key_prefix => {
-    let conv = await this._get_db(key_prefix)
     const online = await this._main.online()
+    if (!await this._main.session.active()) {
+      return
+    }
+    let conv = await this._get_db(key_prefix)
     let actions
     if (!conv) {
       if (!online) {
@@ -362,8 +367,12 @@ export default class Conversations {
   }
 
   pages = flag => {
-    const counts = this.counts()
-    return Math.ceil(counts.flags[flag] / per_page)
+    if (this._main.session.current) {
+      const counts = this.counts()
+      return Math.ceil(counts.flags[flag] / per_page)
+    } else {
+      return 0
+    }
   }
 
   toggle_warnings = async (conv, action_id, show) => {
