@@ -23,7 +23,7 @@ class Session:
 
 class WsReauthenticate(Exception):
     """
-    Custom error for websockets telling the client to reauthenticate, then connect
+    Custom error for websockets telling the client to reauthenticate, then reconnect
     """
 
 

@@ -2,7 +2,6 @@ import logging
 from asyncio import CancelledError
 
 from aiohttp import WSMsgType
-from aiohttp.web_exceptions import HTTPFound
 from aiohttp.web_ws import WebSocketResponse
 from atoolbox import JsonErrors
 

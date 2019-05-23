@@ -49,7 +49,7 @@ class LeftMenu_ extends React.Component {
     state.styles = {
       position: 'fixed',
       top: '91px',
-      width: document.getElementById('main').offsetWidth / 4 - 30 + 'px'
+      width: document.getElementById('main').offsetWidth / 4 - 30 + 'px',
     }
     this.setState(state)
     this.remove_listener = window.logic.add_listener('flag-change', counts => this.setState(counts))
