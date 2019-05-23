@@ -164,7 +164,7 @@ create table sends (
   id bigserial primary key,
   action bigint references actions not null,
   outbound boolean not null default false,
-  node varchar(255),  -- null for fallback
+  node varchar(255),  -- null for smtp
   ref varchar(100),
   complete boolean not null default false,
   storage varchar(100),

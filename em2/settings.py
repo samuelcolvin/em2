@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # em2 feature settings:
     message_lock_duration: int = 3600  # how many seconds a lock holds for
 
-    fallback_handler = 'em2.protocol.fallback.LogFallbackHandler'
+    smtp_handler = 'em2.protocol.smtp.LogSmtpHandler'
     aws_access_key: str = None
     aws_secret_key: str = None
     aws_region: str = 'us-east-1'

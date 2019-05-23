@@ -25,7 +25,7 @@ from em2.auth.utils import mk_password
 from em2.background import push_multiple
 from em2.core import ActionModel, apply_actions
 from em2.main import create_app
-from em2.protocol.fallback import LogFallbackHandler, SesFallbackHandler
+from em2.protocol.smtp import LogSmtpHandler, SesSmtpHandler
 from em2.settings import Settings
 from em2.utils.web import MakeUrl
 from em2.worker import worker_settings
@@ -277,7 +277,7 @@ async def _fix_worker(redis, settings, db_conn):
         session=session,
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
-    ctx['fallback_handler'] = LogFallbackHandler(ctx)
+    ctx['smtp_handler'] = LogSmtpHandler(ctx)
     worker = Worker(functions=worker_settings['functions'], redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)
 
     yield worker
@@ -296,12 +296,12 @@ async def _fix_ses_worker(redis, settings, db_conn):
         session=session,
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
-    ctx['fallback_handler'] = SesFallbackHandler(ctx)
+    ctx['smtp_handler'] = SesSmtpHandler(ctx)
     worker = Worker(functions=worker_settings['functions'], redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)
 
     yield worker
 
-    await ctx['fallback_handler'].shutdown()
+    await ctx['smtp_handler'].shutdown()
     worker.pool = None
     await worker.close()
     await session.close()
@@ -322,7 +322,7 @@ async def _fix_send_to_remote(factory: Factory, worker: Worker, db_conn):
 def _fix_sns_data(dummy_server, mocker):
     def run(message_id, *, mock_verify=True, **message):
         if mock_verify:
-            mocker.patch('em2.protocol.views.fallback_ses.x509.load_pem_x509_certificate')
+            mocker.patch('em2.protocol.views.smtp_ses.x509.load_pem_x509_certificate')
         return {
             'Type': 'Notification',
             'MessageId': message_id,

@@ -1,7 +1,7 @@
 from aiohttp import web
 from atoolbox.middleware import pg_middleware
 
-from em2.protocol.views.fallback_ses import ses_webhook
+from em2.protocol.views.smtp_ses import ses_webhook
 from em2.settings import Settings
 from em2.utils.web import build_index
 

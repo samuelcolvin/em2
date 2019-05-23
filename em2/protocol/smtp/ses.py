@@ -14,9 +14,9 @@ from atoolbox import RequestError
 
 from em2.utils.datetime import utcnow
 
-from .base_handler import BaseFallbackHandler
+from .base_handler import BaseSmtpHandler
 
-logger = logging.getLogger('em2.fallback.aws')
+logger = logging.getLogger('em2.smtp.aws')
 
 _AWS_HOST = 'email.{region}.amazonaws.com'
 _AWS_ENDPOINT = 'https://{host}/'
@@ -43,7 +43,7 @@ _AUTH_HEADER = (
 )
 
 
-class SesFallbackHandler(BaseFallbackHandler):
+class SesSmtpHandler(BaseSmtpHandler):
     """
     Use AWS's SES service to send SMTP emails.
     """
@@ -53,7 +53,7 @@ class SesFallbackHandler(BaseFallbackHandler):
         self.session = ClientSession(timeout=ClientTimeout(total=5))
         self._host = None
         if not (self.settings.aws_access_key and self.settings.aws_secret_key):
-            logger.warning('settings.aws_access_key and settings.aws_secret_key must be set to use SesFallbackHandler')
+            logger.warning('settings.aws_access_key and settings.aws_secret_key must be set to use SesSmtpHandler')
             return
         self._host = self.settings.ses_host.format(region=self.settings.aws_region)
         self._endpoint = self.settings.ses_endpoint_url.format(host=self._host)

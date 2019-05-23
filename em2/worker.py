@@ -7,8 +7,8 @@ from arq import Worker
 from buildpg import asyncpg
 from pydantic.utils import import_string
 
-from em2.protocol.fallback import BaseFallbackHandler, fallback_send
 from em2.protocol.push import push_actions
+from em2.protocol.smtp import BaseSmtpHandler, smtp_send
 from em2.settings import Settings
 from em2.ui.views.files import delete_stale_upload
 
@@ -21,17 +21,17 @@ async def startup(ctx):
         session=ClientSession(timeout=ClientTimeout(total=10)),
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
-    fallback_handler_cls: Type[BaseFallbackHandler] = import_string(settings.fallback_handler)
-    fallback_handler = fallback_handler_cls(ctx)
-    await fallback_handler.startup()
-    ctx['fallback_handler'] = fallback_handler
+    smtp_handler_cls: Type[BaseSmtpHandler] = import_string(settings.smtp_handler)
+    smtp_handler = smtp_handler_cls(ctx)
+    await smtp_handler.startup()
+    ctx['smtp_handler'] = smtp_handler
 
 
 async def shutdown(ctx):
-    await asyncio.gather(ctx['session'].close(), ctx['pg'].close(), ctx['fallback_handler'].shutdown())
+    await asyncio.gather(ctx['session'].close(), ctx['pg'].close(), ctx['smtp_handler'].shutdown())
 
 
-functions = [fallback_send, push_actions, delete_stale_upload]
+functions = [smtp_send, push_actions, delete_stale_upload]
 worker_settings = dict(functions=functions, on_startup=startup, on_shutdown=shutdown)
 
 

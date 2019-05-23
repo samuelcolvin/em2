@@ -22,7 +22,7 @@ from em2.settings import Settings
 from em2.utils.smtp import parse_smtp
 from em2.utils.storage import S3
 
-from .fallback_utils import get_email_recipients, process_smtp, remove_participants
+from .smtp_utils import get_email_recipients, process_smtp, remove_participants
 
 logger = logging.getLogger('em2.protocol.ses')
 

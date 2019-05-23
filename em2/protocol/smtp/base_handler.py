@@ -8,14 +8,14 @@ from misaka import Markdown, SaferHtmlRenderer
 from em2.core import ActionTypes, MsgFormat
 from em2.settings import Settings
 
-logger = logging.getLogger('em2.fallback')
+logger = logging.getLogger('em2.smtp')
 
 flags = ('hard-wrap',)
 extensions = ('no-intra-emphasis',)
 safe_markdown = Markdown(SaferHtmlRenderer(flags=flags), extensions=extensions)
 
 
-class BaseFallbackHandler:
+class BaseSmtpHandler:
     def __init__(self, ctx):
         self.settings: Settings = ctx['settings']
         self.pg: Pool = ctx['pg']

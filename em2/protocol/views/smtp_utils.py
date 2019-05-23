@@ -26,7 +26,7 @@ from em2.core import (
 from em2.settings import Settings
 from em2.utils.smtp import find_smtp_files
 
-logger = logging.getLogger('em2.protocol.views.fallback')
+logger = logging.getLogger('em2.protocol.views.smtp')
 
 __all__ = ['remove_participants', 'get_email_recipients', 'process_smtp']
 

@@ -22,7 +22,7 @@ logger = logging.getLogger('em2.push')
 # could try another subdomain with a random part incase people are using em2-platform
 em2_subdomain = 'em2-platform'
 RETRY = 'RT'
-FALLBACK = 'FB'
+SMTP = 'SMTP'
 
 
 class HttpError(RuntimeError):
@@ -61,12 +61,12 @@ class Pusher:
 
     async def split_destinations(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
         results = await asyncio.gather(*[self.resolve_user(*u) for u in users])
-        retry_users, fallback, em2 = set(), set(), set()
+        retry_users, smtp, em2 = set(), set(), set()
         for node, email in filter(None, results):
             if node == RETRY:
                 retry_users.add((email, False))
-            elif node == FALLBACK:
-                fallback.add(email)
+            elif node == SMTP:
+                smtp.add(email)
             else:
                 em2.add(node)
 
@@ -75,16 +75,16 @@ class Pusher:
                 'push_actions', actions_data, retry_users, _job_try=self.job_try + 1, _defer_by=self.job_try * 10
             )
         actions = json.loads(actions_data)['actions']
-        if fallback:
-            logger.info('%d fallback emails to send', len(fallback))
+        if smtp:
+            logger.info('%d smtp emails to send', len(smtp))
             # "seen" actions don't get sent via SMTP
             # TODO anything else to skip here?
             if not all(a['act'] == ActionTypes.seen for a in actions):
-                await self.redis.enqueue_job('fallback_send', actions)
+                await self.redis.enqueue_job('smtp_send', actions)
         else:
             logger.info('%d em2 nodes to push action to', len(em2))
             raise NotImplementedError('pushing to other em2 platforms not yet supported')
-        return f'retry={len(retry_users)} fallback={len(fallback)} em2={len(em2)}'
+        return f'retry={len(retry_users)} smtp={len(smtp)} em2={len(em2)}'
 
     async def resolve_user(self, email: str, current_user_type: UserTypes):
         if current_user_type == UserTypes.new:
@@ -123,8 +123,8 @@ class Pusher:
                 # 31_104_000 is one year, got a valid em2 node, assume it'll last for a long time
                 await self.redis.setex(user_node_key, 31_104_000, node)
         else:
-            # looks like domain doesn't support em2, fallback
-            node = FALLBACK
+            # looks like domain doesn't support em2, smtp
+            node = SMTP
             user_type = UserTypes.remote_other
 
         if current_user_type != user_type:
