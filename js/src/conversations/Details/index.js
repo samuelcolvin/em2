@@ -23,15 +23,9 @@ class ConvDetailsView extends React.Component {
   }
 
   componentDidUpdate (prevProps, prevState) {
-    if (this.props.match.params.key !== prevProps.match.params.key) {
-      // moved to a new conversation, clear the state completely
-      this.setState(Object.assign(...Object.keys(this.state).map(k => ({[k]: null}))))
-      this.update()
-    } else {
-      const prev_msg_count = prevState.conv ? prevState.conv.messages.length : null
-      if (prev_msg_count && this.state.conv && prev_msg_count < this.state.conv.messages.length) {
-        window.scrollTo(0,document.body.scrollHeight)
-      }
+    const prev_msg_count = prevState.conv ? prevState.conv.messages.length : null
+    if (prev_msg_count && this.state.conv && prev_msg_count < this.state.conv.messages.length) {
+      window.scrollTo(0,document.body.scrollHeight)
     }
   }
 

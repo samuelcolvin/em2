@@ -45,8 +45,13 @@ class LeftMenu_ extends React.Component {
   state = {flags: {}, labels:[]}
 
   async componentDidMount () {
-    const counts = await window.logic.conversations.update_counts()
-    this.setState(counts)
+    const state = await window.logic.conversations.update_counts()
+    state.styles = {
+      position: 'fixed',
+      top: '91px',
+      width: document.getElementById('main').offsetWidth / 4 - 30 + 'px'
+    }
+    this.setState(state)
     this.remove_listener = window.logic.add_listener('flag-change', counts => this.setState(counts))
   }
 
@@ -57,7 +62,7 @@ class LeftMenu_ extends React.Component {
   render () {
     const s = this.props.ctx.menu_item
     return (
-      <div className="left-menu">
+      <div className="left-menu" style={this.state.styles}>
         <div className="box no-pad">
           <ListGroup>
             <ListGroupItem
@@ -102,6 +107,9 @@ class LeftMenu_ extends React.Component {
 
 const LeftMenu = WithContext(LeftMenu_)
 
+// prompt new component construction when the key conv key changes
+const render_conv_details = ({location}) => <ConversationDetails key={location.key}/>
+
 export const RoutesWithMenu = () => (
   <Row>
     <Col md="3">
@@ -112,7 +120,7 @@ export const RoutesWithMenu = () => (
         <Route exact path="/" component={ListConversations}/>
         <Route exact path="/:flag(draft|sent|archive|all|spam|deleted)/" component={ListConversations}/>
         <Route exact path="/create/" component={CreateConversation}/>
-        <Route path="/:key([a-f0-9]{10,64})/" component={ConversationDetails}/>
+        <Route path="/:key([a-f0-9]{10,64})/" render={render_conv_details}/>
         <Route path="/wait/:key([a-f0-9]{10,64})/" component={Wait}/>
         <Route component={NotFound}/>
       </Switch>

@@ -72,13 +72,10 @@ export default class LogicMain {
     let matched = 0
     for (const l of Object.values(this.listeners)) {
       if (l.channel === channel) {
-        console.debug(`channel "${channel}", calling "${l.func}" with`, details)
         l.func(details)
         matched += 1
       }
     }
-    if (matched === 0) {
-      console.debug(`message to channel "${channel}", with no listeners`)
-    }
+    console.debug(`event "${channel}" fired to ${matched} listener${matched === 1 ? '' : 's'} with args:`, details)
   }
 }
