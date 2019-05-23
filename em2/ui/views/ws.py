@@ -7,7 +7,7 @@ from atoolbox import JsonErrors
 
 from em2.background import Background
 
-from ..middleware import load_session
+from ..middleware import WsReauthenticate, load_session
 
 logger = logging.getLogger('em2.ui.ws')
 
@@ -17,10 +17,10 @@ async def websocket(request):
 
     try:
         session = await load_session(request)
-    except JsonErrors.HTTPUnauthorized:
+    except (JsonErrors.HTTPUnauthorized, WsReauthenticate) as exc:
         await ws.prepare(request)
         try:
-            await ws.close(code=4403)
+            await ws.close(code=4401 if isinstance(exc, WsReauthenticate) else 4403)
         except CancelledError:
             # happens, not a problem
             pass

@@ -1,5 +1,6 @@
 import json
 
+from aiohttp import WSMsgType
 from pytest_toolbox.comparison import AnyInt, RegexStr
 
 from .conftest import Factory
@@ -58,6 +59,7 @@ async def test_renew_session(cli, db_conn, settings, factory: Factory):
     for i in range(3):
         r = await cli.get(factory.url('ui:list'))
         assert r.status == 200, await r.text()
+        assert 'Set-Cookie' not in r.headers, dict(r.headers)
 
     assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
     events = await db_conn.fetchval('select events from auth_sessions')
@@ -67,6 +69,7 @@ async def test_renew_session(cli, db_conn, settings, factory: Factory):
 
     r = await cli.get(factory.url('ui:list'))
     assert r.status == 200, await r.text()
+    assert 'Set-Cookie' in r.headers, dict(r.headers)
 
     assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
     events = await db_conn.fetchval('select events from auth_sessions')
@@ -76,8 +79,31 @@ async def test_renew_session(cli, db_conn, settings, factory: Factory):
     ]
 
 
+async def test_renew_session_ws(cli, db_conn, settings, factory: Factory):
+    await factory.create_user(login=True)
+
+    r = await cli.get(factory.url('ui:auth-check'))
+    assert r.status == 200, await r.text()
+
+    assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
+    events = await db_conn.fetchval('select events from auth_sessions')
+    assert len(events) == 1
+
+    settings.micro_session_duration = -1
+
+    async with cli.session.ws_connect(cli.make_url(factory.url('ui:websocket'))) as ws:
+        msg = await ws.receive(timeout=0.1)
+
+    assert msg.type == WSMsgType.close
+    assert msg.data == 4401
+
+    assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
+    events = await db_conn.fetchval('select events from auth_sessions')
+    assert len(events) == 1
+
+
 async def test_no_auth(cli, url):
-    r = await cli.get(url('ui:list', session_id=1))
+    r = await cli.get(url('ui:auth-check', session_id=1))
     assert r.status == 401, await r.text()
     assert await r.json() == {'message': 'Authorisation required'}
 

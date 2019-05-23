@@ -21,6 +21,12 @@ class Session:
     ts: int
 
 
+class WsReauthenticate(Exception):
+    """
+    Custom error for websockets telling the client to reauthenticate, then reconnect
+    """
+
+
 def dead_session_key(session_id: int) -> str:
     return f'dead-session:{session_id}'
 
@@ -58,6 +64,11 @@ async def load_session(request) -> Session:
         await finish_session(request, session_id, 'expired')
         raise JsonErrors.HTTPUnauthorized('Session expired, authorisation required')
     elif session_age >= settings.micro_session_duration:
+        if request['view_name'] == 'ui.websocket':
+            # Set-Cookie doesn't work with 101 upgrade for websockets so we have to reply with a custom
+            # ws code and the js takes care of making a request to auth-check to update the session ts
+            # before reconnecting to the websocket
+            raise WsReauthenticate()
         url = full_url(settings, 'auth', '/session/update/')
         data = session_event(request, session_id)
         headers = internal_request_headers(settings)
