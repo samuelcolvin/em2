@@ -11,7 +11,7 @@ from em2.utils.web import add_access_control, build_index
 
 from .middleware import user_middleware
 from .views import online
-from .views.auth import AuthExchangeToken, logout
+from .views.auth import AuthExchangeToken, auth_check, logout
 from .views.contacts import ContactSearch
 from .views.conversations import (
     ConvAct,
@@ -61,6 +61,7 @@ async def create_app_ui(settings=None):
         web.get(s + 'ws/', websocket, name='websocket'),
         # ui auth views:
         web.route('*', '/auth/token/', AuthExchangeToken.view(), name='auth-token'),
+        web.get(s + 'auth/check/', auth_check, name='auth-check'),
         web.post(s + 'auth/logout/', logout, name='auth-logout'),
         # different app?:
         web.get(s + 'contacts/lookup-email/', ContactSearch.view(), name='contacts-lookup-email'),

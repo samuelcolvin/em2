@@ -1,5 +1,6 @@
 import json
 
+from aiohttp import WSMsgType
 from pytest_toolbox.comparison import AnyInt, RegexStr
 
 from .conftest import Factory
@@ -58,6 +59,7 @@ async def test_renew_session(cli, db_conn, settings, factory: Factory):
     for i in range(3):
         r = await cli.get(factory.url('ui:list'))
         assert r.status == 200, await r.text()
+        assert 'Set-Cookie' not in r.headers, dict(r.headers)
 
     assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
     events = await db_conn.fetchval('select events from auth_sessions')
@@ -67,6 +69,33 @@ async def test_renew_session(cli, db_conn, settings, factory: Factory):
 
     r = await cli.get(factory.url('ui:list'))
     assert r.status == 200, await r.text()
+    assert 'Set-Cookie' in r.headers, dict(r.headers)
+
+    assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
+    events = await db_conn.fetchval('select events from auth_sessions')
+    assert [json.loads(e) for e in events] == [
+        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'login-pw'},
+        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'update'},
+    ]
+
+
+async def test_renew_session_ws(cli, db_conn, settings, factory: Factory):
+    await factory.create_user(login=True)
+
+    r = await cli.get(factory.url('ui:list'))
+    assert r.status == 200, await r.text()
+
+    assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
+    events = await db_conn.fetchval('select events from auth_sessions')
+    assert len(events) == 1
+
+    settings.micro_session_duration = -1
+
+    async with cli.session.ws_connect(cli.make_url(factory.url('ui:websocket'))) as ws:
+        msg = await ws.receive(timeout=0.1)
+        assert msg.type == WSMsgType.text
+        assert json.loads(msg.data) == {'user_v': 1}
+        debug(dict(ws._response.headers))
 
     assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
     events = await db_conn.fetchval('select events from auth_sessions')

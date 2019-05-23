@@ -37,3 +37,11 @@ async def logout(request):
         dead_session_key(session_id), request.app['settings'].micro_session_duration + 60, b'1'
     )
     return json_response(status='ok')
+
+
+async def auth_check(request):
+    """
+    No-op view to set the session cookie, this is used by websocket since the "Set-Cookie" header
+    doesn't work with 101 upgrade
+    """
+    return json_response(status='ok')

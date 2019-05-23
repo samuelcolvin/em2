@@ -1,4 +1,3 @@
-import {sleep} from 'reactstrap-toolbox'
 import {make_url, statuses} from './network'
 import {unix_ms, bool_int} from './utils'
 
@@ -49,9 +48,9 @@ export default class Websocket {
     }
     this._main.set_conn_status(statuses.connecting)
 
-    socket.onopen = this._on_open
     socket.onclose = this._on_close
     socket.onerror = this._on_error
+    this._first_msg = true
     socket.onmessage = this._on_message
     return socket
   }
@@ -64,19 +63,15 @@ export default class Websocket {
     }
   }
 
-  _on_open = async () => {
-    await sleep(100)
-    if (this._socket) {
+  _on_message = async event => {
+    this._main.set_conn_status(statuses.online)
+    if (this._first_msg) {
       console.debug('websocket open')
-      this._main.set_conn_status(statuses.online)
       this._disconnects = 0
       this._main.notify.request()
       this._clear_reconnect = setTimeout(this._reconnect, ws_ttl)
+      this._first_msg = false
     }
-  }
-
-  _on_message = async event => {
-    this._main.set_conn_status(statuses.online)
     const data = JSON.parse(event.data)
     console.debug('ws message:', data)
 
@@ -110,17 +105,22 @@ export default class Websocket {
       return
     }
     this._socket = null
-    const reconnect_in = Math.min(20000, 2 ** this._disconnects * 500)
-    this._disconnects += 1
     if (e.code === 4403) {
       console.debug('websocket closed with 4403, not authorised')
       this._main.set_conn_status(statuses.online)
       await this._main.session.expired()
+      return
+    } else if (e.code === 4401) {
+      console.debug(`websocket closed, re-authenticating and reconnecting`, e)
+      await this._main.requests.get('ui', `/${this._main.session.id}/auth/check/`)
+      this.connect()
     } else {
-      console.debug(`websocket closed, reconnecting in ${reconnect_in}ms`, e)
+      this._disconnects += 1
+      const reconnect_in = Math.min(20000, 2 ** this._disconnects * 500)
       setTimeout(this.connect, reconnect_in)
-      setTimeout(() => !this._socket && this._main.set_conn_status(statuses.offline), 3000)
+      console.debug(`websocket closed, reconnecting in ${reconnect_in}ms`, e)
     }
+    setTimeout(() => !this._socket && this._main.set_conn_status(statuses.offline), 3000)
   }
 
   _on_error = () => {
