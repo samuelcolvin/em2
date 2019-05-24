@@ -35,7 +35,7 @@ create trigger remove_labels after delete on labels for each row execute procedu
 create table conversations (
   id bigserial primary key,
   key varchar(64) unique,
-  creator int not null references users on delete restrict,
+  creator bigint not null references users on delete restrict,
   created_ts timestamptz not null,
   updated_ts timestamptz not null,
   publish_ts timestamptz,
@@ -202,6 +202,27 @@ create table files (
   unique (conv, content_id)
 );
 create index files_action ON files USING btree (action);
+
+-- no references here so this could go in a different db or use something like elasticsearch
+create table search (
+  id bigserial primary key,
+  conv bigint not null,
+  participant_ids bigint[] not null,
+  freeze_action bigint,
+
+  conv_creator bigint not null,
+  conv_participant_ids bigint[] not null,
+  files varchar(255)[],  -- needs to contain main part and extensions separately
+  -- might need other things like subject, size
+  vector tsvector not null
+);
+create index search_conv on search using btree (conv);
+create index search_participant_ids on search using gin (participant_ids);
+create index search_freeze_action on search using btree (freeze_action);
+create index search_conv_creator on search using gin (conv_creator);
+create index search_conv_participant_ids on search using gin (conv_participant_ids);
+create index search_files on search using gin (files);
+create index search_vector on search using gin (vector);
 
 ----------------------------------------------------------------------------------
 -- auth tables, currently in the the same database as everything else, but with --
