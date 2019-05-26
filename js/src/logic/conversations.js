@@ -196,6 +196,7 @@ function construct_conv (conv, actions) {
     deleted: Boolean(conv.deleted),
     spam: Boolean(conv.spam),
     seen: Boolean(conv.seen),
+    removed: Boolean(conv.removed),
     primary_flag: primary_flag(conv),
     published: Boolean(actions.find(a => a.act === 'conv:publish')),
     subject: subject,

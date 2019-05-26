@@ -244,7 +244,7 @@ class _Act:
     See act() below for details.
     """
 
-    __slots__ = 'conn', 'settings', 'actor_user_id', 'conv_id', 'new_user_ids', 'spam', 'warnings'
+    __slots__ = 'conn', 'settings', 'actor_user_id', 'conv_id', 'new_user_ids', 'spam', 'warnings', 'last_action'
 
     def __init__(
         self, conn: BuildPgConnection, settings: Settings, actor_user_id: int, spam: bool, warnings: Dict[str, str]
@@ -257,12 +257,10 @@ class _Act:
         self.new_user_ids: Set[int] = set()
         self.spam = True if spam else None
         self.warnings = json.dumps(warnings) if warnings else None
+        self.last_action = None
 
     async def prepare(self, conv_ref: StrInt) -> Tuple[int, int]:
-        self.conv_id, last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_ref)
-        if last_action:
-            # if the user has be removed from the conversation they can't act
-            raise JsonErrors.HTTPBadRequest(message="You can't act on conversations you've been removed from")
+        self.conv_id, self.last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_ref)
 
         # we must be in a transaction
         # this is a hard check that conversations can only have on act applied at a time
@@ -274,7 +272,12 @@ class _Act:
     async def run(self, action: ActionModel) -> Optional[int]:
         if action.act is ActionTypes.seen:
             return await self._seen()
-        elif action.act in _prt_action_types:
+
+        # you can mark a conversation as seen when removed, but nothing else
+        if self.last_action:
+            raise JsonErrors.HTTPBadRequest(message="You can't act on conversations you've been removed from")
+
+        if action.act in _prt_action_types:
             return await self._act_on_participant(action)
         elif action.act in _msg_action_types:
             return await self._act_on_message(action)
