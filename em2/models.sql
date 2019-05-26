@@ -52,6 +52,8 @@ create table participants (
   conv bigint not null references conversations on delete cascade,
   user_id bigint not null references users on delete restrict,
   removal_action_id int,
+  removal_updated_ts timestamptz,
+  removal_details json,
   seen boolean,
   inbox boolean default true,
   deleted boolean,

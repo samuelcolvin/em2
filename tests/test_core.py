@@ -597,9 +597,20 @@ async def test_prt_add_remove_add(factory: Factory, db_conn):
     action = ActionModel(act=ActionTypes.prt_remove, participant=em, follows=4)
     assert [5] == await factory.act(user.id, conv.id, action)
 
-    prt = dict(
-        await db_conn.fetchrow('select removal_action_id, seen, inbox from participants where user_id=$1', new_user_id)
+    prt = await db_conn.fetchrow(
+        'select removal_action_id, removal_details, seen, inbox from participants where user_id=$1', new_user_id
     )
+    prt = dict(prt)
+    removal_details = json.loads(prt.pop('removal_details'))
+    assert removal_details == {
+        'act': 'participant:remove',
+        'sub': 'Test Subject',
+        'email': 'testing-1@example.com',
+        'creator': 'testing-1@example.com',
+        'prev': 'Test Message',
+        'prts': 2,
+        'msgs': 1,
+    }
     assert prt == {'removal_action_id': 5, 'seen': None, 'inbox': True}
 
     action = ActionModel(act=ActionTypes.prt_add, participant=em)
@@ -621,10 +632,10 @@ async def test_prt_add_remove_add(factory: Factory, db_conn):
         'msg_format': None,
         'warnings': None,
     }
-    prt = dict(
-        await db_conn.fetchrow('select removal_action_id, seen, inbox from participants where user_id=$1', new_user_id)
+    prt = await db_conn.fetchrow(
+        'select removal_action_id, removal_details, seen, inbox from participants where user_id=$1', new_user_id
     )
-    assert prt == {'removal_action_id': None, 'seen': None, 'inbox': True}
+    assert dict(prt) == {'removal_action_id': None, 'removal_details': None, 'seen': None, 'inbox': True}
 
 
 async def test_prt_add_act(factory: Factory, db_conn):

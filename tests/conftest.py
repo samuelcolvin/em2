@@ -141,7 +141,13 @@ async def _fix_cli(settings, db_conn, aiohttp_client, redis, loop):
             },
         )
 
+    async def get_json(url, *, status=200, **kwargs):
+        r = await cli.get(url, **kwargs)
+        assert r.status == status, await r.text()
+        return await r.json()
+
     cli.post_json = post_json
+    cli.get_json = get_json
     return cli
 
 

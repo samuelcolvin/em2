@@ -338,7 +338,13 @@ class _Act:
             )
             if removed_prt_id:
                 prt_id = removed_prt_id
-                await self.conn.execute('update participants set removal_action_id=null where id=$1', prt_id)
+                await self.conn.execute(
+                    """
+                    update participants set removal_action_id=null, removal_details=null, removal_updated_ts=null
+                    where id=$1
+                    """,
+                    prt_id,
+                )
             else:
                 prt_id = await self.conn.fetchval(
                     """
@@ -386,7 +392,16 @@ class _Act:
             prt_user_id,
         )
         if action.act == ActionTypes.prt_remove:
-            await self.conn.execute('update participants set removal_action_id=$1 where id=$2', action_id, prt_id)
+            await self.conn.execute(
+                """
+                update participants p set
+                removal_action_id=$1, removal_details=c.details, removal_updated_ts=c.updated_ts
+                from conversations c
+                where p.id=$2 and p.conv=c.id
+                """,
+                action_id,
+                prt_id,
+            )
         return action_id
 
     async def _act_on_message(self, action: ActionModel) -> int:

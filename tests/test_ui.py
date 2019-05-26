@@ -5,7 +5,7 @@ import pytest
 from aiohttp import WSMsgType
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
-from em2.core import construct_conv
+from em2.core import ActionModel, ActionTypes, construct_conv
 
 from .conftest import Factory
 
@@ -478,3 +478,52 @@ async def test_act_multiple(cli, factory: Factory, db_conn):
     obj = await r.json()
     assert obj == {'action_ids': [4, 5, 6]}
     assert 3 == await db_conn.fetchval('select v from users where id=$1', user.id)
+
+
+async def test_get_not_participant(factory: Factory, cli):
+    await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+
+    user2 = await factory.create_user()
+    obj = await cli.get_json(factory.url('ui:get-details', conv=conv.key, session_id=user2.session_id), status=404)
+    assert obj == {'message': 'Conversation not found'}
+
+
+async def test_removed_get_list(factory: Factory, cli):
+    user1 = await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+
+    user2 = await factory.create_user()
+    await factory.act(user1.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant=user2.email))
+    await factory.act(user1.id, conv.id, ActionModel(act=ActionTypes.msg_add, body='This is a **test**'))
+
+    obj = await cli.get_json(factory.url('ui:list', session_id=user2.session_id))
+    assert obj['conversations'][0]['removed'] is False
+    assert obj['conversations'][0]['last_action_id'] == 5
+    assert obj['conversations'][0]['details']['prev'] == 'This is a test'
+    obj = await cli.get_json(factory.url('ui:get-details', conv=conv.key, session_id=user2.session_id))
+    assert obj['removed'] is False
+    assert obj['last_action_id'] == 5
+    assert obj['details']['prev'] == 'This is a test'
+
+    await factory.act(user1.id, conv.id, ActionModel(act=ActionTypes.prt_remove, participant=user2.email, follows=4))
+    await factory.act(user1.id, conv.id, ActionModel(act=ActionTypes.msg_add, body='different'))
+
+    obj = await cli.get_json(factory.url('ui:list', session_id=user1.session_id))
+    assert obj['conversations'][0]['removed'] is False
+    assert obj['conversations'][0]['last_action_id'] == 7
+    assert obj['conversations'][0]['details']['prev'] == 'different'
+    obj = await cli.get_json(factory.url('ui:get-details', conv=conv.key, session_id=user1.session_id))
+    assert obj['removed'] is False
+    assert obj['last_action_id'] == 7
+    assert obj['details']['prev'] == 'different'
+
+    obj = await cli.get_json(factory.url('ui:list', session_id=user2.session_id))
+    assert obj['conversations'][0]['removed'] is True
+    assert obj['conversations'][0]['last_action_id'] == 6
+    assert obj['conversations'][0]['details']['prev'] == 'This is a test'
+
+    obj = await cli.get_json(factory.url('ui:get-details', conv=conv.key, session_id=user2.session_id))
+    assert obj['removed'] is True
+    assert obj['last_action_id'] == 6
+    assert obj['details']['prev'] == 'This is a test'
