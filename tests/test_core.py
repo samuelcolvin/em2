@@ -625,3 +625,27 @@ async def test_prt_add_remove_add(factory: Factory, db_conn):
         await db_conn.fetchrow('select removal_action_id, seen, inbox from participants where user_id=$1', new_user_id)
     )
     assert prt == {'removal_action_id': None, 'seen': None, 'inbox': True}
+
+
+async def test_prt_add_act(factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+
+    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant='new@example.com'))
+
+    new_user_id = await db_conn.fetchval('select id from users where email=$1', 'new@example.com')
+    await factory.act(new_user_id, conv.id, ActionModel(act=ActionTypes.msg_add, body='This is a **test**'))
+
+
+async def test_prt_remove_cant_act(factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+
+    em = 'new@example.com'
+    assert [4] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant=em))
+    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_remove, participant=em, follows=4))
+
+    new_user_id = await db_conn.fetchval('select id from users where email=$1', em)
+
+    with pytest.raises(JsonErrors.HTTPBadRequest):
+        await factory.act(new_user_id, conv.id, ActionModel(act=ActionTypes.msg_add, body='This is a **test**'))

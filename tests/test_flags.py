@@ -465,3 +465,28 @@ async def test_add_prt(factory: Factory, db_conn, redis):
 
     flags = await get_flag_counts(user2.id, conn=db_conn, redis=redis)
     assert flags == {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
+
+
+async def test_add_remove_add_prt(factory: Factory, db_conn, redis):
+    user = await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+
+    user2 = await factory.create_user()
+
+    flags = await get_flag_counts(user2.id, conn=db_conn, redis=redis)
+    assert flags == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 0, 'spam': 0, 'deleted': 0}
+
+    f = await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant=user2.email))
+
+    flags = await get_flag_counts(user2.id, conn=db_conn, redis=redis)
+    assert flags == {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
+
+    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_remove, participant=user2.email, follows=f[0]))
+
+    flags = await get_flag_counts(user2.id, conn=db_conn, redis=redis)
+    assert flags == {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
+
+    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant=user2.email))
+
+    flags = await get_flag_counts(user2.id, conn=db_conn, redis=redis)
+    assert flags == {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}

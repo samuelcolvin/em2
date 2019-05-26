@@ -261,8 +261,8 @@ class _Act:
     async def prepare(self, conv_ref: StrInt) -> Tuple[int, int]:
         self.conv_id, last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_ref)
         if last_action:
-            # if the usr has be removed from the conversation they can't act
-            raise JsonErrors.HTTPNotFound(message='Conversation not found')
+            # if the user has be removed from the conversation they can't act
+            raise JsonErrors.HTTPBadRequest(message="You can't act on conversations you've been removed from")
 
         # we must be in a transaction
         # this is a hard check that conversations can only have on act applied at a time

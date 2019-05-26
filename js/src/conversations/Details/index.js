@@ -3,7 +3,7 @@ import {Button, Col, Row} from 'reactstrap'
 import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
-import {WithContext, sleep, Loading} from 'reactstrap-toolbox'
+import {WithContext, sleep, Loading, confirm_modal} from 'reactstrap-toolbox'
 import Message from './Message'
 import RightPanel from './RightPanel'
 import Subject from './Subject'
@@ -129,12 +129,29 @@ class ConvDetailsView extends React.Component {
     }
   }
 
-  act = async actions => {
+  remove_participants = async prt => {
     if (!this.state.locked) {
+      this.setState({locked: true})
+      const ctx = {
+        message: `Are you sure you want to remove ${prt.email} from this conversation?`,
+        continue_text: 'Remove Participant',
+      }
+      if (await confirm_modal(ctx)) {
+        await this.act([{act: 'participant:remove', follows: prt.id, participant: prt.email}], true)
+      } else {
+        this.setState({locked: false})
+      }
+    }
+  }
+
+  act = async (actions, locked_ok) => {
+    if (!this.state.locked || locked_ok) {
       this.setState({locked: true})
       const r = await window.logic.conversations.act(this.state.conv.key, actions)
       this.action_ids = r.data.action_ids
       return r.data.action_ids
+    } else {
+      console.warn('component already locked, cannot perform', actions)
     }
   }
 
@@ -212,6 +229,7 @@ class ConvDetailsView extends React.Component {
             <RightPanel
               conv_state={this.state}
               add_participants={this.add_participants}
+              remove_participants={this.remove_participants}
               set_participants={extra_prts => this.setState({extra_prts})}
             />
           </Col>
