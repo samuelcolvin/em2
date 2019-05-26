@@ -47,6 +47,29 @@ create index conversations_updated_ts on conversations using btree (updated_ts);
 create index conversations_publish_ts on conversations using btree (publish_ts);
 create index conversations_creator on conversations using btree (creator);
 
+create table participants (
+  id bigserial primary key,
+  conv bigint not null references conversations on delete cascade,
+  user_id bigint not null references users on delete restrict,
+  removal_action_id int,
+  seen boolean,
+  inbox boolean default true,
+  deleted boolean,
+  deleted_ts timestamptz,
+  spam boolean,
+  -- TODO maybe cache sent and draft here for simpler queries
+  label_ids bigint[],
+  -- todo permissions, hidden
+  unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id
+);
+create index participants_user_removal_action on participants using btree (user_id, removal_action_id);
+create index participants_user_seen on participants using btree (user_id, seen);
+create index participants_user_inbox on participants using btree (user_id, inbox);
+create index participants_user_deleted on participants using btree (user_id, deleted);
+create index participants_deleted_ts on participants using btree (deleted_ts);
+create index participants_user_spam on participants using btree (user_id, spam);
+create index participants_label_ids on participants using gin (label_ids);
+
 -- see core.ActionTypes enum which matches this
 create type ActionTypes as enum (
   'conv:publish', 'conv:create',
@@ -88,29 +111,6 @@ create table actions (
 create index action_id on actions using btree (id);
 create index action_act_id on actions using btree (conv, act, id);
 create index action_conv_parent on actions using btree (conv, parent);
-
-create table participants (
-  id bigserial primary key,
-  conv bigint not null references conversations on delete cascade,
-  user_id bigint not null references users on delete restrict,
-  removal_action bigint references actions on delete restrict,
-  seen boolean,
-  inbox boolean default true,
-  deleted boolean,
-  deleted_ts timestamptz,
-  spam boolean,
-  -- TODO maybe cache sent and draft here for simpler queries
-  label_ids bigint[],
-  -- todo permissions, hidden
-  unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id
-);
-create index participants_user_removal_action on participants using btree (user_id, removal_action);
-create index participants_user_seen on participants using btree (user_id, seen);
-create index participants_user_inbox on participants using btree (user_id, inbox);
-create index participants_user_deleted on participants using btree (user_id, deleted);
-create index participants_deleted_ts on participants using btree (deleted_ts);
-create index participants_user_spam on participants using btree (user_id, spam);
-create index participants_label_ids on participants using gin (label_ids);
 
 -- { action-insert
 create or replace function action_insert() returns trigger as $$

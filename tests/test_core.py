@@ -590,21 +590,17 @@ async def test_prt_add_remove_add(factory: Factory, db_conn):
     assert [4] == await factory.act(user.id, conv.id, action)
     new_user_id = await db_conn.fetchval('select id from users where email=$1', em)
     prt = dict(
-        await db_conn.fetchrow('select removal_action, seen, inbox from participants where user_id=$1', new_user_id)
+        await db_conn.fetchrow('select removal_action_id, seen, inbox from participants where user_id=$1', new_user_id)
     )
-    assert prt == {'removal_action': None, 'seen': None, 'inbox': True}
+    assert prt == {'removal_action_id': None, 'seen': None, 'inbox': True}
 
     action = ActionModel(act=ActionTypes.prt_remove, participant=em, follows=4)
     assert [5] == await factory.act(user.id, conv.id, action)
 
     prt = dict(
-        await db_conn.fetchrow('select removal_action, seen, inbox from participants where user_id=$1', new_user_id)
+        await db_conn.fetchrow('select removal_action_id, seen, inbox from participants where user_id=$1', new_user_id)
     )
-    assert prt == {
-        'removal_action': await db_conn.fetchval('select pk from actions where id=5'),
-        'seen': None,
-        'inbox': True,
-    }
+    assert prt == {'removal_action_id': 5, 'seen': None, 'inbox': True}
 
     action = ActionModel(act=ActionTypes.prt_add, participant=em)
     assert [6] == await factory.act(user.id, conv.id, action)
@@ -626,6 +622,6 @@ async def test_prt_add_remove_add(factory: Factory, db_conn):
         'warnings': None,
     }
     prt = dict(
-        await db_conn.fetchrow('select removal_action, seen, inbox from participants where user_id=$1', new_user_id)
+        await db_conn.fetchrow('select removal_action_id, seen, inbox from participants where user_id=$1', new_user_id)
     )
-    assert prt == {'removal_action': None, 'seen': None, 'inbox': True}
+    assert prt == {'removal_action_id': None, 'seen': None, 'inbox': True}

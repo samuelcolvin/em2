@@ -129,9 +129,8 @@ async def get_conv_for_user(
     if isinstance(conv_ref, int):
         query = conn.fetchrow(
             """
-            select c.id, c.publish_ts, c.creator, a.id from conversations as c
+            select c.id, c.publish_ts, c.creator, p.removal_action_id from conversations as c
             join participants p on c.id=p.conv
-            left join actions a on p.removal_action=a.pk
             where p.user_id = $1 and c.id = $2
             order by c.created_ts desc
             """,
@@ -141,9 +140,8 @@ async def get_conv_for_user(
     else:
         query = conn.fetchrow(
             """
-            select c.id, c.publish_ts, c.creator, a.id from conversations c
+            select c.id, c.publish_ts, c.creator, p.removal_action_id from conversations c
             join participants p on c.id=p.conv
-            left join actions a on p.removal_action=a.pk
             where p.user_id=$1 and c.key like $2
             order by c.created_ts desc
             limit 1
@@ -331,13 +329,13 @@ class _Act:
 
             prt_user_id = await get_create_user(self.conn, action.participant)
             removed_prt_id = await self.conn.fetchval(
-                'select id from participants where conv=$1 and user_id=$2 and removal_action is not null',
+                'select id from participants where conv=$1 and user_id=$2 and removal_action_id is not null',
                 self.conv_id,
                 prt_user_id,
             )
             if removed_prt_id:
                 prt_id = removed_prt_id
-                await self.conn.execute('update participants set removal_action=null where id=$1', prt_id)
+                await self.conn.execute('update participants set removal_action_id=null where id=$1', prt_id)
             else:
                 prt_id = await self.conn.fetchval(
                     """
@@ -372,11 +370,11 @@ class _Act:
         if prt_user_id == self.actor_user_id:
             raise JsonErrors.HTTPForbidden('You cannot modify your own participant')
 
-        action_id, action_pk = await self.conn.fetchrow(
+        action_id = await self.conn.fetchval(
             """
             insert into actions (conv, act, actor, follows, participant_user)
             values              ($1  , $2 , $3   , $4     , $5)
-            returning id, pk
+            returning id
             """,
             self.conv_id,
             action.act,
@@ -385,7 +383,7 @@ class _Act:
             prt_user_id,
         )
         if action.act == ActionTypes.prt_remove:
-            await self.conn.execute('update participants set removal_action=$1 where id=$2', action_pk, prt_id)
+            await self.conn.execute('update participants set removal_action_id=$1 where id=$2', action_id, prt_id)
         return action_id
 
     async def _act_on_message(self, action: ActionModel) -> int:
