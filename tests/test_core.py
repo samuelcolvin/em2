@@ -579,3 +579,53 @@ async def test_subject_lock_release(factory: Factory, db_conn):
     ]
     obj = await construct_conv(db_conn, user.id, conv.id)
     assert obj['subject'] == 'Test Subject'
+
+
+async def test_prt_add_remove_add(factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+
+    em = 'new@example.com'
+    action = ActionModel(act=ActionTypes.prt_add, participant=em)
+    assert [4] == await factory.act(user.id, conv.id, action)
+    new_user_id = await db_conn.fetchval('select id from users where email=$1', em)
+    prt = dict(
+        await db_conn.fetchrow('select removal_action, seen, inbox from participants where user_id=$1', new_user_id)
+    )
+    assert prt == {'removal_action': None, 'seen': None, 'inbox': True}
+
+    action = ActionModel(act=ActionTypes.prt_remove, participant=em, follows=4)
+    assert [5] == await factory.act(user.id, conv.id, action)
+
+    prt = dict(
+        await db_conn.fetchrow('select removal_action, seen, inbox from participants where user_id=$1', new_user_id)
+    )
+    assert prt == {
+        'removal_action': await db_conn.fetchval('select pk from actions where id=5'),
+        'seen': None,
+        'inbox': True,
+    }
+
+    action = ActionModel(act=ActionTypes.prt_add, participant=em)
+    assert [6] == await factory.act(user.id, conv.id, action)
+
+    action_info = dict(await db_conn.fetchrow('select * from actions where id=6'))
+    assert action_info == {
+        'pk': AnyInt(),
+        'id': 6,
+        'conv': conv.id,
+        'act': 'participant:add',
+        'actor': user.id,
+        'ts': CloseToNow(),
+        'follows': None,
+        'participant_user': new_user_id,
+        'body': None,
+        'preview': None,
+        'parent': None,
+        'msg_format': None,
+        'warnings': None,
+    }
+    prt = dict(
+        await db_conn.fetchrow('select removal_action, seen, inbox from participants where user_id=$1', new_user_id)
+    )
+    assert prt == {'removal_action': None, 'seen': None, 'inbox': True}

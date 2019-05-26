@@ -127,10 +127,11 @@ async def get_conv_for_user(
     removed from the conversation the id of the last action they can see will also be returned.
     """
     if isinstance(conv_ref, int):
-        r = await conn.fetchrow(
+        query = conn.fetchrow(
             """
-            select c.id, c.publish_ts, c.creator from conversations as c
+            select c.id, c.publish_ts, c.creator, a.id from conversations as c
             join participants p on c.id=p.conv
+            left join actions a on p.removal_action=a.pk
             where p.user_id = $1 and c.id = $2
             order by c.created_ts desc
             """,
@@ -138,10 +139,11 @@ async def get_conv_for_user(
             conv_ref,
         )
     else:
-        r = await conn.fetchrow(
+        query = conn.fetchrow(
             """
-            select c.id, c.publish_ts, c.creator from conversations c
+            select c.id, c.publish_ts, c.creator, a.id from conversations c
             join participants p on c.id=p.conv
+            left join actions a on p.removal_action=a.pk
             where p.user_id=$1 and c.key like $2
             order by c.created_ts desc
             limit 1
@@ -150,41 +152,7 @@ async def get_conv_for_user(
             conv_ref + '%',
         )
 
-    if r:
-        conv_id, publish_ts, creator = r
-        last_action = None
-    else:
-        # can happen legitimately when a user was removed from the conversation,
-        # but can still view it up to that point
-        if isinstance(conv_ref, int):
-            conv_id, publish_ts, creator, last_action = await or404(
-                conn.fetchrow(
-                    """
-                    select c.id, c.publish_ts, c.creator, a.id from actions a
-                    join conversations c on a.conv = c.id
-                    where c.id = $2 and a.participant_user = $1 and a.act='participant:remove'
-                    order by c.created_ts desc, a.id desc
-                    """,
-                    user_id,
-                    conv_ref,
-                ),
-                msg='Conversation not found',
-            )
-        else:
-            conv_id, publish_ts, creator, last_action = await or404(
-                conn.fetchrow(
-                    """
-                    select c.id, c.publish_ts, c.creator, a.id from actions a
-                    join conversations c on a.conv = c.id
-                    where c.key like $2 and a.participant_user=$1 and a.act='participant:remove'
-                    order by c.created_ts desc, a.id desc
-                    limit 1
-                    """,
-                    user_id,
-                    conv_ref + '%',
-                ),
-                msg='Conversation not found',
-            )
+    conv_id, publish_ts, creator, last_action = await or404(query, msg='Conversation not found')
 
     if not publish_ts and user_id != creator:
         raise JsonErrors.HTTPForbidden('conversation is unpublished and you are not the creator')
@@ -362,18 +330,27 @@ class _Act:
                 raise JsonErrors.HTTPBadRequest(f'no more than {max_participants} participants permitted')
 
             prt_user_id = await get_create_user(self.conn, action.participant)
-            prt_id = await self.conn.fetchval(
-                """
-                insert into participants (conv, user_id, spam) values ($1, $2, $3)
-                on conflict (conv, user_id) do nothing returning id
-                """,
+            removed_prt_id = await self.conn.fetchval(
+                'select id from participants where conv=$1 and user_id=$2 and removal_action is not null',
                 self.conv_id,
                 prt_user_id,
-                self.spam,
             )
-            if not prt_id:
-                raise JsonErrors.HTTPConflict('user already a participant in this conversation')
-            self.new_user_ids.add(prt_user_id)
+            if removed_prt_id:
+                prt_id = removed_prt_id
+                await self.conn.execute('update participants set removal_action=null where id=$1', prt_id)
+            else:
+                prt_id = await self.conn.fetchval(
+                    """
+                    insert into participants (conv, user_id, spam) values ($1, $2, $3)
+                    on conflict (conv, user_id) do nothing returning id
+                    """,
+                    self.conv_id,
+                    prt_user_id,
+                    self.spam,
+                )
+                if not prt_id:
+                    raise JsonErrors.HTTPConflict('user already a participant in this conversation')
+                self.new_user_ids.add(prt_user_id)
         else:
             follows_pk, *_ = await self._get_follows(action, {ActionTypes.prt_add, ActionTypes.prt_modify})
             if action.act == ActionTypes.prt_remove:
@@ -388,8 +365,6 @@ class _Act:
                     ),
                     msg='user not found on conversation',
                 )
-
-                await self.conn.execute('delete from participants where id=$1', prt_id)
             else:
                 raise NotImplementedError('"participant:modify" not yet implemented')
 
@@ -397,11 +372,11 @@ class _Act:
         if prt_user_id == self.actor_user_id:
             raise JsonErrors.HTTPForbidden('You cannot modify your own participant')
 
-        return await self.conn.fetchval(
+        action_id, action_pk = await self.conn.fetchrow(
             """
             insert into actions (conv, act, actor, follows, participant_user)
             values              ($1  , $2 , $3   , $4     , $5)
-            returning id
+            returning id, pk
             """,
             self.conv_id,
             action.act,
@@ -409,6 +384,9 @@ class _Act:
             follows_pk,
             prt_user_id,
         )
+        if action.act == ActionTypes.prt_remove:
+            await self.conn.execute('update participants set removal_action=$1 where id=$2', action_pk, prt_id)
+        return action_id
 
     async def _act_on_message(self, action: ActionModel) -> int:
         if action.act == ActionTypes.msg_add:
