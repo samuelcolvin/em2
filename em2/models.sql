@@ -186,7 +186,7 @@ create table send_events (
   extra json
 );
 create index send_events_send ON send_events USING btree (send);
-create index send_events_user_ids ON send_events USING btree (user_ids);
+create index send_events_user_ids ON send_events USING gin (user_ids);
 
 create type ContentDisposition as enum ('attachment', 'inline');
 
@@ -223,7 +223,7 @@ create table search (
 create index search_conv on search using btree (conv);
 create index search_participant_ids on search using gin (participant_ids);
 create index search_freeze_action on search using btree (freeze_action);
-create index search_conv_creator on search using gin (conv_creator);
+create index search_conv_creator on search using btree (conv_creator);
 create index search_conv_participant_ids on search using gin (conv_participant_ids);
 create index search_files on search using gin (files);
 create index search_vector on search using gin (vector);
