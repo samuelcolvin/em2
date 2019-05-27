@@ -26,6 +26,7 @@ from em2.core import (
     update_conv_users,
 )
 from em2.utils.datetime import utcnow
+from em2.utils.db import or404
 from em2.utils.storage import S3, StorageNotFound, parse_storage_uri
 
 from .utils import ExecView, View, file_upload_cache_key
@@ -39,11 +40,16 @@ class ConvList(View):
     ) from (
       select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
       from (
-        select c.key, c.created_ts, c.updated_ts, c.publish_ts, c.last_action_id, c.details,
+        select c.key, c.created_ts,
+          coalesce(p.removal_updated_ts, c.updated_ts) updated_ts,
+          c.publish_ts,
+          coalesce(p.removal_action_id, c.last_action_id) last_action_id,
+          coalesce(p.removal_details, c.details) details,
           p.seen is true seen,
           (p.inbox is true and p.deleted is not true and p.spam is not true) inbox,
           (c.creator != p.user_id and p.inbox is not true and p.deleted is not true and p.spam is not true) archive,
           p.deleted is true deleted,
+          p.removal_action_id is not null removed,
           p.spam is true spam,
           c.publish_ts is null draft,
           c.publish_ts is not null and c.creator = p.user_id sent,
@@ -121,27 +127,32 @@ class ConvDetails(View):
     sql = """
     select row_to_json(conversation)
     from (
-      select c.key, c.created_ts, c.updated_ts, c.publish_ts, c.last_action_id, c.details,
+      select c.key, c.created_ts,
+        coalesce(p.removal_updated_ts, c.updated_ts) updated_ts,
+        c.publish_ts,
+        coalesce(p.removal_action_id, c.last_action_id) last_action_id,
+        coalesce(p.removal_details, c.details) details,
         p.seen is true seen,
         (p.inbox is true and p.deleted is not true and p.spam is not true) inbox,
         (c.creator != p.user_id and p.inbox is not true and p.deleted is not true and p.spam is not true) archive,
         p.deleted is true deleted,
+        p.removal_action_id is not null removed,
         p.spam is true spam,
         c.publish_ts is null draft,
         c.publish_ts is not null and c.creator = p.user_id sent,
         coalesce(p.label_ids, '{}') labels
       from conversations c
       join participants p on c.id = p.conv
-      where c.id=$1 and p.user_id=$2
+      where c.key like $1 and p.user_id=$2
     ) conversation
     """
 
     async def call(self):
-        conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
-        if last_action:
-            raise NotImplementedError()
-        else:
-            return raw_json_response(await self.conn.fetchval(self.sql, conv_id, self.session.user_id))
+        json_str = await or404(
+            self.conn.fetchval(self.sql, self.request.match_info['conv'] + '%', self.session.user_id),
+            msg='Conversation not found',
+        )
+        return raw_json_response(json_str)
 
 
 class ConvCreate(ExecView):

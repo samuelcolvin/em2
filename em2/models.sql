@@ -35,7 +35,7 @@ create trigger remove_labels after delete on labels for each row execute procedu
 create table conversations (
   id bigserial primary key,
   key varchar(64) unique,
-  creator int not null references users on delete restrict,
+  creator bigint not null references users on delete restrict,
   created_ts timestamptz not null,
   updated_ts timestamptz not null,
   publish_ts timestamptz,
@@ -51,6 +51,9 @@ create table participants (
   id bigserial primary key,
   conv bigint not null references conversations on delete cascade,
   user_id bigint not null references users on delete restrict,
+  removal_action_id int,
+  removal_updated_ts timestamptz,
+  removal_details json,
   seen boolean,
   inbox boolean default true,
   deleted boolean,
@@ -61,6 +64,7 @@ create table participants (
   -- todo permissions, hidden
   unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id
 );
+create index participants_user_removal_action on participants using btree (user_id, removal_action_id);
 create index participants_user_seen on participants using btree (user_id, seen);
 create index participants_user_inbox on participants using btree (user_id, inbox);
 create index participants_user_deleted on participants using btree (user_id, deleted);

@@ -28,6 +28,7 @@ const db_conv = c => ({
   archive: bool_int(c.archive),
   spam: bool_int(c.spam),
   deleted: bool_int(c.deleted),
+  removed: bool_int(c.removed),
 })
 
 
@@ -160,7 +161,10 @@ function construct_conv (conv, actions) {
       }
       messages[action.id] = message
     } else if (act === 'participant:add') {
-      participants[action.participant] = {id: action.id}
+      participants[action.participant] = {
+        email: action.participant,
+        id: action.id,
+      }
     } else if (act === 'participant:remove') {
       delete participants[action.participant]
     } else if (!_meta_action_types.has(act)) {
@@ -192,6 +196,7 @@ function construct_conv (conv, actions) {
     deleted: Boolean(conv.deleted),
     spam: Boolean(conv.spam),
     seen: Boolean(conv.seen),
+    removed: Boolean(conv.removed),
     primary_flag: primary_flag(conv),
     published: Boolean(actions.find(a => a.act === 'conv:publish')),
     subject: subject,

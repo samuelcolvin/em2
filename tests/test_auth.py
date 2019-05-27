@@ -12,7 +12,6 @@ async def test_login(cli, url, factory: Factory):
         data=json.dumps({'email': user.email, 'password': user.password}),
         headers={'Content-Type': 'application/json', 'Origin': 'null'},
     )
-    assert r.status == 200, await r.text()
     obj = await r.json()
     assert obj == {
         'auth_token': RegexStr('.*'),

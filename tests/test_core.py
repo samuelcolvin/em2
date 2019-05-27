@@ -579,3 +579,84 @@ async def test_subject_lock_release(factory: Factory, db_conn):
     ]
     obj = await construct_conv(db_conn, user.id, conv.id)
     assert obj['subject'] == 'Test Subject'
+
+
+async def test_prt_add_remove_add(factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+
+    em = 'new@example.com'
+    action = ActionModel(act=ActionTypes.prt_add, participant=em)
+    assert [4] == await factory.act(user.id, conv.id, action)
+    new_user_id = await db_conn.fetchval('select id from users where email=$1', em)
+    prt = dict(
+        await db_conn.fetchrow('select removal_action_id, seen, inbox from participants where user_id=$1', new_user_id)
+    )
+    assert prt == {'removal_action_id': None, 'seen': None, 'inbox': True}
+
+    action = ActionModel(act=ActionTypes.prt_remove, participant=em, follows=4)
+    assert [5] == await factory.act(user.id, conv.id, action)
+
+    prt = await db_conn.fetchrow(
+        'select removal_action_id, removal_details, seen, inbox from participants where user_id=$1', new_user_id
+    )
+    prt = dict(prt)
+    removal_details = json.loads(prt.pop('removal_details'))
+    assert removal_details == {
+        'act': 'participant:remove',
+        'sub': 'Test Subject',
+        'email': 'testing-1@example.com',
+        'creator': 'testing-1@example.com',
+        'prev': 'Test Message',
+        'prts': 2,
+        'msgs': 1,
+    }
+    assert prt == {'removal_action_id': 5, 'seen': None, 'inbox': True}
+
+    action = ActionModel(act=ActionTypes.prt_add, participant=em)
+    assert [6] == await factory.act(user.id, conv.id, action)
+
+    action_info = dict(await db_conn.fetchrow('select * from actions where id=6'))
+    assert action_info == {
+        'pk': AnyInt(),
+        'id': 6,
+        'conv': conv.id,
+        'act': 'participant:add',
+        'actor': user.id,
+        'ts': CloseToNow(),
+        'follows': None,
+        'participant_user': new_user_id,
+        'body': None,
+        'preview': None,
+        'parent': None,
+        'msg_format': None,
+        'warnings': None,
+    }
+    prt = await db_conn.fetchrow(
+        'select removal_action_id, removal_details, seen, inbox from participants where user_id=$1', new_user_id
+    )
+    assert dict(prt) == {'removal_action_id': None, 'removal_details': None, 'seen': None, 'inbox': True}
+
+
+async def test_prt_add_act(factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+
+    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant='new@example.com'))
+
+    new_user_id = await db_conn.fetchval('select id from users where email=$1', 'new@example.com')
+    await factory.act(new_user_id, conv.id, ActionModel(act=ActionTypes.msg_add, body='This is a **test**'))
+
+
+async def test_prt_remove_cant_act(factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+
+    em = 'new@example.com'
+    assert [4] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant=em))
+    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_remove, participant=em, follows=4))
+
+    new_user_id = await db_conn.fetchval('select id from users where email=$1', em)
+
+    with pytest.raises(JsonErrors.HTTPBadRequest):
+        await factory.act(new_user_id, conv.id, ActionModel(act=ActionTypes.msg_add, body='This is a **test**'))

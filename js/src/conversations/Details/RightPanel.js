@@ -1,5 +1,7 @@
 import React from 'react'
-import {Button} from 'reactstrap'
+import {Button, UncontrolledDropdown, DropdownToggle, DropdownMenu, DropdownItem} from 'reactstrap'
+import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext} from 'reactstrap-toolbox'
 import ParticipantsInput from '../ParticipantsInput'
 
@@ -38,45 +40,60 @@ const ScrollSpy = ({children}) => {
 }
 
 
-const RightPanel = ({conv_state, set_participants, add_participants}) => (
-  <ScrollSpy>
-    <div className="box">
-      {Object.keys(conv_state.conv.participants).map((p, i) => (
-        <div key={i}>{p}</div>
-      ))}
-      {conv_state.extra_prts ? (
-        <div className="mt-2">
-          <ParticipantsInput
-            field={{name: 'participants'}}
-            value={conv_state.extra_prts}
-            disabled={conv_state.locked}
-            existing_participants={Object.keys(conv_state.conv.participants).length}
-            onChange={extra_prts => set_participants(extra_prts)}
-          />
+const RightPanel = ({state, edit_locked, set_participants, add_participants, remove_participants, ctx}) => {
+  const disabled = !!(edit_locked || state.comment_parent || state.new_message)
+  return (
+    <ScrollSpy>
+      <div className="box">
+        {Object.values(state.conv.participants).map(p => (
+          <div key={p.id} className="d-flex">
+            <div className="py-1">{p.email}</div>
+            {p.email !== ctx.user.email ? (
+              <UncontrolledDropdown>
+                <DropdownToggle color="link" size="sm" disabled={disabled}>
+                  edit <FontAwesomeIcon icon={fas.faCaretDown}/>
+                </DropdownToggle>
+                <DropdownMenu>
+                  <DropdownItem onClick={() => remove_participants(p)}>Remove</DropdownItem>
+                </DropdownMenu>
+              </UncontrolledDropdown>
+            ) : null}
+          </div>
+        ))}
+        {state.extra_prts ? (
+          <div className="mt-2">
+            <ParticipantsInput
+              field={{name: 'participants'}}
+              value={state.extra_prts}
+              disabled={edit_locked}
+              existing_participants={Object.keys(state.conv.participants).length}
+              onChange={extra_prts => set_participants(extra_prts)}
+            />
 
-          <div className="d-flex flex-row-reverse mt-2">
-            <Button color="primary" disabled={conv_state.locked} size="sm" onClick={add_participants}>
-              Add
-            </Button>
-            <Button size="sm" color="link" className="text-muted"
-                    disabled={conv_state.locked}
-                    onClick={() => set_participants(null)}>
-              Cancel
+            <div className="d-flex flex-row-reverse mt-2">
+              <Button color="primary" disabled={edit_locked} size="sm" onClick={add_participants}>
+                Add
+              </Button>
+              <Button size="sm" color="link" className="text-muted"
+                      disabled={edit_locked}
+                      onClick={() => set_participants(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="text-right mt-2">
+            <Button color="primary"
+                    disabled={disabled}
+                    size="sm"
+                    onClick={() => set_participants([])}>
+              Add Participants
             </Button>
           </div>
-        </div>
-      ) : (
-        <div className="text-right mt-2">
-          <Button color="primary"
-                  disabled={!!(conv_state.locked || conv_state.comment_parent || conv_state.new_message)}
-                  size="sm"
-                  onClick={() => set_participants([])}>
-            Add Participants
-          </Button>
-        </div>
-      )}
-    </div>
-  </ScrollSpy>
-)
+        )}
+      </div>
+    </ScrollSpy>
+  )
+}
 
 export default WithContext(RightPanel)

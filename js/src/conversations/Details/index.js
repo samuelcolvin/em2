@@ -1,9 +1,9 @@
 import React from 'react'
-import {Button, Col, Row} from 'reactstrap'
+import {Button, Col, Row, UncontrolledTooltip} from 'reactstrap'
 import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
-import {WithContext, sleep, Loading} from 'reactstrap-toolbox'
+import {WithContext, sleep, Loading, confirm_modal} from 'reactstrap-toolbox'
 import Message from './Message'
 import RightPanel from './RightPanel'
 import Subject from './Subject'
@@ -129,12 +129,29 @@ class ConvDetailsView extends React.Component {
     }
   }
 
-  act = async actions => {
+  remove_participants = async prt => {
     if (!this.state.locked) {
+      this.setState({locked: true})
+      const ctx = {
+        message: `Are you sure you want to remove ${prt.email} from this conversation?`,
+        continue_text: 'Remove Participant',
+      }
+      if (await confirm_modal(ctx)) {
+        await this.act([{act: 'participant:remove', follows: prt.id, participant: prt.email}], true)
+      } else {
+        this.setState({locked: false})
+      }
+    }
+  }
+
+  act = async (actions, locked_ok) => {
+    if (!this.state.locked || locked_ok) {
       this.setState({locked: true})
       const r = await window.logic.conversations.act(this.state.conv.key, actions)
       this.action_ids = r.data.action_ids
       return r.data.action_ids
+    } else {
+      console.warn('component already locked, cannot perform', actions)
     }
   }
 
@@ -157,6 +174,7 @@ class ConvDetailsView extends React.Component {
     } else if (!this.state.conv || !this.props.ctx.user) {
       return <Loading/>
     }
+    const edit_locked = this.state.locked || this.state.conv.removed
     return (
       <div>
         <Subject conv_state={this.state}
@@ -165,12 +183,21 @@ class ConvDetailsView extends React.Component {
                  set_subject={this.set_subject}
                  release_subject={this.release_subject}/>
         <div className="h5 mb-3">
-          <span className="badge badge-success mr-2">TODO Labels</span>
+          {this.state.conv.removed ? (
+            <div>
+              <span className="badge badge-dark mr-2 cursor-pointer" id="removed">Removed from Conversation</span>
+              <UncontrolledTooltip placement="top" target="removed">
+                You've been removed from this conversation, you can no longer contribute
+                and will not see further updates.
+              </UncontrolledTooltip>
+            </div>
+          ) : null}
         </div>
         <Row>
           <Col md="8">
             {this.state.conv.messages.map(msg => (
               <Message msg={msg}
+                       edit_locked={edit_locked}
                        key={msg.first_action}
                        state={this.state}
                        session_id={this.props.ctx.user.session_id}
@@ -188,18 +215,18 @@ class ConvDetailsView extends React.Component {
               <div className="py-2">
                 <Drop conv={this.state.conv.key}
                       files={this.state.files}
-                      locked={this.state.locked}
+                      locked={edit_locked}
                       add_file={this.add_file}
                       remove_file={this.remove_file}
                       update_file={this.update_file}>
                   <textarea placeholder="reply to all..." className="msg"
-                            disabled={!!(this.state.locked || this.state.comment_parent || this.state.extra_prts)}
+                            disabled={!!(edit_locked || this.state.comment_parent || this.state.extra_prts)}
                             value={this.state.new_message || ''}
                             onChange={e => this.setState({new_message: e.target.value})}/>
                 </Drop>
                 <div className="text-right">
                   <Button color="primary"
-                          disabled={this.state.locked || this.upload_ongoing() || !this.state.new_message}
+                          disabled={edit_locked || this.upload_ongoing() || !this.state.new_message}
                           onClick={this.add_msg}>
                     <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/>
                     {this.state.conv.draft ? 'Add Message' : 'Send'}
@@ -210,8 +237,10 @@ class ConvDetailsView extends React.Component {
           </Col>
           <Col md="4">
             <RightPanel
-              conv_state={this.state}
+              edit_locked={edit_locked}
+              state={this.state}
               add_participants={this.add_participants}
+              remove_participants={this.remove_participants}
               set_participants={extra_prts => this.setState({extra_prts})}
             />
           </Col>

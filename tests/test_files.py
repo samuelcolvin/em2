@@ -11,9 +11,7 @@ async def test_get_file_link(cli, factory: Factory):
     conv = await factory.create_conv(publish=True)
 
     q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
-    r = await cli.get(factory.url('ui:upload-file', conv=conv.key, query=q))
-    assert r.status == 200, await r.text()
-    obj = await r.json()
+    obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q))
     content_id = obj['content_id']
     assert obj == {
         'content_id': RegexStr('.{36}'),
@@ -34,9 +32,8 @@ async def test_get_file_link_invalid_ct(cli, factory: Factory):
     conv = await factory.create_conv(publish=True)
 
     q = dict(filename='testing.png', content_type='foobar', size='123456')
-    r = await cli.get(factory.url('ui:upload-file', conv=conv.key, query=q))
-    assert r.status == 400, await r.text()
-    assert await r.json() == {
+    obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q), status=400)
+    assert obj == {
         'message': 'Invalid query data',
         'details': [{'loc': ['content_type'], 'msg': 'invalid Content-Type', 'type': 'value_error'}],
     }
@@ -48,9 +45,7 @@ async def test_get_file_link_non_creator(cli, factory: Factory):
     conv = await factory.create_conv(publish=True, participants=[{'email': user2.email}])
 
     q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
-    r = await cli.get(factory.url('ui:upload-file', conv=conv.key, query=q, session_id=user2.session_id))
-    assert r.status == 200, await r.text()
-    obj = await r.json()
+    obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q, session_id=user2.session_id))
     assert obj['url'] == 'https://s3.us-east-1.amazonaws.com/s3_files_bucket.example.com'
 
 
@@ -62,9 +57,9 @@ async def test_get_file_link_not_permitted(cli, factory: Factory):
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_remove, participant=user2.email, follows=1))
 
     q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
-    r = await cli.get(factory.url('ui:upload-file', conv=conv.key, query=q, session_id=user2.session_id))
-    assert r.status == 403, await r.text()
-    assert await r.json() == {'message': 'file attachment not permitted'}
+    url = factory.url('ui:upload-file', conv=conv.key, query=q, session_id=user2.session_id)
+    obj = await cli.get_json(url, status=403)
+    assert obj == {'message': 'file attachment not permitted'}
 
 
 async def test_delete_stale_upload(settings, db_conn, dummy_server):
@@ -95,15 +90,13 @@ async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_ser
     conv = await factory.create_conv(publish=True)
 
     q = dict(filename='testing.png', content_type='image/jpeg', size='14')
-    r = await cli.get(factory.url('ui:upload-file', conv=conv.key, query=q))
-    assert r.status == 200, await r.text()
-    content_id = (await r.json())['content_id']
+    obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q))
+    content_id = obj['content_id']
 
     dummy_server.app['s3_files'][f'{conv.key}/{content_id}/testing.png'] = 'this is a test'
 
     data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': [content_id]}
-    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
-    assert r.status == 200, await r.text()
+    await cli.post_json(factory.url('ui:act', conv=conv.key), data)
 
     data = await db_conn.fetchrow('select * from files')
     assert dict(data) == {
@@ -127,8 +120,7 @@ async def test_message_with_attachment_no_file(cli, factory: Factory):
     conv = await factory.create_conv(publish=True)
 
     data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': ['foobar']}
-    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
-    assert r.status == 400, await r.text()
+    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data, status=400)
     assert await r.json() == {'message': "no file found for content id 'foobar'"}
 
 
@@ -137,11 +129,9 @@ async def test_message_with_attachment_not_uploaded(cli, factory: Factory):
     conv = await factory.create_conv(publish=True)
 
     q = dict(filename='testing.png', content_type='image/jpeg', size='14')
-    r = await cli.get(factory.url('ui:upload-file', conv=conv.key, query=q))
-    assert r.status == 200, await r.text()
-    content_id = (await r.json())['content_id']
+    obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q))
+    content_id = obj['content_id']
 
     data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': [content_id]}
-    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
-    assert r.status == 400, await r.text()
+    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data, status=400)
     assert await r.json() == {'message': 'file not uploaded'}
