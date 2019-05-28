@@ -1,3 +1,5 @@
+create extension pg_trgm;
+
 create type UserTypes as enum ('new', 'local', 'remote_em2', 'remote_other');
 
 -- includes both local and remote users, TODO somehow record unsubscribed when people repeatedly complain
@@ -42,6 +44,7 @@ create table conversations (
   last_action_id int not null default 0 check (last_action_id >= 0),
   details json
 );
+create index conversations_key on conversations using gin (key gin_trgm_ops);
 create index conversations_created_ts on conversations using btree (created_ts);
 create index conversations_updated_ts on conversations using btree (updated_ts);
 create index conversations_publish_ts on conversations using btree (publish_ts);
@@ -207,24 +210,25 @@ create table files (
 );
 create index files_action ON files USING btree (action);
 
--- no references here so this could go in a different db or use something like elasticsearch
+---------------------------------------------------------------------------
+-- search table, no references so it could be moved to a different db or --
+-- entirely different db engine eg. elasticsearch                        --
+---------------------------------------------------------------------------
 create table search (
   id bigserial primary key,
-  conv bigint not null,
+  conv_key varchar(64),
   participant_ids bigint[] not null,
-  freeze_action bigint,
+  action_id int not null,
 
-  conv_creator bigint not null,
-  conv_participant_ids bigint[] not null,
+  creator_email varchar(255),
+
   files varchar(255)[],  -- needs to contain main part and extensions separately
-  -- might need other things like subject, size
-  vector tsvector not null
+  -- might need other things like size
+  vector tsvector,
+  unique (conv_key, action_id)  -- and language when it's added
 );
-create index search_conv on search using btree (conv);
 create index search_participant_ids on search using gin (participant_ids);
-create index search_freeze_action on search using btree (freeze_action);
-create index search_conv_creator on search using btree (conv_creator);
-create index search_conv_participant_ids on search using gin (conv_participant_ids);
+create index search_creator_email on search using gin (creator_email gin_trgm_ops);
 create index search_files on search using gin (files);
 create index search_vector on search using gin (vector);
 

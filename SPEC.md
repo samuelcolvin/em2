@@ -409,25 +409,23 @@ User Label fields:
 
 # Search
 
-Should separate search logic now to make elasticsearch integration in future easier?
+Should separate search logic now to make elasticsearch integration in future easier.
 
-Search entries have:
-* the conv id
-* a list of participants
+One search entry per action (where required) and maybe one per language per action in future:
+* the conv key
+* the action id
+* participant ids - for filtering search entries, does not include deleted participants, thus you can
+  only search for stuff on conversations before you were removed
 * the search vector
-* creator id
-* participant ids
-* the last action the refer to (nullable)
-* might need language too in time
+* creator id - maybe for `from:foobar@example.com` queries
 
-When a participant is removed a search entry is created (or used, hence the last action field) and the
-participant is added to it. Thus people can still search for conversations they're removed from.
+vector weights used to differentiate between different parts of the conversation::
+* `A`: Subject - highest priority but also we can do `subject:foobar` searches
+* `B`: email addresses of participants in the conv including domains for `includes:@foobar.com` searches
+* `C`: the body of messages, also file names in case people search without `file:`
+* `D`: body of files (in future)
 
-Main search entry for a conversation holds a tsv:
-* when a message is added new tsv is appended to existing one
-* when message is edited or subject changed etc., the whole tsv is rebuilt
-* participant email address should be included in the tsv with a higher weight, also domains `@example.com`
-  to allow such searches
+When a new participant is added to a conversation their id is added to every earlier search entry.
 
 Specific ways of searching need to be dealt with specially:
 * `from:foobar@example.com` - creator is ...
