@@ -284,9 +284,9 @@ async def test_spam(fake_request, db_conn, create_email, factory: Factory, cli, 
     counts = await get_flag_counts(user.id, conn=db_conn, redis=redis)
     assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 1, 'deleted': 0}
 
-    r = await cli.get(factory.url('ui:get-actions', conv=await db_conn.fetchval('select key from conversations')))
-    assert r.status == 200, await r.text()
-    obj = await r.json()
+    obj = await cli.get_json(
+        factory.url('ui:get-actions', conv=await db_conn.fetchval('select key from conversations'))
+    )
     assert obj[2]['body'] == 'this is spam'
     assert obj[2]['warnings'] == {'testing': 'xxx'}
 

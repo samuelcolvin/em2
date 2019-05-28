@@ -51,6 +51,9 @@ create table participants (
   id bigserial primary key,
   conv bigint not null references conversations on delete cascade,
   user_id bigint not null references users on delete restrict,
+  removal_action_id int,
+  removal_updated_ts timestamptz,
+  removal_details json,
   seen boolean,
   inbox boolean default true,
   deleted boolean,
@@ -61,6 +64,7 @@ create table participants (
   -- todo permissions, hidden
   unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id
 );
+create index participants_user_removal_action on participants using btree (user_id, removal_action_id);
 create index participants_user_seen on participants using btree (user_id, seen);
 create index participants_user_inbox on participants using btree (user_id, inbox);
 create index participants_user_deleted on participants using btree (user_id, deleted);
@@ -182,7 +186,7 @@ create table send_events (
   extra json
 );
 create index send_events_send ON send_events USING btree (send);
-create index send_events_user_ids ON send_events USING btree (user_ids);
+create index send_events_user_ids ON send_events USING gin (user_ids);
 
 create type ContentDisposition as enum ('attachment', 'inline');
 
@@ -219,7 +223,7 @@ create table search (
 create index search_conv on search using btree (conv);
 create index search_participant_ids on search using gin (participant_ids);
 create index search_freeze_action on search using btree (freeze_action);
-create index search_conv_creator on search using gin (conv_creator);
+create index search_conv_creator on search using btree (conv_creator);
 create index search_conv_participant_ids on search using gin (conv_participant_ids);
 create index search_files on search using gin (files);
 create index search_vector on search using gin (vector);

@@ -46,15 +46,11 @@ async def test_filter_labels_conv_list(cli, factory: Factory, db_conn, query, ex
 
     url = factory.url('ui:list', session_id=test_user.session_id, query=query)
     url = str(url).replace('label1', str(label1)).replace('label2', str(label2))
-    r = await cli.get(url)
-    assert r.status == 200, await r.text()
-    data = await r.json()
+    data = await cli.get_json(url)
     response = [c['details']['sub'] for c in data['conversations']]
     assert response == expected, f'url: {url}, response: {response}'
 
-    r = await cli.get(url)
-    assert r.status == 200, await r.text()
-    data2 = await r.json()
+    data2 = await cli.get_json(url)
     assert data == data2
 
 
@@ -77,9 +73,7 @@ async def test_label_counts(cli, factory: Factory, db_conn):
     conv_dave = await factory.create_conv(subject='dave')
     await db_conn.execute('update participants set label_ids=$1 where conv=$2', [label1, label2, label3], conv_dave.id)
 
-    r = await cli.get(factory.url('ui:conv-counts'))
-    assert r.status == 200, await r.text()
-    obj = await r.json()
+    obj = await cli.get_json(factory.url('ui:conv-counts'))
     assert obj['labels'] == [
         {'id': label1, 'name': 'Label 1', 'color': None, 'description': None, 'count': 3},
         {'id': label3, 'name': 'Label 3', 'color': None, 'description': None, 'count': 1},
@@ -95,37 +89,32 @@ async def test_add_remove_label(cli, factory: Factory, db_conn):
     label_id = await factory.create_label()
 
     r = await cli.post_json(
-        factory.url('ui:add-remove-label', conv=conv.key, query={'action': 'remove', 'label_id': label_id})
+        factory.url('ui:add-remove-label', conv=conv.key, query={'action': 'remove', 'label_id': label_id}), status=409
     )
-    assert r.status == 409, await r.text()
     assert await r.json() == {'message': 'conversation does not have this label'}
     assert await db_conn.fetchval('select label_ids from participants') is None
 
     r = await cli.post_json(
         factory.url('ui:add-remove-label', conv=conv.key, query={'action': 'add', 'label_id': label_id})
     )
-    assert r.status == 200, await r.text()
     assert await r.json() == {'status': 'ok'}
     assert await db_conn.fetchval('select label_ids from participants') == [label_id]
 
     r = await cli.post_json(
-        factory.url('ui:add-remove-label', conv=conv.key, query={'action': 'add', 'label_id': label_id})
+        factory.url('ui:add-remove-label', conv=conv.key, query={'action': 'add', 'label_id': label_id}), status=409
     )
-    assert r.status == 409, await r.text()
     assert await r.json() == {'message': 'conversation already has this label'}
     assert await db_conn.fetchval('select label_ids from participants') == [label_id]
 
     r = await cli.post_json(
         factory.url('ui:add-remove-label', conv=conv.key, query={'action': 'remove', 'label_id': label_id})
     )
-    assert r.status == 200, await r.text()
     assert await r.json() == {'status': 'ok'}
     assert await db_conn.fetchval('select label_ids from participants') == []
 
     r = await cli.post_json(
-        factory.url('ui:add-remove-label', conv=conv.key, query={'action': 'remove', 'label_id': -1})
+        factory.url('ui:add-remove-label', conv=conv.key, query={'action': 'remove', 'label_id': -1}), status=400
     )
-    assert r.status == 400, await r.text()
     assert await r.json() == {'message': 'you do not have this label'}
 
 
@@ -138,16 +127,12 @@ async def test_add_remove_label_multiple(cli, factory: Factory, db_conn):
     label2 = await factory.create_label('label 2')
     assert await db_conn.fetchval('select label_ids from participants') == [label1]
 
-    r = await cli.post_json(
-        factory.url('ui:add-remove-label', conv=conv.key, query={'action': 'add', 'label_id': label2})
-    )
-    assert r.status == 200, await r.text()
+    await cli.post_json(factory.url('ui:add-remove-label', conv=conv.key, query={'action': 'add', 'label_id': label2}))
     assert await db_conn.fetchval('select label_ids from participants') == [label1, label2]
 
-    r = await cli.post_json(
+    await cli.post_json(
         factory.url('ui:add-remove-label', conv=conv.key, query={'action': 'remove', 'label_id': label1})
     )
-    assert r.status == 200, await r.text()
     assert await db_conn.fetchval('select label_ids from participants') == [label2]
 
 
@@ -156,9 +141,8 @@ async def test_bread_list(cli, factory: Factory):
 
     label1 = await factory.create_label('Label 1', ordering=10, color='red')
     label2 = await factory.create_label('Label 2', color='green', description='foobar')
-    r = await cli.get(factory.url('ui:labels-browse'))
-    assert r.status == 200, await r.text()
-    assert await r.json() == {
+    obj = await cli.get_json(factory.url('ui:labels-browse'))
+    assert obj == {
         'items': [
             {'id': label2, 'name': 'Label 2', 'color': 'green', 'description': 'foobar'},
             {'id': label1, 'name': 'Label 1', 'color': 'red', 'description': None},
@@ -172,8 +156,7 @@ async def test_bread_add(cli, factory: Factory, db_conn):
     user = await factory.create_user()
 
     assert 0 == await db_conn.fetchval('select count(*) from labels')
-    r = await cli.post_json(factory.url('ui:labels-add'), data={'name': 'Test Label'})
-    assert r.status == 201, await r.text()
+    await cli.post_json(factory.url('ui:labels-add'), data={'name': 'Test Label'}, status=201)
     assert 1 == await db_conn.fetchval('select count(*) from labels')
     label = dict(await db_conn.fetchrow('select user_id, name, color, description, ordering from labels'))
     assert label == {'user_id': user.id, 'name': 'Test Label', 'color': None, 'description': None, 'ordering': 0}
@@ -183,8 +166,7 @@ async def test_bread_edit(cli, factory: Factory, db_conn):
     user = await factory.create_user()
 
     label = await factory.create_label('Label 1')
-    r = await cli.post_json(factory.url('ui:labels-edit', pk=label), data={'color': 'red', 'ordering': 666})
-    assert r.status == 200, await r.text()
+    await cli.post_json(factory.url('ui:labels-edit', pk=label), data={'color': 'red', 'ordering': 666})
     label = dict(await db_conn.fetchrow('select user_id, name, color, description, ordering from labels'))
     assert label == {'user_id': user.id, 'name': 'Label 1', 'color': 'red', 'description': None, 'ordering': 0}
     assert 1 == await db_conn.fetchval('select count(*) from labels')
@@ -206,8 +188,7 @@ async def test_bread_delete(cli, factory: Factory, db_conn):
     assert await db_conn.fetchval('select label_ids from participants where conv=$1', conv2.id) == [label1, label2]
 
     assert 2 == await db_conn.fetchval('select count(*) from labels')
-    r = await cli.post_json(factory.url('ui:labels-delete', pk=label1))
-    assert r.status == 200, await r.text()
+    await cli.post_json(factory.url('ui:labels-delete', pk=label1))
     assert [r[0] for r in await db_conn.fetch('select id from labels')] == [label2]
     assert 0 == await db_conn.fetchval('select count(*) from participants where label_ids @> $1', [label1])
 
@@ -223,8 +204,7 @@ async def test_bread_edit_other_user(cli, factory: Factory, db_conn):
     label = await factory.create_label('Label 1', user_id=user2.id)
     assert await db_conn.fetchval('select user_id from labels') == user2.id
 
-    r = await cli.post_json(factory.url('ui:labels-edit', pk=label), data={'color': 'red'})
-    assert r.status == 404, await r.text()
+    await cli.post_json(factory.url('ui:labels-edit', pk=label), data={'color': 'red'}, status=404)
     assert await db_conn.fetchval('select color from labels') is None
 
 
@@ -236,6 +216,5 @@ async def test_bread_delete_other_user(cli, factory: Factory, db_conn):
     label = await factory.create_label('Label 1', user_id=user2.id)
     assert await db_conn.fetchval('select user_id from labels') == user2.id
 
-    r = await cli.post_json(factory.url('ui:labels-delete', pk=label))
-    assert r.status == 404, await r.text()
+    await cli.post_json(factory.url('ui:labels-delete', pk=label), status=404)
     assert 1 == await db_conn.fetchval('select count(*) from labels')

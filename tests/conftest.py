@@ -127,11 +127,11 @@ async def _fix_cli(settings, db_conn, aiohttp_client, redis, loop):
     cli = await aiohttp_client(app)
     settings.local_port = cli.server.port
 
-    async def post_json(url, data=None, *, origin=None):
+    async def post_json(url, data=None, *, origin=None, status=200):
         if isinstance(data, (dict, list)):
             data = json.dumps(data)
 
-        return await cli.post(
+        r = await cli.post(
             url,
             data=data or '{}',
             headers={
@@ -140,8 +140,17 @@ async def _fix_cli(settings, db_conn, aiohttp_client, redis, loop):
                 'Origin': origin or 'http://localhost:3000',
             },
         )
+        if status:
+            assert r.status == status, await r.text()
+        return r
+
+    async def get_json(url, *, status=200, **kwargs):
+        r = await cli.get(url, **kwargs)
+        assert r.status == status, await r.text()
+        return await r.json()
 
     cli.post_json = post_json
+    cli.get_json = get_json
     return cli
 
 
@@ -238,8 +247,9 @@ class Factory:
         self, subject='Test Subject', message='Test Message', session_id=None, participants=(), publish=False
     ) -> Conv:
         data = {'subject': subject, 'message': message, 'publish': publish, 'participants': participants}
-        r = await self.cli.post_json(self.url('ui:create', session_id=session_id or self.user.session_id), data)
-        assert r.status == 201, await r.text()
+        r = await self.cli.post_json(
+            self.url('ui:create', session_id=session_id or self.user.session_id), data, status=201
+        )
         conv_key = (await r.json())['key']
         conv_id = await self.conn.fetchval('select id from conversations where key=$1', conv_key)
         conv = Conv(conv_key, conv_id)

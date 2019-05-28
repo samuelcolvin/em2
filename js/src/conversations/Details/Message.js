@@ -17,7 +17,7 @@ import {make_url} from '../../logic/network'
 import MessageBody from './MessageBody'
 import {file_icon, file_size} from './files'
 
-const CommentButton = ({msg, state, setState, comment_ref, children}) => {
+const CommentButton = ({msg, state, setState, comment_ref, children, edit_locked}) => {
   const btn_id = `msg-${msg.last_action}`
   const click = () => {
     setState({comment_parent: msg.first_action, [btn_id]: false})
@@ -26,7 +26,7 @@ const CommentButton = ({msg, state, setState, comment_ref, children}) => {
   return (
     <div className="text-right">
       <Button size="sm" color="comment" id={btn_id}
-              disabled={!!(state.locked || state.comment_parent || state.new_message || state.extra_prts)}
+              disabled={!!(edit_locked || state.comment_parent || state.new_message || state.extra_prts)}
               onClick={click}>
         <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
       </Button>
@@ -41,25 +41,25 @@ const CommentButton = ({msg, state, setState, comment_ref, children}) => {
   )
 }
 
-const AddComment = ({state, setState, comment_ref, add_comment}) => (
+const AddComment = ({state, edit_locked, setState, comment_ref, add_comment}) => (
   <div className="d-flex py-1 ml-3">
     <div className="flex-grow-1">
       <textarea placeholder="reply to all..."
                 className="msg comment"
-                disabled={state.locked}
+                disabled={edit_locked}
                 value={state.comment || ''}
                 ref={comment_ref}
                 onChange={e => setState({comment: e.target.value})}/>
     </div>
     <div className="text-right pl-2">
       <div>
-        <Button size="sm" color="primary" disabled={state.locked || !state.comment} onClick={add_comment}>
+        <Button size="sm" color="primary" disabled={edit_locked || !state.comment} onClick={add_comment}>
           <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
           Comment
         </Button>
       </div>
       <Button size="sm" color="link" className="text-muted"
-            disabled={state.locked}
+            disabled={edit_locked}
             onClick={() => setState({comment_parent: null, comment: null})}>
         Cancel
       </Button>

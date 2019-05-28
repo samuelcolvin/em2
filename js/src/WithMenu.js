@@ -45,17 +45,21 @@ class LeftMenu_ extends React.Component {
   state = {flags: {}, labels:[]}
 
   async componentDidMount () {
+    this.mounted = true
     const state = await window.logic.conversations.update_counts()
     state.styles = {
       position: 'fixed',
       top: '91px',
       width: document.getElementById('main').offsetWidth / 4 - 30 + 'px',
     }
-    this.setState(state)
-    this.remove_listener = window.logic.add_listener('flag-change', counts => this.setState(counts))
+    if (this.mounted) {
+      this.setState(state)
+      this.remove_listener = window.logic.add_listener('flag-change', counts => this.setState(counts))
+    }
   }
 
   componentWillUnmount () {
+    this.mounted = false
     this.remove_listener && this.remove_listener()
   }
 
