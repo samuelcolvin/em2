@@ -1,24 +1,20 @@
 import asyncio
 import hashlib
 import json
-import re
 import secrets
-import textwrap
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, unique
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
-from arq import ArqRedis
 from atoolbox import JsonErrors
-from bs4 import BeautifulSoup
 from buildpg import MultipleValues, V, Values
-from buildpg.asyncpg import BuildPgConnection
 from pydantic import BaseModel, EmailStr, constr, validator
 
-from .settings import Settings
+from .search import search_create_conv
+from .utils.core import MsgFormat, message_preview
 from .utils.datetime import to_unix_ms, utcnow
-from .utils.db import or404
+from .utils.db import Connections, or404
 
 StrInt = Union[str, int]
 
@@ -49,25 +45,11 @@ class ActionTypes(str, Enum):
 
 
 @unique
-class MsgFormat(str, Enum):
-    markdown = 'markdown'
-    plain = 'plain'
-    html = 'html'
-
-
-@unique
 class UserTypes(str, Enum):
     new = 'new'
     local = 'local'
     remote_em2 = 'remote_em2'
     remote_other = 'remote_other'
-
-
-@dataclass
-class Connections:
-    main: BuildPgConnection
-    redis: ArqRedis
-    settings: Settings
 
 
 async def get_create_user(conns: Connections, email: str, user_type: UserTypes = UserTypes.new) -> int:
@@ -913,6 +895,15 @@ async def create_conv(
         )
 
     await update_conv_flags(conns, *updates)
+    await search_create_conv(
+        conns,
+        conv_key=conv_key,
+        creator_email=creator_email,
+        creator_id=creator_id,
+        participants=part_users,
+        conv=conv,
+        files=files,
+    )
     return conv_id, conv_key
 
 
@@ -933,44 +924,6 @@ async def create_files(conns: Connections, files: List[File], conv_id: int, acti
         for f in files
     ]
     await conns.main.execute_b('insert into files (:values__names) values :values', values=MultipleValues(*values))
-
-
-_clean_markdown = [
-    (re.compile(r'<.*?>', flags=re.S), ''),
-    (re.compile(r'_(\S.*?\S)_'), r'\1'),
-    (re.compile(r'\[(.+?)\]\(.*?\)'), r'\1'),
-    (re.compile(r'(\*\*|`)'), ''),
-    (re.compile(r'^(#+|\*|\d+\.) ', flags=re.M), ''),
-]
-_clean_all = [
-    (re.compile(r'^\s+'), ''),
-    (re.compile(r'\s+$'), ''),
-    (re.compile(r'[\x00-\x1f\x7f-\xa0]'), ''),
-    (re.compile(r'[\t\n]+'), ' '),
-    (re.compile(r' {2,}'), ' '),
-]
-
-
-def message_preview(body: str, msg_format: MsgFormat) -> str:
-    if msg_format == MsgFormat.markdown:
-        preview = body
-        for regex, p in _clean_markdown:
-            preview = regex.sub(p, preview)
-    elif msg_format == MsgFormat.html:
-        soup = BeautifulSoup(body, 'html.parser')
-        soup = soup.find('body') or soup
-
-        for el_name in ('div.gmail_signature', 'style', 'script'):
-            for el in soup.select(el_name):
-                el.decompose()
-        preview = soup.text
-    else:
-        assert msg_format == MsgFormat.plain, msg_format
-        preview = body
-
-    for regex, p in _clean_all:
-        preview = regex.sub(p, preview)
-    return textwrap.shorten(preview, width=140, placeholder='…')
 
 
 conv_flag_count_sql = """

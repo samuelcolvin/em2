@@ -217,19 +217,20 @@ create index files_action ON files USING btree (action);
 create table search (
   id bigserial primary key,
   conv_key varchar(64),
-  participant_ids bigint[] not null,
   action_id int not null,
+  participant_ids bigint[] not null,
+  ts timestamptz not null default current_timestamp,
 
   creator_email varchar(255),
 
-  files varchar(255)[],  -- needs to contain main part and extensions separately
-  -- might need other things like size
+  -- might need other things like size, files participants
   vector tsvector,
   unique (conv_key, action_id)  -- and language when it's added
 );
+create index search_conv_key on search using gin (conv_key gin_trgm_ops);
+create index search_ts on search using btree (ts);
 create index search_participant_ids on search using gin (participant_ids);
 create index search_creator_email on search using gin (creator_email gin_trgm_ops);
-create index search_files on search using gin (files);
 create index search_vector on search using gin (vector);
 
 ----------------------------------------------------------------------------------

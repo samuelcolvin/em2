@@ -1,6 +1,11 @@
-from typing import Any, Awaitable
+from dataclasses import dataclass
+from typing import Any, Awaitable, Optional
 
+from arq import ArqRedis
 from atoolbox import JsonErrors
+from buildpg.asyncpg import BuildPgConnection
+
+from em2.settings import Settings
 
 
 async def or404(coro: Awaitable, *, msg: str = 'unable to find value') -> Any:
@@ -13,3 +18,15 @@ async def or404(coro: Awaitable, *, msg: str = 'unable to find value') -> Any:
     if ans is None:
         raise JsonErrors.HTTPNotFound(msg)
     return ans
+
+
+@dataclass
+class Connections:
+    main: BuildPgConnection
+    redis: ArqRedis
+    search: Optional[BuildPgConnection]
+    settings: Settings
+
+
+def conns_from_request(request) -> Connections:
+    return Connections(request['conn'], request.app['redis'], request['conn'], request.app['settings'])

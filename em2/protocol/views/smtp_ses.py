@@ -18,8 +18,8 @@ from pydantic.datetime_parse import parse_datetime
 from yarl import URL
 
 from em2.background import push_multiple
-from em2.core import Connections
 from em2.settings import Settings
+from em2.utils.db import conns_from_request
 from em2.utils.smtp import parse_smtp
 from em2.utils.storage import S3
 
@@ -102,8 +102,9 @@ async def _record_email_message(request, message: Dict):
 
     msg = parse_smtp(body)
     del body
-    conns = Connections(request['conn'], request.app['redis'], request.app['settings'])
-    await process_smtp(conns, msg, recipients, f's3://{bucket}/{path}', spam=spam, warnings=warnings)
+    await process_smtp(
+        conns_from_request(request), msg, recipients, f's3://{bucket}/{path}', spam=spam, warnings=warnings
+    )
 
 
 async def _record_email_event(request, message: Dict):
@@ -197,8 +198,7 @@ async def _record_email_event(request, message: Dict):
 
         if complaint:
             action_ids = await remove_participants(conn, conv_id, ts, user_ids)
-            conns = Connections(conn, request.app['redis'], request.app['settings'])
-            await push_multiple(conns, conv_id, action_ids)
+            await push_multiple(conns_from_request(request), conv_id, action_ids)
 
     return event_type
 

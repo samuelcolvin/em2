@@ -422,8 +422,8 @@ One search entry per action (where required) and maybe one per language per acti
 vector weights used to differentiate between different parts of the conversation::
 * `A`: Subject - highest priority but also we can do `subject:foobar` searches
 * `B`: email addresses of participants in the conv including domains for `includes:@foobar.com` searches
-* `C`: the body of messages, also file names in case people search without `file:`
-* `D`: body of files (in future)
+* `C`: files including extensions for `files:*.png` searches
+* `D`: the body of messages
 
 When a new participant is added to a conversation their id is added to every earlier search entry.
 
