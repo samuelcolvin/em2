@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any, Dict, List, Tuple
 
 from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
-from buildpg import MultipleValues, SetValues, V, Values, funcs
+from buildpg import SetValues, V, funcs
 from pydantic import BaseModel, validator
 
 from em2.background import push_all, push_multiple
@@ -13,6 +13,7 @@ from em2.core import (
     ActionTypes,
     ConvFlags,
     CreateConvModel,
+    File,
     UpdateFlag,
     apply_actions,
     construct_conv,
@@ -184,28 +185,31 @@ class ConvAct(ExecView):
             return value
 
     async def execute(self, m: Model):
-        async with self.conn.transaction():
-            conv_id, action_ids = await apply_actions(
-                self.conn, self.redis, self.settings, self.session.user_id, self.request.match_info['conv'], m.actions
-            )
-            if m.files:
-                action_pk = await self.conn.fetchval(
-                    'select pk from actions where conv=$1 and id=$2', conv_id, action_ids[0]
-                )
-                await self.create_files(conv_id, action_pk, m.files)
+        files = None
+        if m.files:
+            conv_id, _ = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
+            files = await self.get_files(conv_id, m.files)
+        conv_id, action_ids = await apply_actions(
+            conn=self.conn,
+            redis=self.redis,
+            settings=self.settings,
+            actor_user_id=self.session.user_id,
+            conv_ref=self.request.match_info['conv'],
+            actions=m.actions,
+            files=files,
+        )
 
         if action_ids:
             await push_multiple(self.conn, self.app['redis'], conv_id, action_ids)
         return {'action_ids': action_ids}
 
-    async def create_files(self, conv_id: int, action_pk: int, file_content_ids: List[str]):
+    async def get_files(self, conv_id: int, file_content_ids: List[str]) -> List[File]:
         async with S3(self.settings) as s3_client:
-            values = await asyncio.gather(
-                *(self.prepare_file(s3_client, conv_id, action_pk, content_id) for content_id in file_content_ids)
+            return await asyncio.gather(
+                *(self.prepare_file(s3_client, conv_id, content_id) for content_id in file_content_ids)
             )
-        await self.conn.execute_b('insert into files (:values__names) values :values', values=MultipleValues(*values))
 
-    async def prepare_file(self, s3_client, conv_id, action_pk: int, content_id: str):
+    async def prepare_file(self, s3_client, conv_id, content_id: str):
         storage_path = await self.redis.get(file_upload_cache_key(conv_id, content_id))
         if not storage_path:
             raise JsonErrors.HTTPBadRequest(f'no file found for content id {content_id!r}')
@@ -216,16 +220,14 @@ class ConvAct(ExecView):
         except StorageNotFound:
             raise JsonErrors.HTTPBadRequest('file not uploaded')
         else:
-            return Values(
-                conv=conv_id,
-                action=action_pk,
-                content_id=content_id,
-                storage=storage_path,
-                name=path.rsplit('/', 1)[1],
-                content_disp='attachment' if 'ContentDisposition' in head else 'inline',
+            return File(
                 hash=head['ETag'].strip('"'),
+                name=path.rsplit('/', 1)[1],
+                content_id=content_id,
+                content_disp='attachment' if 'ContentDisposition' in head else 'inline',
                 content_type=head['ContentType'],
                 size=head['ContentLength'],
+                storage=storage_path,
             )
 
 

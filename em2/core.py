@@ -12,7 +12,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 from aioredis import Redis
 from atoolbox import JsonErrors
 from bs4 import BeautifulSoup
-from buildpg import V
+from buildpg import MultipleValues, V, Values
 from buildpg.asyncpg import BuildPgConnection
 from pydantic import BaseModel, EmailStr, constr, validator
 
@@ -239,6 +239,18 @@ class ActionModel(BaseModel):
         return v
 
 
+@dataclass
+class File:
+    hash: str
+    name: Optional[str]
+    content_id: str
+    content_disp: str
+    content_type: str
+    size: int
+    content: Optional[bytes] = None
+    storage: Optional[str] = None
+
+
 class _Act:
     """
     See act() below for details.
@@ -269,7 +281,7 @@ class _Act:
         )
         return self.conv_id, creator
 
-    async def run(self, action: ActionModel) -> Optional[int]:
+    async def run(self, action: ActionModel, files: Optional[List[File]]) -> Optional[int]:
         if action.act is ActionTypes.seen:
             return await self._seen()
 
@@ -280,7 +292,10 @@ class _Act:
         if action.act in _prt_action_types:
             return await self._act_on_participant(action)
         elif action.act in _msg_action_types:
-            return await self._act_on_message(action)
+            action_id, action_pk = await self._act_on_message(action)
+            if files:
+                await create_files(self.conn, files, self.conv_id, action_pk)
+            return action_id
         elif action.act in _subject_action_types:
             return await self._act_on_subject(action)
 
@@ -404,7 +419,7 @@ class _Act:
             )
         return action_id
 
-    async def _act_on_message(self, action: ActionModel) -> int:
+    async def _act_on_message(self, action: ActionModel) -> Tuple[int, int]:
         if action.act == ActionTypes.msg_add:
             parent_pk = None
             if action.parent:
@@ -419,11 +434,11 @@ class _Act:
                 )
             # no extra checks required, you can add a message even after a deleted message, this avoids complex
             # checks that no message in the hierarchy has been deleted
-            return await self.conn.fetchval(
+            return await self.conn.fetchrow(
                 """
                 insert into actions (conv, act          , actor, body, preview, parent, msg_format, warnings)
                 values              ($1  , 'message:add', $2   , $3  , $4     , $5    , $6        , $7)
-                returning id
+                returning id, pk
                 """,
                 self.conv_id,
                 self.actor_user_id,
@@ -455,11 +470,11 @@ class _Act:
                 details = {'loc_duration': self.settings.message_lock_duration}
                 raise JsonErrors.HTTPConflict('message locked, action not possible', details=details)
 
-        return await self.conn.fetchval(
+        return await self.conn.fetchrow(
             """
             insert into actions (conv, actor, act, body, preview, follows)
             values              ($1  , $2   , $3 , $4  , $5     , $6)
-            returning id
+            returning id, pk
             """,
             self.conv_id,
             self.actor_user_id,
@@ -545,6 +560,7 @@ async def apply_actions(
     actions: List[ActionModel],
     spam: bool = False,
     warnings: Dict[str, str] = None,
+    files: Optional[List[File]] = None,
 ) -> Tuple[int, List[int]]:
     """
     Apply actions and return their ids.
@@ -561,7 +577,7 @@ async def apply_actions(
         conv_id, creator_id = await act_cls.prepare(conv_ref)
 
         for action in actions:
-            action_id = await act_cls.run(action)
+            action_id = await act_cls.run(action, files)
             if action_id:
                 action_ids.append(action_id)
 
@@ -574,45 +590,7 @@ async def apply_actions(
             )
             # everyone else hasn't seen this action if it's "worth seeing"
             if any(a.act not in _meta_action_types for a in actions):
-                # TODO we'll also need to exclude muted conversations from being moved, while still setting seen=false
-                # we could exclude no local users from some of this
-                from_deleted, from_archive, already_inbox = await conn.fetchrow(
-                    """
-                    with conv_prts as (
-                      select p.id from participants p where conv=$1 and user_id!=$2
-                    ),
-                    from_deleted as (
-                      -- user had previously deleted the conversation, move it back to the inbox
-                      update participants p set seen=null, inbox=true, deleted=null from conv_prts where
-                      conv_prts.id=p.id and spam is not true and inbox is not true and p.deleted is true
-                      returning p.user_id
-                    ),
-                    from_archive as (
-                      -- conversation was previously in the archive for these users, move it back to the inbox
-                      update participants p set seen=null, inbox=true from conv_prts where
-                      conv_prts.id=p.id and spam is not true and inbox is not true and p.deleted is not true
-                      returning p.user_id
-                    ),
-                    already_inbox as (
-                      -- conversation was already in the inbox, just mark it as unseen
-                      update participants p set seen=null from conv_prts where
-                      conv_prts.id=p.id and spam is not true and inbox is true and seen is true
-                      returning p.user_id
-                    ),
-                    is_spam as (
-                      -- conversation is marked as spam, just set it to unseen
-                      update participants p set seen=null from conv_prts where
-                      conv_prts.id=p.id and spam is true
-                      returning p.user_id
-                    )
-                    select from_deleted, from_archive, already_inbox
-                    from (select coalesce(array_agg(user_id), '{}') from_deleted from from_deleted) from_deleted,
-                         (select coalesce(array_agg(user_id), '{}') from_archive from from_archive) from_archive,
-                         (select coalesce(array_agg(user_id), '{}') already_inbox from already_inbox) already_inbox
-                    """,
-                    conv_id,
-                    actor_user_id,
-                )
+                from_deleted, from_archive, already_inbox = await user_flag_moves(conn, conv_id, actor_user_id)
             await update_conv_users(conn, conv_id)
 
     updates = [
@@ -656,6 +634,50 @@ async def apply_actions(
     if updates:
         await update_conv_flags(*updates, redis=redis)
     return conv_id, action_ids
+
+
+async def user_flag_moves(
+    conn: BuildPgConnection, conv_id: int, actor_user_id: int
+) -> Tuple[List[int], List[int], List[int]]:
+    # TODO we'll also need to exclude muted conversations from being moved, while still setting seen=false
+    # we could exclude no local users from some of this
+    return await conn.fetchrow(
+        """
+        with conv_prts as (
+          select p.id from participants p where conv=$1 and user_id!=$2
+        ),
+        from_deleted as (
+          -- user had previously deleted the conversation, move it back to the inbox
+          update participants p set seen=null, inbox=true, deleted=null from conv_prts where
+          conv_prts.id=p.id and spam is not true and inbox is not true and p.deleted is true
+          returning p.user_id
+        ),
+        from_archive as (
+          -- conversation was previously in the archive for these users, move it back to the inbox
+          update participants p set seen=null, inbox=true from conv_prts where
+          conv_prts.id=p.id and spam is not true and inbox is not true and p.deleted is not true
+          returning p.user_id
+        ),
+        already_inbox as (
+          -- conversation was already in the inbox, just mark it as unseen
+          update participants p set seen=null from conv_prts where
+          conv_prts.id=p.id and spam is not true and inbox is true and seen is true
+          returning p.user_id
+        ),
+        is_spam as (
+          -- conversation is marked as spam, just set it to unseen
+          update participants p set seen=null from conv_prts where
+          conv_prts.id=p.id and spam is true
+          returning p.user_id
+        )
+        select from_deleted, from_archive, already_inbox
+        from (select coalesce(array_agg(user_id), '{}') from_deleted from from_deleted) from_deleted,
+             (select coalesce(array_agg(user_id), '{}') from_archive from from_archive) from_archive,
+             (select coalesce(array_agg(user_id), '{}') already_inbox from already_inbox) already_inbox
+        """,
+        conv_id,
+        actor_user_id,
+    )
 
 
 async def conv_actions_json(
@@ -798,7 +820,8 @@ async def create_conv(
     ts: Optional[datetime] = None,
     spam: bool = False,
     warnings: Dict[str, str] = None,
-):
+    files: Optional[List[File]] = None,
+) -> Tuple[int, str]:
     ts = ts or utcnow()
     conv_key = generate_conv_key(creator_email, ts, conv.subject) if conv.publish else draft_conv_key()
     async with conn.transaction():
@@ -843,10 +866,11 @@ async def create_conv(
             ts,
             user_ids,
         )
-        await conn.execute(
+        add_action_pk = await conn.fetchval(
             """
             insert into actions (conv, act          , actor, ts, body, preview, msg_format, warnings)
             values              ($1  , 'message:add', $2   , $3, $4  , $5     , $6        , $7)
+            returning pk
             """,
             conv_id,
             creator_id,
@@ -868,6 +892,8 @@ async def create_conv(
             conv.subject,
         )
         await update_conv_users(conn, conv_id)
+        if files:
+            await create_files(conn, files, conv_id, add_action_pk)
 
     if not conv.publish:
         updates = (UpdateFlag(creator_id, [(ConvFlags.draft, 1), (ConvFlags.all, 1)]),)
@@ -887,6 +913,25 @@ async def create_conv(
 
     await update_conv_flags(*updates, redis=redis)
     return conv_id, conv_key
+
+
+async def create_files(conn: BuildPgConnection, files: List[File], conv_id: int, action_pk: int):
+    # TODO cope with repeated content_id
+    values = [
+        Values(
+            conv=conv_id,
+            action=action_pk,
+            hash=f.hash,
+            name=f.name,
+            content_id=f.content_id,
+            content_disp=f.content_disp,
+            content_type=f.content_type,
+            size=f.size,
+            storage=f.storage,
+        )
+        for f in files
+    ]
+    await conn.execute_b('insert into files (:values__names) values :values', values=MultipleValues(*values))
 
 
 _clean_markdown = [

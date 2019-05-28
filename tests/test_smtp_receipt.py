@@ -6,9 +6,9 @@ from arq.jobs import Job
 from pytest_toolbox.comparison import RegexStr
 
 from em2.background import push_all
-from em2.core import conv_actions_json, get_flag_counts
+from em2.core import File, conv_actions_json, get_flag_counts
 from em2.protocol.views.smtp_utils import process_smtp
-from em2.utils.smtp import CopyToTemp, File, find_smtp_files
+from em2.utils.smtp import CopyToTemp, find_smtp_files
 
 from .conftest import Factory
 
@@ -113,12 +113,12 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, redis
         'name': 'testing1.txt',
         'content_type': 'text/plain',
     }
-    conv_id = await db_conn.fetchval('select id from conversations')
+    conv_id, conv_key = await db_conn.fetchrow('select id, key from conversations')
     data = json.loads(await conv_actions_json(db_conn, factory.user.id, conv_id))
     assert data == [
         {
             'id': 1,
-            'conv': RegexStr('.*'),
+            'conv': conv_key,
             'act': 'participant:add',
             'ts': '2032-01-01T12:00:00+00:00',
             'actor': 'sender@remote.com',
@@ -126,7 +126,7 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, redis
         },
         {
             'id': 2,
-            'conv': RegexStr('.*'),
+            'conv': conv_key,
             'act': 'participant:add',
             'ts': '2032-01-01T12:00:00+00:00',
             'actor': 'sender@remote.com',
@@ -134,7 +134,7 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, redis
         },
         {
             'id': 3,
-            'conv': RegexStr('.*'),
+            'conv': conv_key,
             'act': 'message:add',
             'ts': '2032-01-01T12:00:00+00:00',
             'actor': 'sender@remote.com',
@@ -147,6 +147,7 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, redis
                     'content_id': RegexStr('.{36}'),
                     'name': 'testing1.txt',
                     'content_type': 'text/plain',
+                    'size': 7,
                 },
                 {
                     'content_disp': 'attachment',
@@ -154,12 +155,13 @@ async def test_attachment_actions(fake_request, factory: Factory, db_conn, redis
                     'content_id': 'testing-hello2',
                     'name': 'testing2.txt',
                     'content_type': 'text/plain',
+                    'size': 7,
                 },
             ],
         },
         {
             'id': 4,
-            'conv': RegexStr('.*'),
+            'conv': conv_key,
             'act': 'conv:publish',
             'ts': '2032-01-01T12:00:00+00:00',
             'actor': 'sender@remote.com',
@@ -197,6 +199,7 @@ async def test_get_file(fake_request, factory: Factory, db_conn, create_email, a
             'content_id': 'testing-hello2',
             'name': 'testing.txt',
             'content_type': 'text/plain',
+            'size': 6,
         }
     ]
     dummy_server.app['s3_files']['s3-test-path'] = msg.as_string()
@@ -248,6 +251,7 @@ def test_finding_attachment(create_email, attachment, create_image):
             content_id=RegexStr('.{36}'),
             content_disp='attachment',
             content_type='font/ttf',
+            size=6,
             content=b'foobar',
         ),
         File(
@@ -256,6 +260,7 @@ def test_finding_attachment(create_email, attachment, create_image):
             content_id='testing-hello2',
             content_disp='attachment',
             content_type='text/plain',
+            size=6,
             content=b'hello\n',
         ),
         File(
@@ -264,6 +269,7 @@ def test_finding_attachment(create_email, attachment, create_image):
             content_id='foobar-123',
             content_disp='inline',
             content_type='image/jpeg',
+            size=len(image_data),
             content=image_data,
         ),
     ]
@@ -325,3 +331,37 @@ async def test_spam_existing_conv(fake_request, db_conn, create_email, send_to_r
 
     counts = await get_flag_counts(u3.id, conn=db_conn, redis=redis)
     assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 1, 'deleted': 0}
+
+
+async def test_reply_attachment(factory, fake_request, db_conn, create_email, send_to_remote, attachment):
+    await factory.create_user()
+
+    send_id, message_id = send_to_remote
+
+    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+    msg = create_email(
+        html_body='this is a reply',
+        headers={'In-Reply-To': message_id},
+        attachments=[attachment('testing.txt', 'text/plain', 'hello', {'Content-ID': 'foobar'})],
+    )
+    await process_smtp(fake_request, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    data = json.loads(await conv_actions_json(db_conn, factory.user.id, factory.conv.key))
+    assert data[-1] == {
+        'id': 5,
+        'conv': factory.conv.key,
+        'act': 'message:add',
+        'ts': '2032-01-01T12:00:00+00:00',
+        'actor': 'sender@remote.com',
+        'body': 'this is a reply',
+        'msg_format': 'html',
+        'files': [
+            {
+                'content_disp': 'attachment',
+                'hash': 'b1946ac92492d2347c6235b4d2611184',
+                'content_id': 'foobar',
+                'name': 'testing.txt',
+                'content_type': 'text/plain',
+                'size': 6,
+            }
+        ],
+    }

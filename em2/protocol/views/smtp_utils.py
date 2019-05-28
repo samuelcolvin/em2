@@ -125,7 +125,15 @@ class ProcessSMTP:
                 actions += [ActionModel(act=ActionTypes.prt_add, participant=addr) for addr in new_prts]
 
                 _, action_ids = await apply_actions(
-                    self.conn, self.redis, self.settings, actor_id, conv_id, actions, spam, warnings
+                    conn=self.conn,
+                    redis=self.redis,
+                    settings=self.settings,
+                    actor_user_id=actor_id,
+                    conv_ref=conv_id,
+                    actions=actions,
+                    spam=spam,
+                    warnings=warnings,
+                    files=find_smtp_files(msg),
                 )
                 assert action_ids
 
@@ -133,18 +141,18 @@ class ProcessSMTP:
                 await self.conn.execute(
                     'update actions set ts=$1 where conv=$2 and id=any($3)', timestamp, conv_id, all_action_ids
                 )
-                send_id = await self.conn.fetchval(
+                send_id, add_action_pk = await self.conn.fetchrow(
                     """
                     insert into sends (action, ref, complete, storage)
-                    (select pk, $1, true, $2 from actions where conv=$3 and id=any($4) and act='message:add')
-                    returning id
+                    (select pk, $1, true, $2 from actions where conv=$3 and id=any($4) and act='message:add' limit 1)
+                    returning id, action
                     """,
                     message_id,
                     storage,
                     conv_id,
                     action_ids,
                 )
-                await self.store_attachments(send_id, msg)
+                await self.conn.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
                 await push_multiple(self.conn, self.redis, conv_id, action_ids, transmit=False)
             else:
                 conv = CreateConvModel(
@@ -163,44 +171,20 @@ class ProcessSMTP:
                     ts=timestamp,
                     spam=spam,
                     warnings=warnings,
+                    files=find_smtp_files(msg),
                 )
-                send_id = await self.conn.fetchval(
+                send_id, add_action_pk = await self.conn.fetchrow(
                     """
                     insert into sends (action, ref, complete, storage)
-                    (select pk, $1, true, $2 from actions where conv=$3 and act='message:add')
-                    returning id
+                    (select pk, $1, true, $2 from actions where conv=$3 and act='message:add' limit 1)
+                    returning id, action
                     """,
                     message_id,
                     storage,
                     conv_id,
                 )
-                await self.store_attachments(send_id, msg)
+                await self.conn.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
                 await push_all(self.conn, self.redis, conv_id, transmit=False)
-
-    async def store_attachments(self, send_id: int, msg: EmailMessage):
-        files = list(find_smtp_files(msg))
-        if files:
-            action_pk, conv_id = await self.conn.fetchrow(
-                """
-                select s.action, a.conv
-                from sends s
-                join actions a on s.action = a.pk
-                where s.id=$1
-                """,
-                send_id,
-            )
-            files = [
-                (conv_id, action_pk, send_id, f.content_disp, f.hash, f.content_id, f.name, f.content_type)
-                for f in files
-            ]
-            # TODO cope with repeated content_id
-            await self.conn.executemany(
-                """
-                insert into files (conv  , action, send, content_disp, hash, content_id, name, content_type)
-                values            ($1    , $2    , $3  , $4          , $5  , $6        , $7  , $8)
-                """,
-                files,
-            )
 
     async def get_conv(self, msg: EmailMessage) -> Tuple[int, int]:
         conv_actor = None
