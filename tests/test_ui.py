@@ -295,7 +295,7 @@ async def test_seen(cli, factory: Factory):
             await ws.receive(timeout=0.1)
 
 
-async def test_create_then_publish(cli, factory: Factory, db_conn):
+async def test_create_then_publish(cli, factory: Factory, db_conn, conns):
     user = await factory.create_user()
     conv = await factory.create_conv()
 
@@ -306,7 +306,7 @@ async def test_create_then_publish(cli, factory: Factory, db_conn):
     r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
     assert {'action_ids': [5]} == await r.json()
 
-    obj1 = await construct_conv(db_conn, user.id, conv.key)
+    obj1 = await construct_conv(conns, user.id, conv.key)
     assert obj1 == {
         'subject': 'Test Subject',
         'created': CloseToNow(),
@@ -318,7 +318,7 @@ async def test_create_then_publish(cli, factory: Factory, db_conn):
     r = await cli.post_json(factory.url('ui:publish', conv=conv.key), {'publish': True})
     conv_key2 = (await r.json())['key']
 
-    obj2 = await construct_conv(db_conn, user.id, conv_key2)
+    obj2 = await construct_conv(conns, user.id, conv_key2)
     assert obj2 == {
         'subject': 'Test Subject',
         'created': CloseToNow(),

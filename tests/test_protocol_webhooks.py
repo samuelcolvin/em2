@@ -93,7 +93,7 @@ async def test_ses_invalid_sig(cli, url, sns_data):
     assert r.status == 403
 
 
-async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_ses_email):
+async def test_ses_new_email(factory: Factory, db_conn, conns, cli, url, create_ses_email):
     await factory.create_user()
     assert 0 == await db_conn.fetchval('select count(*) from sends')
     assert 0 == await db_conn.fetchval('select count(*) from conversations')
@@ -110,7 +110,7 @@ async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_ses_ema
 
     conv_id = await db_conn.fetchval('select id from conversations')
     new_user_id = await db_conn.fetchval('select id from users where email=$1', 'sender@remote.com')
-    obj = await construct_conv(db_conn, new_user_id, conv_id)
+    obj = await construct_conv(conns, new_user_id, conv_id)
     assert obj == {
         'subject': 'Test Subject',
         'created': '2032-01-01T12:00:00+00:00',
@@ -140,7 +140,7 @@ async def test_ses_new_email(factory: Factory, db_conn, cli, url, create_ses_ema
     assert dict(action) == {'id': 3, 'conv': conv_id, 'actor': new_user_id, 'act': 'message:add'}
 
 
-async def test_ses_reply(factory: Factory, db_conn, cli, url, create_ses_email, send_to_remote):
+async def test_ses_reply(factory: Factory, db_conn, conns, cli, url, create_ses_email, send_to_remote):
     send_id, message_id = send_to_remote
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
@@ -150,7 +150,7 @@ async def test_ses_reply(factory: Factory, db_conn, cli, url, create_ses_email, 
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
     new_user_id = await db_conn.fetchval('select id from users where email=$1', 'sender@remote.com')
-    obj = await construct_conv(db_conn, new_user_id, factory.conv.id)
+    obj = await construct_conv(conns, new_user_id, factory.conv.id)
     assert obj == {
         'subject': 'Test Subject',
         'created': CloseToNow(),
@@ -168,7 +168,7 @@ async def test_ses_reply(factory: Factory, db_conn, cli, url, create_ses_email, 
     }
 
 
-async def test_ses_reply_different_email(factory: Factory, db_conn, cli, url, create_ses_email, send_to_remote):
+async def test_ses_reply_different_email(factory: Factory, db_conn, conns, cli, url, create_ses_email, send_to_remote):
     send_id, message_id = send_to_remote
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
@@ -182,7 +182,7 @@ async def test_ses_reply_different_email(factory: Factory, db_conn, cli, url, cr
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
     new_user_id = await db_conn.fetchval('select id from users where email=$1', 'sender@remote.com')
-    obj = await construct_conv(db_conn, new_user_id, factory.conv.id)
+    obj = await construct_conv(conns, new_user_id, factory.conv.id)
     assert obj == {
         'subject': 'Test Subject',
         'created': CloseToNow(),

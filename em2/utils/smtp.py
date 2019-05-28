@@ -4,7 +4,7 @@ import logging
 from email import policy as email_policy
 from email.message import EmailMessage
 from email.parser import BytesParser
-from typing import Generator, Tuple
+from typing import List, Tuple
 from uuid import uuid4
 
 from aiohttp.web_exceptions import HTTPGatewayTimeout
@@ -29,7 +29,11 @@ def parse_smtp(body: bytes) -> EmailMessage:
 
 
 @listify
-def find_smtp_files(m: EmailMessage, inc_content=False, *, _msg_id=None, _cids=None) -> Generator[File, None, None]:
+def find_smtp_files(m: EmailMessage, inc_content=False, *, _msg_id=None, _cids=None) -> List[File]:
+    """
+    find attachments in an EmailMessage, signature here is wrong, it matches what's returned by listify,
+    pleases pycharm.
+    """
     msg_id = _msg_id or m.get('Message-ID', '').strip('<> ')
     cids = _cids or set()
     for part in m.iter_parts():

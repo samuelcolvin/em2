@@ -119,7 +119,7 @@ class ConvActions(View):
     async def call(self):
         m = parse_request_query(self.request, self.QueryModel)
         json_str = await conv_actions_json(
-            self.conn, self.session.user_id, self.request.match_info['conv'], since_id=m.since, inc_seen=True
+            self.conns, self.session.user_id, self.request.match_info['conv'], since_id=m.since, inc_seen=True
         )
         return raw_json_response(json_str)
 
@@ -161,14 +161,10 @@ class ConvCreate(ExecView):
 
     async def execute(self, conv: CreateConvModel):
         conv_id, conv_key = await create_conv(
-            conn=self.conn,
-            redis=self.redis,
-            creator_email=self.session.email,
-            creator_id=self.session.user_id,
-            conv=conv,
+            conns=self.conns, creator_email=self.session.email, creator_id=self.session.user_id, conv=conv
         )
 
-        await push_all(self.conn, self.app['redis'], conv_id)
+        await push_all(self.conns, conv_id)
         return dict(key=conv_key, status_=201)
 
 
@@ -187,12 +183,10 @@ class ConvAct(ExecView):
     async def execute(self, m: Model):
         files = None
         if m.files:
-            conv_id, _ = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
+            conv_id, _ = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
             files = await self.get_files(conv_id, m.files)
         conv_id, action_ids = await apply_actions(
-            conn=self.conn,
-            redis=self.redis,
-            settings=self.settings,
+            conns=self.conns,
             actor_user_id=self.session.user_id,
             conv_ref=self.request.match_info['conv'],
             actions=m.actions,
@@ -200,7 +194,7 @@ class ConvAct(ExecView):
         )
 
         if action_ids:
-            await push_multiple(self.conn, self.app['redis'], conv_id, action_ids)
+            await push_multiple(self.conns, conv_id, action_ids)
         return {'action_ids': action_ids}
 
     async def get_files(self, conv_id: int, file_content_ids: List[str]) -> List[File]:
@@ -243,10 +237,10 @@ class ConvPublish(ExecView):
 
     async def execute(self, action: Model):
         conv_prefix = self.request.match_info['conv']
-        conv_id, _ = await get_conv_for_user(self.conn, self.session.user_id, conv_prefix, req_pub=False)
+        conv_id, _ = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix, req_pub=False)
 
         # could do more efficiently than this, but would require duplicate logic
-        conv_summary = await construct_conv(self.conn, self.session.user_id, conv_prefix)
+        conv_summary = await construct_conv(self.conns, self.session.user_id, conv_prefix)
 
         ts = utcnow()
         conv_key = generate_conv_key(self.session.email, ts, conv_summary['subject'])
@@ -291,7 +285,7 @@ class ConvPublish(ExecView):
                 ts,
                 conv_summary['subject'],
             )
-            user_ids = await update_conv_users(self.conn, conv_id)
+            user_ids = await update_conv_users(self.conns, conv_id)
 
         other_user_ids = set(user_ids) - {self.session.user_id}
         updates = (
@@ -301,8 +295,8 @@ class ConvPublish(ExecView):
                 for u_id in other_user_ids
             ),
         )
-        await update_conv_flags(*updates, redis=self.redis)
-        await push_all(self.conn, self.app['redis'], conv_id)
+        await update_conv_flags(self.conns, *updates)
+        await push_all(self.conns, conv_id)
         return dict(key=conv_key)
 
     async def add_msg(self, msg_info: Dict[str, Any], conv_id: int, ts: datetime, parent: int = None):
@@ -341,7 +335,7 @@ class SetConvFlag(View):
 
     async def call(self):
         flag = parse_request_query(self.request, self.QueryModel).flag
-        conv_id, _ = await get_conv_for_user(self.conn, self.session.user_id, self.request.match_info['conv'])
+        conv_id, _ = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
         async with self.conn.transaction():
             participant_id, inbox, seen, deleted, spam, self_created, draft = await self.conn.fetchrow(
                 """
@@ -358,7 +352,7 @@ class SetConvFlag(View):
 
             values, changes = self.get_update_values(flag, inbox, seen, deleted, spam, sent, draft)
             await self.conn.execute_b('update participants set :values where id=:id', values=values, id=participant_id)
-        await update_conv_flags(UpdateFlag(self.session.user_id, changes), redis=self.redis)
+        await update_conv_flags(self.conns, UpdateFlag(self.session.user_id, changes))
 
         conv_flags = await self.conn.fetchrow(
             """
@@ -371,7 +365,7 @@ class SetConvFlag(View):
             """,
             participant_id,
         )
-        counts = await get_flag_counts(self.session.user_id, conn=self.conn, redis=self.redis)
+        counts = await get_flag_counts(self.conns, self.session.user_id)
         return json_response(conv_flags=dict(conv_flags), counts=counts)
 
     @staticmethod  # noqa: 901
@@ -482,8 +476,8 @@ class GetConvCounts(View):
     """
 
     async def call(self):
-        flags = await get_flag_counts(self.session.user_id, conn=self.conn, redis=self.redis)
-        label_counts = await get_label_counts(self.session.user_id, conn=self.conn, redis=self.redis)
+        flags = await get_flag_counts(self.conns, self.session.user_id)
+        label_counts = await get_label_counts(self.session.user_id, conns=self.conns)
         labels = [
             dict(id=r[0], name=r[1], color=r[2], description=r[3], count=label_counts[str(r[0])])
             for r in await self.conn.fetch(self.labels_sql, self.session.user_id)

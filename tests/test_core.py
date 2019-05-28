@@ -332,12 +332,12 @@ async def test_bad_no_follows():
     assert 'follows is required for this action' in exc_info.value.json()
 
 
-async def test_object_simple(factory: Factory, db_conn):
+async def test_object_simple(factory: Factory, conns):
     user = await factory.create_user()
     conv = await factory.create_conv()
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.msg_add, body='This is a reply'))
 
-    obj = await construct_conv(db_conn, user.id, conv.id)
+    obj = await construct_conv(conns, user.id, conv.id)
     assert obj == {
         'subject': 'Test Subject',
         'created': CloseToNow(),
@@ -349,7 +349,7 @@ async def test_object_simple(factory: Factory, db_conn):
     }
 
 
-async def test_object_children(factory: Factory, db_conn):
+async def test_object_children(factory: Factory, conns):
     user = await factory.create_user()
     conv = await factory.create_conv()
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.msg_add, body='This is a reply'))
@@ -361,7 +361,7 @@ async def test_object_children(factory: Factory, db_conn):
 
     assert [9] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.msg_delete, follows=2))
 
-    obj = await construct_conv(db_conn, user.id, conv.id)
+    obj = await construct_conv(conns, user.id, conv.id)
     assert obj == {
         'subject': 'Test Subject',
         'created': CloseToNow(),
@@ -391,7 +391,7 @@ async def test_object_children(factory: Factory, db_conn):
     }
 
 
-async def test_object_add_remove_participants(factory: Factory, db_conn):
+async def test_object_add_remove_participants(factory: Factory, conns):
     user = await factory.create_user()
     conv = await factory.create_conv()
 
@@ -399,7 +399,7 @@ async def test_object_add_remove_participants(factory: Factory, db_conn):
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant='new2@ex.com'))
     action = ActionModel(act=ActionTypes.prt_remove, participant='new2@ex.com', follows=5)
     await factory.act(user.id, conv.id, action)
-    obj = await construct_conv(db_conn, user.id, conv.key)
+    obj = await construct_conv(conns, user.id, conv.key)
     assert obj == {
         'subject': 'Test Subject',
         'created': CloseToNow(),
@@ -408,18 +408,18 @@ async def test_object_add_remove_participants(factory: Factory, db_conn):
     }
 
 
-async def test_participant_add_cant_get(factory: Factory, db_conn):
+async def test_participant_add_cant_get(factory: Factory, conns):
     user = await factory.create_user()
     conv = await factory.create_conv()
     user2 = await factory.create_user()
 
     action = ActionModel(act=ActionTypes.prt_add, participant=user2.email)
     assert [4] == await factory.act(user.id, conv.id, action)
-    obj = await construct_conv(db_conn, user.id, conv.key)
+    obj = await construct_conv(conns, user.id, conv.key)
     assert obj['participants'] == {'testing-1@example.com': {'id': 1}, 'testing-2@example.com': {'id': 4}}
 
     with pytest.raises(JsonErrors.HTTPForbidden) as exc_info:
-        await construct_conv(db_conn, user2.id, conv.key)
+        await construct_conv(conns, user2.id, conv.key)
     assert exc_info.value.message == 'conversation is unpublished and you are not the creator'
 
 
@@ -518,7 +518,7 @@ async def test_publish_remote(factory: Factory, redis, db_conn, worker: Worker, 
     assert "testing-1@example.com > whatever@remote.com\n  Subject: Test Subject" in log
 
 
-async def test_publish_seen(factory: Factory, db_conn):
+async def test_publish_seen(factory: Factory, db_conn, conns):
     user = await factory.create_user()
     conv = await factory.create_conv()
     assert 3 == await db_conn.fetchval('select count(*) from actions')
@@ -526,7 +526,7 @@ async def test_publish_seen(factory: Factory, db_conn):
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.seen))
     assert 4 == await db_conn.fetchval('select count(*) from actions')
 
-    obj = await construct_conv(db_conn, user.id, conv.id)
+    obj = await construct_conv(conns, user.id, conv.id)
 
     assert obj == {
         'subject': 'Test Subject',
@@ -543,7 +543,7 @@ where a.id>3
 """
 
 
-async def test_subject_modify(factory: Factory, db_conn):
+async def test_subject_modify(factory: Factory, db_conn, conns):
     user = await factory.create_user()
     conv = await factory.create_conv()
 
@@ -559,11 +559,11 @@ async def test_subject_modify(factory: Factory, db_conn):
         {'id': 4, 'follows': 3, 'act': 'subject:lock', 'body': None},
         {'id': 5, 'follows': 4, 'act': 'subject:modify', 'body': 'new subject'},
     ]
-    obj = await construct_conv(db_conn, user.id, conv.id)
+    obj = await construct_conv(conns, user.id, conv.id)
     assert obj['subject'] == 'new subject'
 
 
-async def test_subject_lock_release(factory: Factory, db_conn):
+async def test_subject_lock_release(factory: Factory, db_conn, conns):
     user = await factory.create_user()
     conv = await factory.create_conv()
 
@@ -577,7 +577,7 @@ async def test_subject_lock_release(factory: Factory, db_conn):
         {'id': 4, 'follows': 3, 'act': 'subject:lock', 'body': None},
         {'id': 5, 'follows': 4, 'act': 'subject:release', 'body': None},
     ]
-    obj = await construct_conv(db_conn, user.id, conv.id)
+    obj = await construct_conv(conns, user.id, conv.id)
     assert obj['subject'] == 'Test Subject'
 
 

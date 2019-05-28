@@ -22,7 +22,7 @@ class GetFile(View):
         # in theory we might need to add action_id here to specify the file via content_id, but in practice probably
         # not necessary (until it is)
         conv_prefix = self.request.match_info['conv']
-        conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, conv_prefix)
+        conv_id, last_action = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix)
 
         file_id, action_id, file_storage, storage_expires, send_id, send_storage = await or404(
             self.conn.fetchrow(
@@ -84,7 +84,7 @@ class UploadFile(View):
             raise HTTPNotImplemented(text="Storage keys not set, can't upload files")
 
         conv_prefix = self.request.match_info['conv']
-        conv_id, last_action = await get_conv_for_user(self.conn, self.session.user_id, conv_prefix)
+        conv_id, last_action = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix)
         if last_action:
             raise JsonErrors.HTTPForbidden(message='file attachment not permitted')
 
