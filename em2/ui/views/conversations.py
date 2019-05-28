@@ -477,7 +477,7 @@ class GetConvCounts(View):
 
     async def call(self):
         flags = await get_flag_counts(self.conns, self.session.user_id)
-        label_counts = await get_label_counts(self.session.user_id, conns=self.conns)
+        label_counts = await get_label_counts(self.conns, self.session.user_id)
         labels = [
             dict(id=r[0], name=r[1], color=r[2], description=r[3], count=label_counts[str(r[0])])
             for r in await self.conn.fetch(self.labels_sql, self.session.user_id)

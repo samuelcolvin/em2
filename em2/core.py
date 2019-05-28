@@ -1048,7 +1048,7 @@ def _label_count_key(user_id: int):
     return f'conv-counts-labels-{user_id}'
 
 
-async def get_label_counts(user_id, *, conns: Connections) -> dict:
+async def get_label_counts(conns: Connections, user_id: int) -> dict:
     """
     Get counts for labels. Data is cached to a redis hash and retrieved from there if it exists.
     """
