@@ -1,19 +1,20 @@
 import asyncio
 import hashlib
 import logging
-from dataclasses import dataclass
 from email import policy as email_policy
 from email.message import EmailMessage
 from email.parser import BytesParser
-from typing import Generator, Optional, Tuple
+from typing import List, Tuple
 from uuid import uuid4
 
 from aiohttp.web_exceptions import HTTPGatewayTimeout
 from aioredis import Redis
 from buildpg.asyncpg import BuildPgConnection
 
+from em2.core import File
 from em2.settings import Settings
 
+from . import listify
 from .datetime import utcnow
 from .storage import S3, S3Client, parse_storage_uri
 
@@ -27,17 +28,12 @@ def parse_smtp(body: bytes) -> EmailMessage:
     return email_parser.parsebytes(body)
 
 
-@dataclass
-class File:
-    hash: str
-    name: Optional[str]
-    content_id: str
-    content_disp: str
-    content_type: str
-    content: Optional[bytes]
-
-
-def find_smtp_files(m: EmailMessage, inc_content=False, *, _msg_id=None, _cids=None) -> Generator[File, None, None]:
+@listify
+def find_smtp_files(m: EmailMessage, inc_content=False, *, _msg_id=None, _cids=None) -> List[File]:
+    """
+    find attachments in an EmailMessage, signature here is wrong, it matches what's returned by listify,
+    pleases pycharm.
+    """
     msg_id = _msg_id or m.get('Message-ID', '').strip('<> ')
     cids = _cids or set()
     for part in m.iter_parts():
@@ -62,12 +58,13 @@ def find_smtp_files(m: EmailMessage, inc_content=False, *, _msg_id=None, _cids=N
             cids.add(content_id)
 
             yield File(
-                hash,
-                name,
-                content_id,
-                'inline' if disposition == 'inline' else 'attachment',
-                content_type,
-                content if inc_content else None,
+                hash=hash,
+                name=name,
+                content_id=content_id,
+                content_disp='inline' if disposition == 'inline' else 'attachment',
+                content_type=content_type,
+                size=len(content),
+                content=content if inc_content else None,
             )
         else:
             yield from find_smtp_files(part, inc_content=inc_content, _msg_id=msg_id, _cids=cids)

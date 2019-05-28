@@ -6,9 +6,7 @@ from datetime import datetime
 from email.message import EmailMessage
 from typing import List, Set, Tuple
 
-from aiohttp.abc import Request
 from aiohttp.web_exceptions import HTTPBadRequest
-from arq import ArqRedis
 from bs4 import BeautifulSoup
 from buildpg.asyncpg import BuildPgConnection
 
@@ -16,6 +14,7 @@ from em2.background import push_all, push_multiple
 from em2.core import (
     ActionModel,
     ActionTypes,
+    Connections,
     CreateConvModel,
     MsgFormat,
     UserTypes,
@@ -23,7 +22,6 @@ from em2.core import (
     create_conv,
     get_create_user,
 )
-from em2.settings import Settings
 from em2.utils.smtp import find_smtp_files
 
 logger = logging.getLogger('em2.protocol.views.smtp')
@@ -69,10 +67,16 @@ async def get_email_recipients(to: List[str], cc: List[str], message_id: str, co
 
 
 async def process_smtp(
-    request: Request, msg: EmailMessage, recipients: Set[str], storage: str, *, spam: bool = None, warnings: dict = None
+    conns: Connections,
+    msg: EmailMessage,
+    recipients: Set[str],
+    storage: str,
+    *,
+    spam: bool = None,
+    warnings: dict = None,
 ):
     assert not msg['EM2-ID'], 'messages with EM2-ID header should be filtered out before this'
-    p = ProcessSMTP(request)
+    p = ProcessSMTP(conns)
     await p.run(msg, recipients, storage, spam, warnings)
 
 
@@ -80,12 +84,11 @@ inline_regex = re.compile(' src')
 
 
 class ProcessSMTP:
-    __slots__ = 'conn', 'settings', 'redis'
+    __slots__ = 'conns', 'conn'
 
-    def __init__(self, request):
-        self.conn: BuildPgConnection = request['conn']
-        self.redis: ArqRedis = request.app['redis']
-        self.settings: Settings = request.app['settings']
+    def __init__(self, conns: Connections):
+        self.conns: Connections = conns
+        self.conn: BuildPgConnection = conns.main
 
     async def run(self, msg: EmailMessage, recipients: Set[str], storage: str, spam: bool, warnings: dict):
         # TODO deal with non multipart
@@ -97,7 +100,7 @@ class ProcessSMTP:
         timestamp = email.utils.parsedate_to_datetime(msg['Date'])
 
         conv_id, original_actor_id = await self.get_conv(msg)
-        actor_id = await get_create_user(self.conn, actor_email, UserTypes.remote_other)
+        actor_id = await get_create_user(self.conns, actor_email, UserTypes.remote_other)
 
         existing_conv = bool(conv_id)
         body, is_html = get_smtp_body(msg, message_id, existing_conv)
@@ -110,9 +113,7 @@ class ProcessSMTP:
                 if actor_email not in existing_prts:
                     # reply from different address, we need to add the new address to the conversation
                     a = ActionModel(act=ActionTypes.prt_add, participant=actor_email)
-                    _, all_action_ids = await apply_actions(
-                        self.conn, self.redis, self.settings, original_actor_id, conv_id, [a]
-                    )
+                    _, all_action_ids = await apply_actions(self.conns, original_actor_id, conv_id, [a])
                     assert all_action_ids
                 else:
                     all_action_ids = []
@@ -125,7 +126,13 @@ class ProcessSMTP:
                 actions += [ActionModel(act=ActionTypes.prt_add, participant=addr) for addr in new_prts]
 
                 _, action_ids = await apply_actions(
-                    self.conn, self.redis, self.settings, actor_id, conv_id, actions, spam, warnings
+                    conns=self.conns,
+                    actor_user_id=actor_id,
+                    conv_ref=conv_id,
+                    actions=actions,
+                    spam=spam,
+                    warnings=warnings,
+                    files=find_smtp_files(msg),
                 )
                 assert action_ids
 
@@ -133,19 +140,19 @@ class ProcessSMTP:
                 await self.conn.execute(
                     'update actions set ts=$1 where conv=$2 and id=any($3)', timestamp, conv_id, all_action_ids
                 )
-                send_id = await self.conn.fetchval(
+                send_id, add_action_pk = await self.conn.fetchrow(
                     """
                     insert into sends (action, ref, complete, storage)
-                    (select pk, $1, true, $2 from actions where conv=$3 and id=any($4) and act='message:add')
-                    returning id
+                    (select pk, $1, true, $2 from actions where conv=$3 and id=any($4) and act='message:add' limit 1)
+                    returning id, action
                     """,
                     message_id,
                     storage,
                     conv_id,
                     action_ids,
                 )
-                await self.store_attachments(send_id, msg)
-                await push_multiple(self.conn, self.redis, conv_id, action_ids, transmit=False)
+                await self.conn.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
+                await push_multiple(self.conns, conv_id, action_ids, transmit=False)
             else:
                 conv = CreateConvModel(
                     subject=msg['Subject'] or '-',
@@ -155,52 +162,27 @@ class ProcessSMTP:
                     participants=[{'email': r} for r in recipients],
                 )
                 conv_id, conv_key = await create_conv(
-                    conn=self.conn,
-                    redis=self.redis,
+                    conns=self.conns,
                     creator_email=actor_email,
                     creator_id=actor_id,
                     conv=conv,
                     ts=timestamp,
                     spam=spam,
                     warnings=warnings,
+                    files=find_smtp_files(msg),
                 )
-                send_id = await self.conn.fetchval(
+                send_id, add_action_pk = await self.conn.fetchrow(
                     """
                     insert into sends (action, ref, complete, storage)
-                    (select pk, $1, true, $2 from actions where conv=$3 and act='message:add')
-                    returning id
+                    (select pk, $1, true, $2 from actions where conv=$3 and act='message:add' limit 1)
+                    returning id, action
                     """,
                     message_id,
                     storage,
                     conv_id,
                 )
-                await self.store_attachments(send_id, msg)
-                await push_all(self.conn, self.redis, conv_id, transmit=False)
-
-    async def store_attachments(self, send_id: int, msg: EmailMessage):
-        files = list(find_smtp_files(msg))
-        if files:
-            action_pk, conv_id = await self.conn.fetchrow(
-                """
-                select s.action, a.conv
-                from sends s
-                join actions a on s.action = a.pk
-                where s.id=$1
-                """,
-                send_id,
-            )
-            files = [
-                (conv_id, action_pk, send_id, f.content_disp, f.hash, f.content_id, f.name, f.content_type)
-                for f in files
-            ]
-            # TODO cope with repeated content_id
-            await self.conn.executemany(
-                """
-                insert into files (conv  , action, send, content_disp, hash, content_id, name, content_type)
-                values            ($1    , $2    , $3  , $4          , $5  , $6        , $7  , $8)
-                """,
-                files,
-            )
+                await self.conn.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
+                await push_all(self.conns, conv_id, transmit=False)
 
     async def get_conv(self, msg: EmailMessage) -> Tuple[int, int]:
         conv_actor = None
@@ -238,7 +220,7 @@ class ProcessSMTP:
 
     def clean_msg_id(self, msg_id):
         msg_id = msg_id.strip('<>\r\n')
-        if msg_id.endswith(self.settings.smtp_message_id_domain):
+        if msg_id.endswith(self.conns.settings.smtp_message_id_domain):
             msg_id = msg_id.split('@', 1)[0]
         return msg_id
 

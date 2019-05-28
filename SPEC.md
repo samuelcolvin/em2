@@ -262,7 +262,7 @@ Task `process_actions`, running constantly in infinite `BLPOP` loop, when an act
 
 # Integration with SMTP
 
-list all participants (em2 and fallback) in the email body, then
+list all participants (em2 and smtp) in the email body, then
 
 easiest just to send to everyone, need to know if a conv is new to a participant to include all previous messages.
 
@@ -406,3 +406,36 @@ User Label fields:
 * colour
 * user
 * team - either team or user must be set
+
+# Search
+
+Should separate search logic now to make elasticsearch integration in future easier.
+
+One search entry per action (where required) and maybe one per language per action in future:
+* the conv key
+* the action id
+* participant ids - for filtering search entries, does not include deleted participants, thus you can
+  only search for stuff on conversations before you were removed
+* the search vector
+* creator id - maybe for `from:foobar@example.com` queries
+
+vector weights used to differentiate between different parts of the conversation::
+* `A`: Subject - highest priority but also we can do `subject:foobar` searches
+* `B`: email addresses of participants in the conv including domains for `includes:@foobar.com` searches
+* `C`: the body of messages, also file names in case people search without `file:`
+* `D`: body of files (in future)
+
+When a new participant is added to a conversation their id is added to every earlier search entry.
+
+Specific ways of searching need to be dealt with specially:
+* `from:foobar@example.com` - creator is ...
+* `includes:foobar@example.com` - participants includes ...
+* `to:foobar@example.com` - participants includes ..., but they're not the creator
+* `file:whatever.png` or `file:*`
+* `has:attachment` same as `file:*`
+* lots of other things
+
+Maybe need another tsv on a participant to store private notes, anything else? 
+
+Maybe when a user's name is entered, search should try and find that name in the address book and substitute the email
+address to allow search for that user.

@@ -7,9 +7,8 @@ import ujson
 from aiohttp.abc import Application
 from aiohttp.web_ws import WebSocketResponse
 from arq.connections import ArqRedis
-from buildpg.asyncpg import BuildPgConnection
 
-from em2.core import get_flag_counts
+from em2.core import Connections, get_flag_counts
 from em2.settings import Settings
 
 logger = logging.getLogger('em2.ui.background')
@@ -22,6 +21,7 @@ class Background:
         self.connections: Dict[int, List[WebSocketResponse]] = {}
         self.loop = asyncio.get_event_loop()
         self.loop.create_task(self._run())
+        self.conns = Connections(self.app['pg'], self.app['redis'], self.settings)
 
     def add_ws(self, user_id: int, ws: WebSocketResponse):
         if user_id in self.connections:
@@ -66,7 +66,7 @@ class Background:
             await asyncio.gather(*coros)
 
     async def send(self, user_id: int, participant: dict, wss: List[WebSocketResponse], msg_json_chunk: str):
-        participant['flags'] = await get_flag_counts(user_id, conn=self.app['pg'], redis=self.app['redis'])
+        participant['flags'] = await get_flag_counts(self.conns, user_id)
         msg = msg_json_chunk + ',' + ujson.dumps(participant)[1:]
         for ws in wss:
             try:
@@ -103,9 +103,9 @@ from (
 """
 
 
-async def _push_local(pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int, actions_data: str):
-    extra = await pg_conn.fetchval(local_users_sql, conv_id)
-    await redis.publish(channel_name(redis), actions_data[:-1] + ',' + extra[1:])
+async def _push_local(conns: Connections, conv_id: int, actions_data: str):
+    extra = await conns.main.fetchval(local_users_sql, conv_id)
+    await conns.redis.publish(channel_name(conns.redis), actions_data[:-1] + ',' + extra[1:])
 
 
 remote_users_sql = """
@@ -117,10 +117,10 @@ where conv=$1 and c.publish_ts is not null and u.user_type != 'local'
 """
 
 
-async def _push_remote(pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int, actions_data: str):
-    remote_users = [tuple(r) for r in await pg_conn.fetch(remote_users_sql, conv_id)]
+async def _push_remote(conns: Connections, conv_id: int, actions_data: str):
+    remote_users = [tuple(r) for r in await conns.main.fetch(remote_users_sql, conv_id)]
     if remote_users:
-        await redis.enqueue_job('push_actions', actions_data, remote_users)
+        await conns.redis.enqueue_job('push_actions', actions_data, remote_users)
 
 
 push_sql_template = """
@@ -159,17 +159,15 @@ push_sql_all = push_sql_template.format('where a.conv=$1 order by a.id')
 push_sql_multiple = push_sql_template.format('where a.conv=$1 and a.id=any($2)')
 
 
-async def push_all(pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int, *, transmit=True):
-    actions_data = await pg_conn.fetchval(push_sql_all, conv_id)
-    await _push_local(pg_conn, redis, conv_id, actions_data)
+async def push_all(conns: Connections, conv_id: int, *, transmit=True):
+    actions_data = await conns.main.fetchval(push_sql_all, conv_id)
+    await _push_local(conns, conv_id, actions_data)
     if transmit:
-        await _push_remote(pg_conn, redis, conv_id, actions_data)
+        await _push_remote(conns, conv_id, actions_data)
 
 
-async def push_multiple(
-    pg_conn: BuildPgConnection, redis: ArqRedis, conv_id: int, action_ids: List[int], *, transmit=True
-):
-    actions_data = await pg_conn.fetchval(push_sql_multiple, conv_id, action_ids)
-    await _push_local(pg_conn, redis, conv_id, actions_data)
+async def push_multiple(conns: Connections, conv_id: int, action_ids: List[int], *, transmit=True):
+    actions_data = await conns.main.fetchval(push_sql_multiple, conv_id, action_ids)
+    await _push_local(conns, conv_id, actions_data)
     if transmit:
-        await _push_remote(pg_conn, redis, conv_id, actions_data)
+        await _push_remote(conns, conv_id, actions_data)

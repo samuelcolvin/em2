@@ -23,7 +23,7 @@ from PIL import Image, ImageDraw
 
 from em2.auth.utils import mk_password
 from em2.background import push_multiple
-from em2.core import ActionModel, apply_actions
+from em2.core import ActionModel, Connections, apply_actions
 from em2.main import create_app
 from em2.protocol.smtp import LogSmtpHandler, SesSmtpHandler
 from em2.settings import Settings
@@ -100,6 +100,11 @@ async def _fix_db_conn(loop, settings, clean_db):
 
     await tr.rollback()
     await conn.close()
+
+
+@pytest.fixture(name='conns')
+def _fix_conns(db_conn, redis, settings):
+    return Connections(db_conn, redis, settings)
 
 
 @pytest.yield_fixture
@@ -181,7 +186,7 @@ class Factory:
         self.redis: ArqRedis = redis
         self.cli = cli
         self.conn = self.cli.server.app['pg']
-        self.settings: Settings = cli.server.app['settings']
+        self.conns = Connections(self.conn, self.redis, cli.server.app['settings'])
         self.email_index = 1
 
         self.user: User = None
@@ -193,7 +198,7 @@ class Factory:
             email = f'testing-{self.email_index}@example.com'
             self.email_index += 1
 
-        password_hash = mk_password(pw, self.settings)
+        password_hash = mk_password(pw, self.conns.settings)
         auth_user_id = await self.conn.fetchval(
             """
             insert into auth_users (email, first_name, last_name, password_hash, account_status)
@@ -264,12 +269,10 @@ class Factory:
         )
 
     async def act(self, actor_user_id: int, conv_id: int, action: ActionModel) -> List[int]:
-        conv_id, action_ids = await apply_actions(
-            self.conn, self.redis, self.settings, actor_user_id, conv_id, [action]
-        )
+        conv_id, action_ids = await apply_actions(self.conns, actor_user_id, conv_id, [action])
 
         if action_ids:
-            await push_multiple(self.conn, self.redis, conv_id, action_ids)
+            await push_multiple(self.conns, conv_id, action_ids)
         return action_ids
 
 
@@ -451,16 +454,3 @@ def _fix_create_image():
         return stream.getvalue()
 
     return create_image
-
-
-@pytest.fixture(name='fake_request')
-def _fix_fake_request(db_conn, settings, redis):
-    class Request:
-        def __init__(self):
-            self.dict = {'conn': db_conn}
-            self.app = {'settings': settings, 'redis': redis}
-
-        def __getitem__(self, item):
-            return self.dict[item]
-
-    return Request()

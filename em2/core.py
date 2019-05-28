@@ -9,10 +9,10 @@ from datetime import datetime
 from enum import Enum, unique
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
-from aioredis import Redis
+from arq import ArqRedis
 from atoolbox import JsonErrors
 from bs4 import BeautifulSoup
-from buildpg import V
+from buildpg import MultipleValues, V, Values
 from buildpg.asyncpg import BuildPgConnection
 from pydantic import BaseModel, EmailStr, constr, validator
 
@@ -63,16 +63,23 @@ class UserTypes(str, Enum):
     remote_other = 'remote_other'
 
 
-async def get_create_user(conn: BuildPgConnection, email: str, user_type: UserTypes = UserTypes.new) -> int:
+@dataclass
+class Connections:
+    main: BuildPgConnection
+    redis: ArqRedis
+    settings: Settings
+
+
+async def get_create_user(conns: Connections, email: str, user_type: UserTypes = UserTypes.new) -> int:
     """
     get a user by email address or create them if they don't yet exist, return their id.
 
     user_type is only set if the user is created.
     """
-    user_id = await conn.fetchval('select id from users where email=$1', email)
+    user_id = await conns.main.fetchval('select id from users where email=$1', email)
     if user_id is None:
         # update here should happen very rarely
-        user_id = await conn.fetchval(
+        user_id = await conns.main.fetchval(
             """
             insert into users (email, user_type) values ($1, $2)
             on conflict (email) do update set email=EXCLUDED.email
@@ -84,15 +91,15 @@ async def get_create_user(conn: BuildPgConnection, email: str, user_type: UserTy
     return user_id
 
 
-async def get_create_multiple_users(conn: BuildPgConnection, emails: Set[str]) -> Dict[str, int]:
+async def get_create_multiple_users(conns: Connections, emails: Set[str]) -> Dict[str, int]:
     """
     like get_create_user but for multiple users.
     """
-    users = dict(await conn.fetch('select email, id from users where email=any($1)', emails))
+    users = dict(await conns.main.fetch('select email, id from users where email=any($1)', emails))
     remaining = emails - users.keys()
 
     if remaining:
-        v = await conn.fetch(
+        v = await conns.main.fetch(
             """
             insert into users (email) (select unnest ($1::varchar(255)[]))
             on conflict (email) do update set email=excluded.email
@@ -120,14 +127,14 @@ def draft_conv_key() -> str:
 
 
 async def get_conv_for_user(
-    conn: BuildPgConnection, user_id: int, conv_ref: StrInt, *, req_pub: bool = None
+    conns: Connections, user_id: int, conv_ref: StrInt, *, req_pub: bool = None
 ) -> Tuple[int, Optional[int]]:
     """
     Get a conversation id for a user based on the beginning of the conversation key, if the user has been
     removed from the conversation the id of the last action they can see will also be returned.
     """
     if isinstance(conv_ref, int):
-        query = conn.fetchrow(
+        query = conns.main.fetchrow(
             """
             select c.id, c.publish_ts, c.creator, p.removal_action_id from conversations as c
             join participants p on c.id=p.conv
@@ -138,7 +145,7 @@ async def get_conv_for_user(
             conv_ref,
         )
     else:
-        query = conn.fetchrow(
+        query = conns.main.fetchrow(
             """
             select c.id, c.publish_ts, c.creator, p.removal_action_id from conversations c
             join participants p on c.id=p.conv
@@ -160,11 +167,11 @@ async def get_conv_for_user(
     return conv_id, last_action
 
 
-async def update_conv_users(conn: BuildPgConnection, conv_id: int) -> List[int]:
+async def update_conv_users(conns: Connections, conv_id: int) -> List[int]:
     """
     Update v on users participating in a conversation
     """
-    v = await conn.fetch(
+    v = await conns.main.fetch(
         """
         update users set v=v + 1 from participants
         where participants.user_id = users.id and participants.conv = $1 and users.user_type = 'local'
@@ -239,18 +246,27 @@ class ActionModel(BaseModel):
         return v
 
 
+@dataclass
+class File:
+    hash: str
+    name: Optional[str]
+    content_id: str
+    content_disp: str
+    content_type: str
+    size: int
+    content: Optional[bytes] = None
+    storage: Optional[str] = None
+
+
 class _Act:
     """
     See act() below for details.
     """
 
-    __slots__ = 'conn', 'settings', 'actor_user_id', 'conv_id', 'new_user_ids', 'spam', 'warnings', 'last_action'
+    __slots__ = 'conns', 'actor_user_id', 'conv_id', 'new_user_ids', 'spam', 'warnings', 'last_action'
 
-    def __init__(
-        self, conn: BuildPgConnection, settings: Settings, actor_user_id: int, spam: bool, warnings: Dict[str, str]
-    ):
-        self.conn = conn
-        self.settings = settings
+    def __init__(self, conns: Connections, actor_user_id: int, spam: bool, warnings: Dict[str, str]):
+        self.conns = conns
         self.actor_user_id = actor_user_id
         self.conv_id = None
         # ugly way of doing this, but less ugly than other approaches
@@ -260,16 +276,16 @@ class _Act:
         self.last_action = None
 
     async def prepare(self, conv_ref: StrInt) -> Tuple[int, int]:
-        self.conv_id, self.last_action = await get_conv_for_user(self.conn, self.actor_user_id, conv_ref)
+        self.conv_id, self.last_action = await get_conv_for_user(self.conns, self.actor_user_id, conv_ref)
 
         # we must be in a transaction
         # this is a hard check that conversations can only have on act applied at a time
-        creator = await self.conn.fetchval(
+        creator = await self.conns.main.fetchval(
             'select creator from conversations where id=$1 for no key update', self.conv_id
         )
         return self.conv_id, creator
 
-    async def run(self, action: ActionModel) -> Optional[int]:
+    async def run(self, action: ActionModel, files: Optional[List[File]]) -> Optional[int]:
         if action.act is ActionTypes.seen:
             return await self._seen()
 
@@ -280,7 +296,10 @@ class _Act:
         if action.act in _prt_action_types:
             return await self._act_on_participant(action)
         elif action.act in _msg_action_types:
-            return await self._act_on_message(action)
+            action_id, action_pk = await self._act_on_message(action)
+            if files:
+                await create_files(self.conns, files, self.conv_id, action_pk)
+            return action_id
         elif action.act in _subject_action_types:
             return await self._act_on_subject(action)
 
@@ -288,7 +307,7 @@ class _Act:
 
     async def _seen(self) -> Optional[int]:
         # could use "parent" to identify what was seen
-        last_seen = await self.conn.fetchval(
+        last_seen = await self.conns.main.fetchval(
             """
             select a.id from actions as a
             where a.conv=$1 and act='seen' and actor=$2
@@ -299,7 +318,7 @@ class _Act:
             self.actor_user_id,
         )
         if last_seen:
-            last_real_action = await self.conn.fetchval(
+            last_real_action = await self.conns.main.fetchval(
                 """
                 select id from actions
                 where conv = $1 and not (act = any($2::ActionTypes[]))
@@ -313,7 +332,7 @@ class _Act:
                 # conversation already seen by this user since it last changed
                 return
 
-        return await self.conn.fetchval(
+        return await self.conns.main.fetchval(
             """
             insert into actions (conv, actor, act   )
             values              ($1  , $2   , 'seen')
@@ -326,19 +345,19 @@ class _Act:
     async def _act_on_participant(self, action: ActionModel) -> int:
         follows_pk = None
         if action.act == ActionTypes.prt_add:
-            prts_count = await self.conn.fetchval('select count(*) from participants where conv=$1', self.conv_id)
+            prts_count = await self.conns.main.fetchval('select count(*) from participants where conv=$1', self.conv_id)
             if prts_count == max_participants:
                 raise JsonErrors.HTTPBadRequest(f'no more than {max_participants} participants permitted')
 
-            prt_user_id = await get_create_user(self.conn, action.participant)
-            removed_prt_id = await self.conn.fetchval(
+            prt_user_id = await get_create_user(self.conns, action.participant)
+            removed_prt_id = await self.conns.main.fetchval(
                 'select id from participants where conv=$1 and user_id=$2 and removal_action_id is not null',
                 self.conv_id,
                 prt_user_id,
             )
             if removed_prt_id:
                 prt_id = removed_prt_id
-                await self.conn.execute(
+                await self.conns.main.execute(
                     """
                     update participants set removal_action_id=null, removal_details=null, removal_updated_ts=null
                     where id=$1
@@ -346,7 +365,7 @@ class _Act:
                     prt_id,
                 )
             else:
-                prt_id = await self.conn.fetchval(
+                prt_id = await self.conns.main.fetchval(
                     """
                     insert into participants (conv, user_id, spam) values ($1, $2, $3)
                     on conflict (conv, user_id) do nothing returning id
@@ -362,7 +381,7 @@ class _Act:
             follows_pk, *_ = await self._get_follows(action, {ActionTypes.prt_add, ActionTypes.prt_modify})
             if action.act == ActionTypes.prt_remove:
                 prt_id, prt_user_id = await or404(
-                    self.conn.fetchrow(
+                    self.conns.main.fetchrow(
                         """
                         select p.id, u.id from participants as p join users as u on p.user_id = u.id
                         where conv=$1 and email=$2
@@ -379,7 +398,7 @@ class _Act:
         if prt_user_id == self.actor_user_id:
             raise JsonErrors.HTTPForbidden('You cannot modify your own participant')
 
-        action_id = await self.conn.fetchval(
+        action_id = await self.conns.main.fetchval(
             """
             insert into actions (conv, act, actor, follows, participant_user)
             values              ($1  , $2 , $3   , $4     , $5)
@@ -392,7 +411,7 @@ class _Act:
             prt_user_id,
         )
         if action.act == ActionTypes.prt_remove:
-            await self.conn.execute(
+            await self.conns.main.execute(
                 """
                 update participants p set
                 removal_action_id=$1, removal_details=c.details, removal_updated_ts=c.updated_ts
@@ -404,13 +423,13 @@ class _Act:
             )
         return action_id
 
-    async def _act_on_message(self, action: ActionModel) -> int:
+    async def _act_on_message(self, action: ActionModel) -> Tuple[int, int]:
         if action.act == ActionTypes.msg_add:
             parent_pk = None
             if action.parent:
                 # just check tha parent really is an action on this conversation of type message:add
                 parent_pk = await or404(
-                    self.conn.fetchval(
+                    self.conns.main.fetchval(
                         "select pk from actions where conv=$1 and id=$2 and act='message:add'",
                         self.conv_id,
                         action.parent,
@@ -419,11 +438,11 @@ class _Act:
                 )
             # no extra checks required, you can add a message even after a deleted message, this avoids complex
             # checks that no message in the hierarchy has been deleted
-            return await self.conn.fetchval(
+            return await self.conns.main.fetchrow(
                 """
                 insert into actions (conv, act          , actor, body, preview, parent, msg_format, warnings)
                 values              ($1  , 'message:add', $2   , $3  , $4     , $5    , $6        , $7)
-                returning id
+                returning id, pk
                 """,
                 self.conv_id,
                 self.actor_user_id,
@@ -450,16 +469,16 @@ class _Act:
             elif (
                 follows_act == ActionTypes.msg_lock
                 and follows_actor != self.actor_user_id
-                and follows_age <= self.settings.message_lock_duration
+                and follows_age <= self.conns.settings.message_lock_duration
             ):
-                details = {'loc_duration': self.settings.message_lock_duration}
+                details = {'loc_duration': self.conns.settings.message_lock_duration}
                 raise JsonErrors.HTTPConflict('message locked, action not possible', details=details)
 
-        return await self.conn.fetchval(
+        return await self.conns.main.fetchrow(
             """
             insert into actions (conv, actor, act, body, preview, follows)
             values              ($1  , $2   , $3 , $4  , $5     , $6)
-            returning id
+            returning id, pk
             """,
             self.conv_id,
             self.actor_user_id,
@@ -477,16 +496,16 @@ class _Act:
             if (
                 follows_act == ActionTypes.subject_lock
                 and follows_actor != self.actor_user_id
-                and follows_age <= self.settings.message_lock_duration
+                and follows_age <= self.conns.settings.message_lock_duration
             ):
-                details = {'loc_duration': self.settings.message_lock_duration}
+                details = {'loc_duration': self.conns.settings.message_lock_duration}
                 raise JsonErrors.HTTPConflict('subject not locked by you, action not possible', details=details)
         else:
             # modify and release
             if follows_act != ActionTypes.subject_lock or follows_actor != self.actor_user_id:
                 raise JsonErrors.HTTPBadRequest(f'{action.act} must follow subject:lock by the same user')
 
-        return await self.conn.fetchval(
+        return await self.conns.main.fetchval(
             """
             insert into actions (conv, actor, act, body, follows)
             values              ($1  , $2   , $3 , $4  , $5)
@@ -501,7 +520,7 @@ class _Act:
 
     async def _get_follows(self, action: ActionModel, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
         follows_pk, follows_act, follows_actor, follows_age = await or404(
-            self.conn.fetchrow(
+            self.conns.main.fetchrow(
                 """
                 select pk, act, actor, extract(epoch from current_timestamp - ts)::int
                 from actions where conv=$1 and id=$2
@@ -516,7 +535,7 @@ class _Act:
 
         # all other actions must directly follow their "follows" action, eg. nothing can have happened that follows
         # that action
-        existing = await self.conn.fetchrow(
+        existing = await self.conns.main.fetchrow(
             'select 1 from actions where conv=$1 and follows=$2', self.conv_id, follows_pk
         )
         if existing:
@@ -537,14 +556,13 @@ class ConvFlags(str, Enum):
 
 
 async def apply_actions(
-    conn: BuildPgConnection,
-    redis: Redis,
-    settings: Settings,
+    conns: Connections,
     actor_user_id: int,
     conv_ref: StrInt,
     actions: List[ActionModel],
     spam: bool = False,
     warnings: Dict[str, str] = None,
+    files: Optional[List[File]] = None,
 ) -> Tuple[int, List[int]]:
     """
     Apply actions and return their ids.
@@ -552,68 +570,30 @@ async def apply_actions(
     Should be used for both remote platforms adding events and local users adding actions.
     """
     action_ids = []
-    act_cls = _Act(conn, settings, actor_user_id, spam, warnings)
+    act_cls = _Act(conns, actor_user_id, spam, warnings)
     actor_user_id_seen = None
     from_deleted, from_archive, already_inbox = [], [], []
-    async with conn.transaction():
+    async with conns.main.transaction():
         # IMPORTANT we do nothing that could be slow (eg. networking) inside this transaction,
         # as the conv is locked for update from prepare onwards
         conv_id, creator_id = await act_cls.prepare(conv_ref)
 
         for action in actions:
-            action_id = await act_cls.run(action)
+            action_id = await act_cls.run(action, files)
             if action_id:
                 action_ids.append(action_id)
 
         if action_ids:
             # the actor is assumed to have seen the conversation as they've acted upon it
-            actor_user_id_seen = await conn.fetchval(
+            actor_user_id_seen = await conns.main.fetchval(
                 'update participants set seen=true where conv=$1 and user_id=$2 and seen is not true returning user_id',
                 conv_id,
                 actor_user_id,
             )
             # everyone else hasn't seen this action if it's "worth seeing"
             if any(a.act not in _meta_action_types for a in actions):
-                # TODO we'll also need to exclude muted conversations from being moved, while still setting seen=false
-                # we could exclude no local users from some of this
-                from_deleted, from_archive, already_inbox = await conn.fetchrow(
-                    """
-                    with conv_prts as (
-                      select p.id from participants p where conv=$1 and user_id!=$2
-                    ),
-                    from_deleted as (
-                      -- user had previously deleted the conversation, move it back to the inbox
-                      update participants p set seen=null, inbox=true, deleted=null from conv_prts where
-                      conv_prts.id=p.id and spam is not true and inbox is not true and p.deleted is true
-                      returning p.user_id
-                    ),
-                    from_archive as (
-                      -- conversation was previously in the archive for these users, move it back to the inbox
-                      update participants p set seen=null, inbox=true from conv_prts where
-                      conv_prts.id=p.id and spam is not true and inbox is not true and p.deleted is not true
-                      returning p.user_id
-                    ),
-                    already_inbox as (
-                      -- conversation was already in the inbox, just mark it as unseen
-                      update participants p set seen=null from conv_prts where
-                      conv_prts.id=p.id and spam is not true and inbox is true and seen is true
-                      returning p.user_id
-                    ),
-                    is_spam as (
-                      -- conversation is marked as spam, just set it to unseen
-                      update participants p set seen=null from conv_prts where
-                      conv_prts.id=p.id and spam is true
-                      returning p.user_id
-                    )
-                    select from_deleted, from_archive, already_inbox
-                    from (select coalesce(array_agg(user_id), '{}') from_deleted from from_deleted) from_deleted,
-                         (select coalesce(array_agg(user_id), '{}') from_archive from from_archive) from_archive,
-                         (select coalesce(array_agg(user_id), '{}') already_inbox from already_inbox) already_inbox
-                    """,
-                    conv_id,
-                    actor_user_id,
-                )
-            await update_conv_users(conn, conv_id)
+                from_deleted, from_archive, already_inbox = await user_flag_moves(conns, conv_id, actor_user_id)
+            await update_conv_users(conns, conv_id)
 
     updates = [
         *(
@@ -654,27 +634,71 @@ async def apply_actions(
     if actor_user_id_seen:
         updates.append(UpdateFlag(actor_user_id_seen, [(ConvFlags.unseen, -1)]))
     if updates:
-        await update_conv_flags(*updates, redis=redis)
+        await update_conv_flags(conns, *updates)
     return conv_id, action_ids
 
 
+async def user_flag_moves(
+    conns: Connections, conv_id: int, actor_user_id: int
+) -> Tuple[List[int], List[int], List[int]]:
+    # TODO we'll also need to exclude muted conversations from being moved, while still setting seen=false
+    # we could exclude no local users from some of this
+    return await conns.main.fetchrow(
+        """
+        with conv_prts as (
+          select p.id from participants p where conv=$1 and user_id!=$2
+        ),
+        from_deleted as (
+          -- user had previously deleted the conversation, move it back to the inbox
+          update participants p set seen=null, inbox=true, deleted=null from conv_prts where
+          conv_prts.id=p.id and spam is not true and inbox is not true and p.deleted is true
+          returning p.user_id
+        ),
+        from_archive as (
+          -- conversation was previously in the archive for these users, move it back to the inbox
+          update participants p set seen=null, inbox=true from conv_prts where
+          conv_prts.id=p.id and spam is not true and inbox is not true and p.deleted is not true
+          returning p.user_id
+        ),
+        already_inbox as (
+          -- conversation was already in the inbox, just mark it as unseen
+          update participants p set seen=null from conv_prts where
+          conv_prts.id=p.id and spam is not true and inbox is true and seen is true
+          returning p.user_id
+        ),
+        is_spam as (
+          -- conversation is marked as spam, just set it to unseen
+          update participants p set seen=null from conv_prts where
+          conv_prts.id=p.id and spam is true
+          returning p.user_id
+        )
+        select from_deleted, from_archive, already_inbox
+        from (select coalesce(array_agg(user_id), '{}') from_deleted from from_deleted) from_deleted,
+             (select coalesce(array_agg(user_id), '{}') from_archive from from_archive) from_archive,
+             (select coalesce(array_agg(user_id), '{}') already_inbox from already_inbox) already_inbox
+        """,
+        conv_id,
+        actor_user_id,
+    )
+
+
 async def conv_actions_json(
-    conn: BuildPgConnection, user_id: int, conv_ref: StrInt, *, since_id: int = None, inc_seen: bool = False
+    conns: Connections, user_id: int, conv_ref: StrInt, *, since_id: int = None, inc_seen: bool = False
 ):
-    conv_id, last_action = await get_conv_for_user(conn, user_id, conv_ref)
+    conv_id, last_action = await get_conv_for_user(conns, user_id, conv_ref)
     where_logic = V('a.conv') == conv_id
     if last_action:
         where_logic &= V('a.id') <= last_action
 
     if since_id:
-        await or404(conn.fetchval('select 1 from actions where conv=$1 and id=$2', conv_id, since_id))
+        await or404(conns.main.fetchval('select 1 from actions where conv=$1 and id=$2', conv_id, since_id))
         where_logic &= V('a.id') > since_id
 
     if not inc_seen:
         where_logic &= V('a.act') != ActionTypes.seen
 
     return await or404(
-        conn.fetchval_b(
+        conns.main.fetchval_b(
             """
             select array_to_json(array_agg(json_strip_nulls(row_to_json(t))), true)
             from (
@@ -706,8 +730,8 @@ async def conv_actions_json(
     )
 
 
-async def construct_conv(conn: BuildPgConnection, user_id: int, conv_ref: StrInt, since_id: int = None):
-    actions_json = await conv_actions_json(conn, user_id, conv_ref, since_id=since_id)
+async def construct_conv(conns: Connections, user_id: int, conv_ref: StrInt, since_id: int = None):
+    actions_json = await conv_actions_json(conns, user_id, conv_ref, since_id=since_id)
     actions = json.loads(actions_json)
     return _construct_conv_actions(actions)
 
@@ -790,19 +814,19 @@ class CreateConvModel(BaseModel):
 
 async def create_conv(
     *,
-    conn: BuildPgConnection,
-    redis: Redis,
+    conns: Connections,
     creator_email: str,
     creator_id: int,
     conv: CreateConvModel,
     ts: Optional[datetime] = None,
     spam: bool = False,
     warnings: Dict[str, str] = None,
-):
+    files: Optional[List[File]] = None,
+) -> Tuple[int, str]:
     ts = ts or utcnow()
     conv_key = generate_conv_key(creator_email, ts, conv.subject) if conv.publish else draft_conv_key()
-    async with conn.transaction():
-        conv_id = await conn.fetchval(
+    async with conns.main.transaction():
+        conv_id = await conns.main.fetchval(
             """
             insert into conversations (key, creator, publish_ts, created_ts, updated_ts)
             values                    ($1,  $2     , $3        , $4        , $4        )
@@ -819,20 +843,20 @@ async def create_conv(
 
         # TODO currently only email is used
         participants = set(p.email for p in conv.participants)
-        part_users = await get_create_multiple_users(conn, participants)
+        part_users = await get_create_multiple_users(conns, participants)
 
-        await conn.execute(
+        await conns.main.execute(
             'insert into participants (conv, user_id, seen, inbox) (select $1, $2, true, null)', conv_id, creator_id
         )
         other_user_ids = list(part_users.values())
-        await conn.execute(
+        await conns.main.execute(
             'insert into participants (conv, user_id, spam) (select $1, unnest($2::int[]), $3)',
             conv_id,
             other_user_ids,
             True if spam else None,
         )
         user_ids = [creator_id] + other_user_ids
-        await conn.execute(
+        await conns.main.execute(
             """
             insert into actions (conv, act              , actor, ts, participant_user) (
             select               $1  , 'participant:add', $2   , $3, unnest($4::int[])
@@ -843,10 +867,11 @@ async def create_conv(
             ts,
             user_ids,
         )
-        await conn.execute(
+        add_action_pk = await conns.main.fetchval(
             """
             insert into actions (conv, act          , actor, ts, body, preview, msg_format, warnings)
             values              ($1  , 'message:add', $2   , $3, $4  , $5     , $6        , $7)
+            returning pk
             """,
             conv_id,
             creator_id,
@@ -856,7 +881,7 @@ async def create_conv(
             conv.msg_format,
             json.dumps(warnings) if warnings else None,
         )
-        await conn.execute(
+        await conns.main.execute(
             """
             insert into actions (conv, act, actor, ts, body)
             values              ($1  , $2 , $3   , $4, $5)
@@ -867,7 +892,9 @@ async def create_conv(
             ts,
             conv.subject,
         )
-        await update_conv_users(conn, conv_id)
+        await update_conv_users(conns, conv_id)
+        if files:
+            await create_files(conns, files, conv_id, add_action_pk)
 
     if not conv.publish:
         updates = (UpdateFlag(creator_id, [(ConvFlags.draft, 1), (ConvFlags.all, 1)]),)
@@ -885,8 +912,27 @@ async def create_conv(
             ),
         )
 
-    await update_conv_flags(*updates, redis=redis)
+    await update_conv_flags(conns, *updates)
     return conv_id, conv_key
+
+
+async def create_files(conns: Connections, files: List[File], conv_id: int, action_pk: int):
+    # TODO cope with repeated content_id
+    values = [
+        Values(
+            conv=conv_id,
+            action=action_pk,
+            hash=f.hash,
+            name=f.name,
+            content_id=f.content_id,
+            content_disp=f.content_disp,
+            content_type=f.content_type,
+            size=f.size,
+            storage=f.storage,
+        )
+        for f in files
+    ]
+    await conns.main.execute_b('insert into files (:values__names) values :values', values=MultipleValues(*values))
 
 
 _clean_markdown = [
@@ -960,17 +1006,17 @@ def _flags_count_key(user_id: int):
     return f'conv-counts-flags-{user_id}'
 
 
-async def get_flag_counts(user_id, *, conn: BuildPgConnection, redis: Redis, force_update=False) -> dict:
+async def get_flag_counts(conns: Connections, user_id, *, force_update=False) -> dict:
     """
     Get counts for participant flags. Data is cached to a redis hash and retrieved from there if it exists.
     """
     flag_key = _flags_count_key(user_id)
-    flags = await redis.hgetall(flag_key)
+    flags = await conns.redis.hgetall(flag_key)
     if flags and not force_update:
         flags = {k: int(v) for k, v in flags.items()}
     else:
-        flags = dict(await conn.fetchrow(conv_flag_count_sql, user_id))
-        tr = redis.multi_exec()
+        flags = dict(await conns.main.fetchrow(conv_flag_count_sql, user_id))
+        tr = conns.redis.multi_exec()
         tr.hmset_dict(flag_key, flags)
         tr.expire(flag_key, 86400)
         await tr.execute()
@@ -983,16 +1029,16 @@ class UpdateFlag:
     changes: Iterable[Tuple[ConvFlags, int]]
 
 
-async def update_conv_flags(*updates: UpdateFlag, redis: Redis):
+async def update_conv_flags(conns: Connections, *updates: UpdateFlag):
     """
     Increment or decrement counts for participant flags if they exist in the cache, also extends cache expiry.
     """
 
     async def update(u: UpdateFlag):
         key = _flags_count_key(u.user_id)
-        if await redis.exists(key):
+        if await conns.redis.exists(key):
             await asyncio.gather(
-                redis.expire(key, 86400), *(redis.hincrby(key, c[0].value, c[1]) for c in u.changes if c)
+                conns.redis.expire(key, 86400), *(conns.redis.hincrby(key, c[0].value, c[1]) for c in u.changes if c)
             )
 
     await asyncio.gather(*(update(u) for u in updates if u))
@@ -1002,18 +1048,18 @@ def _label_count_key(user_id: int):
     return f'conv-counts-labels-{user_id}'
 
 
-async def get_label_counts(user_id, *, conn: BuildPgConnection, redis: Redis) -> dict:
+async def get_label_counts(conns: Connections, user_id: int) -> dict:
     """
     Get counts for labels. Data is cached to a redis hash and retrieved from there if it exists.
     """
     label_key = _label_count_key(user_id)
-    labels = await redis.hgetall(label_key)
+    labels = await conns.redis.hgetall(label_key)
     if labels:
         labels = {k: int(v) for k, v in labels.items()}
     else:
-        labels = {str(k): v for k, v in await conn.fetch(conv_label_count_sql, user_id)}
+        labels = {str(k): v for k, v in await conns.main.fetch(conv_label_count_sql, user_id)}
         if labels:
-            tr = redis.multi_exec()
+            tr = conns.redis.multi_exec()
             tr.hmset_dict(label_key, labels)
             tr.expire(label_key, 86400)
             await tr.execute()

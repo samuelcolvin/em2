@@ -1,3 +1,5 @@
+create extension pg_trgm;
+
 create type UserTypes as enum ('new', 'local', 'remote_em2', 'remote_other');
 
 -- includes both local and remote users, TODO somehow record unsubscribed when people repeatedly complain
@@ -42,6 +44,7 @@ create table conversations (
   last_action_id int not null default 0 check (last_action_id >= 0),
   details json
 );
+create index conversations_key on conversations using gin (key gin_trgm_ops);
 create index conversations_created_ts on conversations using btree (created_ts);
 create index conversations_updated_ts on conversations using btree (updated_ts);
 create index conversations_publish_ts on conversations using btree (publish_ts);
@@ -186,7 +189,7 @@ create table send_events (
   extra json
 );
 create index send_events_send ON send_events USING btree (send);
-create index send_events_user_ids ON send_events USING btree (user_ids);
+create index send_events_user_ids ON send_events USING gin (user_ids);
 
 create type ContentDisposition as enum ('attachment', 'inline');
 
@@ -206,6 +209,28 @@ create table files (
   unique (conv, content_id)
 );
 create index files_action ON files USING btree (action);
+
+---------------------------------------------------------------------------
+-- search table, no references so it could be moved to a different db or --
+-- entirely different db engine eg. elasticsearch                        --
+---------------------------------------------------------------------------
+create table search (
+  id bigserial primary key,
+  conv_key varchar(64),
+  participant_ids bigint[] not null,
+  action_id int not null,
+
+  creator_email varchar(255),
+
+  files varchar(255)[],  -- needs to contain main part and extensions separately
+  -- might need other things like size
+  vector tsvector,
+  unique (conv_key, action_id)  -- and language when it's added
+);
+create index search_participant_ids on search using gin (participant_ids);
+create index search_creator_email on search using gin (creator_email gin_trgm_ops);
+create index search_files on search using gin (files);
+create index search_vector on search using gin (vector);
 
 ----------------------------------------------------------------------------------
 -- auth tables, currently in the the same database as everything else, but with --
