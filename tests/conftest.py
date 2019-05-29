@@ -46,7 +46,7 @@ def _fix_settings_session():
             pg_db = f'em2_test_{worker_id}'
 
     return Settings(
-        DATABASE_URL=f'postgres://postgres@localhost:5433/{pg_db}',
+        DATABASE_URL=f'postgres://postgres@localhost:5432/{pg_db}',
         REDISCLOUD_URL=f'redis://localhost:6379/{redis_db}',
         bcrypt_work_factor=6,
         max_request_size=1024 ** 2,

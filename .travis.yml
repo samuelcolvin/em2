@@ -14,13 +14,14 @@ python:
 - '3.7'
 
 before_install:
+# lots of faff to get pg 11 working yawwwwn
 - sudo apt-get update
-- sudo apt-get --yes remove postgresql\*
+- sudo apt-get --yes remove postgresql\* > /dev/null
 - sudo apt-get install -y postgresql-11 postgresql-client-11
 - sudo cp /etc/postgresql/{9.6,11}/main/pg_hba.conf
 - sudo service postgresql restart 11
 - psql --version
-- psql -c 'CREATE ROLE travis SUPERUSER LOGIN CREATEDB;' -U postgres
+- psql -c 'create role travis superuser login createdb' -U postgres
 
 - nvm install 10.15.3
 - curl -o- -L https://yarnpkg.com/install.sh | bash -s -- --version 1.13.0
