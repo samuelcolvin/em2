@@ -413,11 +413,10 @@ Should separate search logic now to make elasticsearch integration in future eas
 
 One search entry per action (where required) and maybe one per language per action in future:
 * the conv key
-* the action id
-* participant ids - for filtering search entries, does not include deleted participants, thus you can
+* user ids - for filtering search entries, does not include deleted participants, thus you can
   only search for stuff on conversations before you were removed
 * the search vector
-* creator id - maybe for `from:foobar@example.com` queries
+* creator email for `from:foobar@example.com` queries
 
 vector weights used to differentiate between different parts of the conversation::
 * `A`: Subject - highest priority but also we can do `subject:foobar` searches
@@ -439,3 +438,13 @@ Maybe need another tsv on a participant to store private notes, anything else?
 
 Maybe when a user's name is entered, search should try and find that name in the address book and substitute the email
 address to allow search for that user.
+
+## search changes on actions
+
+* `conv:create` - just create
+* `conv:publish` - update keys and add all participants to `user_ids`
+* `subject:modify` - new search entry with just subject
+* `message:add` - new search entry with just message and files
+* `message:modify` - new search entry with just message and files
+* `participant:add` - new search entry with just new participant, update all existing entries to include user id
+* `participant:remove` - blank search entry to just adjust the user ids

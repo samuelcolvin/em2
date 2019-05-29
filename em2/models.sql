@@ -214,24 +214,34 @@ create index files_action ON files USING btree (action);
 -- search table, no references so it could be moved to a different db or --
 -- entirely different db engine eg. elasticsearch                        --
 ---------------------------------------------------------------------------
+create table search_conv (
+  id bigserial primary key,
+  conv_key varchar(64) unique,
+  ts timestamptz,
+  creator_email varchar(255) not null
+);
+create index search_conv_key on search_conv using gin (conv_key gin_trgm_ops);
+create index search_conv_ts on search_conv using btree (ts);
+create index search_conv_creator_email on search_conv using gin (creator_email gin_trgm_ops);
+
 create table search (
   id bigserial primary key,
-  conv_key varchar(64),
-  action_id int not null,
-  participant_ids bigint[] not null,
-  ts timestamptz not null default current_timestamp,
+  conv bigint references search_conv,
+  user_ids bigint[] not null,
 
-  creator_email varchar(255),
-
-  -- might need other things like size, files participants
-  vector tsvector,
-  unique (conv_key, action_id)  -- and language when it's added
+  -- might need other things like size, files, participants
+  vector tsvector
 );
-create index search_conv_key on search using gin (conv_key gin_trgm_ops);
-create index search_ts on search using btree (ts);
-create index search_participant_ids on search using gin (participant_ids);
-create index search_creator_email on search using gin (creator_email gin_trgm_ops);
+create index search_user_ids on search using gin (user_ids);
 create index search_vector on search using gin (vector);
+
+create or replace function search_insert() returns trigger as $$
+  begin
+    update search_conv set ts=current_timestamp where id=new.conv;
+    return null;
+  end;
+$$ language plpgsql;
+create trigger search_insert after insert on search for each row execute procedure search_insert();
 
 ----------------------------------------------------------------------------------
 -- auth tables, currently in the the same database as everything else, but with --

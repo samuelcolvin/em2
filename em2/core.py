@@ -11,7 +11,7 @@ from atoolbox import JsonErrors
 from buildpg import MultipleValues, V, Values
 from pydantic import BaseModel, EmailStr, constr, validator
 
-from .search import search_create_conv
+from .search import SearchUpdate, search_create_conv
 from .utils.core import MsgFormat, message_preview
 from .utils.datetime import to_unix_ms, utcnow
 from .utils.db import Connections, or404
@@ -25,8 +25,8 @@ class ActionTypes(str, Enum):
     Action types (component and verb), used for both urls and in db ENUM see models.sql
     """
 
-    conv_publish = 'conv:publish'
     conv_create = 'conv:create'
+    conv_publish = 'conv:publish'
     subject_modify = 'subject:modify'
     subject_lock = 'subject:lock'
     subject_release = 'subject:release'
@@ -245,7 +245,7 @@ class _Act:
     See act() below for details.
     """
 
-    __slots__ = 'conns', 'actor_user_id', 'conv_id', 'new_user_ids', 'spam', 'warnings', 'last_action'
+    __slots__ = 'conns', 'actor_user_id', 'conv_id', 'new_user_ids', 'spam', 'warnings', 'last_action', 'search_update'
 
     def __init__(self, conns: Connections, actor_user_id: int, spam: bool, warnings: Dict[str, str]):
         self.conns = conns
@@ -256,15 +256,17 @@ class _Act:
         self.spam = True if spam else None
         self.warnings = json.dumps(warnings) if warnings else None
         self.last_action = None
+        self.search_update: SearchUpdate = None
 
     async def prepare(self, conv_ref: StrInt) -> Tuple[int, int]:
         self.conv_id, self.last_action = await get_conv_for_user(self.conns, self.actor_user_id, conv_ref)
 
         # we must be in a transaction
         # this is a hard check that conversations can only have on act applied at a time
-        creator = await self.conns.main.fetchval(
-            'select creator from conversations where id=$1 for no key update', self.conv_id
+        creator, conv_key = await self.conns.main.fetchrow(
+            'select creator, key from conversations where id=$1 for no key update', self.conv_id
         )
+        self.search_update = SearchUpdate(self.conns, conv_key)
         return self.conv_id, creator
 
     async def run(self, action: ActionModel, files: Optional[List[File]]) -> Optional[int]:
@@ -275,17 +277,20 @@ class _Act:
         if self.last_action:
             raise JsonErrors.HTTPBadRequest(message="You can't act on conversations you've been removed from")
 
+        user_id = None
         if action.act in _prt_action_types:
-            return await self._act_on_participant(action)
+            action_id, user_id = await self._act_on_participant(action)
         elif action.act in _msg_action_types:
             action_id, action_pk = await self._act_on_message(action)
             if files:
                 await create_files(self.conns, files, self.conv_id, action_pk)
-            return action_id
         elif action.act in _subject_action_types:
-            return await self._act_on_subject(action)
+            action_id = await self._act_on_subject(action)
+        else:
+            raise NotImplementedError
 
-        raise NotImplementedError
+        await self.search_update(action, user_id, files)
+        return action_id
 
     async def _seen(self) -> Optional[int]:
         # could use "parent" to identify what was seen
@@ -324,7 +329,7 @@ class _Act:
             self.actor_user_id,
         )
 
-    async def _act_on_participant(self, action: ActionModel) -> int:
+    async def _act_on_participant(self, action: ActionModel) -> Tuple[int, int]:
         follows_pk = None
         if action.act == ActionTypes.prt_add:
             prts_count = await self.conns.main.fetchval('select count(*) from participants where conv=$1', self.conv_id)
@@ -403,7 +408,7 @@ class _Act:
                 action_id,
                 prt_id,
             )
-        return action_id
+        return action_id, prt_user_id
 
     async def _act_on_message(self, action: ActionModel) -> Tuple[int, int]:
         if action.act == ActionTypes.msg_add:
@@ -900,7 +905,7 @@ async def create_conv(
         conv_key=conv_key,
         creator_email=creator_email,
         creator_id=creator_id,
-        participants=part_users,
+        users=part_users,
         conv=conv,
         files=files,
     )

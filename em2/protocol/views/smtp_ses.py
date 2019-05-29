@@ -102,9 +102,8 @@ async def _record_email_message(request, message: Dict):
 
     msg = parse_smtp(body)
     del body
-    await process_smtp(
-        conns_from_request(request), msg, recipients, f's3://{bucket}/{path}', spam=spam, warnings=warnings
-    )
+    conns = conns_from_request(request)
+    await process_smtp(conns, msg, recipients, f's3://{bucket}/{path}', spam=spam, warnings=warnings)
 
 
 async def _record_email_event(request, message: Dict):
