@@ -1,6 +1,9 @@
+import json
+
 from pytest_toolbox.comparison import AnyInt, CloseToNow
 
 from em2.core import ActionModel, ActionTypes
+from em2.search import search
 
 from .conftest import Factory
 
@@ -77,3 +80,20 @@ async def test_add_prt_add_msg(factory: Factory, db_conn):
             'vector': "'example.com':2B 'testing-2@example.com':1B",
         },
     ]
+
+
+async def test_search_query(factory: Factory, conns):
+    user = await factory.create_user()
+    conv = await factory.create_conv(subject='apple pie', message='eggs, flour and raisins')
+    assert 1 == await conns.main.fetchval('select count(*) from search')
+    r = json.loads(await search(conns, user.id, 'apple'))
+    assert r == {'conversations': [{'conv_key': conv.key, 'ts': CloseToNow()}]}
+
+    r = json.loads(await search(conns, user.id, 'banana'))
+    assert r == {'conversations': []}
+
+    r = json.loads(await search(conns, user.id, '"flour and raisins"'))
+    assert r == {'conversations': [{'conv_key': conv.key, 'ts': CloseToNow()}]}
+
+    r = json.loads(await search(conns, user.id, '"eggs and raisins"'))
+    assert r == {'conversations': []}

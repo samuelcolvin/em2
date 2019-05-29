@@ -1,4 +1,7 @@
+import re
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
+
+from buildpg import Func, V, funcs
 
 from em2.utils.core import message_simplify
 from em2.utils.db import Connections
@@ -142,3 +145,62 @@ class SearchUpdate:
             vector,
             weight.encode(),
         )
+
+
+search_sql = """
+select json_build_object(
+  'conversations', conversations
+) from (
+  select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
+  from (
+    select conv_key, ts
+    from search s
+    join search_conv sc on s.conv = sc.id
+    where :where
+    group by conv_key, ts
+    order by ts desc
+    limit 50
+  ) t
+) conversations
+"""
+
+
+async def search(conns: Connections, user_id: int, query: str):
+    new_query, special_groups = parse(query)
+    if not (new_query or special_groups):
+        # nothing to filter on
+        return '{"results": []}'
+
+    where = V('user_ids').contains([user_id])
+
+    if new_query:
+        query_match = V('vector').matches(Func('websearch_to_tsquery', new_query))
+        if re_hex.fullmatch(new_query):
+            # looks like it could be a conv key, search for that too
+            where &= funcs.OR(query_match, V('conv_key').like('%' + new_query + '%'))
+        else:
+            where &= query_match
+
+    # TODO process special_groups
+
+    return await conns.search.fetchval_b(search_sql, where=where)
+
+
+prefixes = ('from', 'includes?', 'to', 'files?', 'attachments?', 'has', 'subjects?')
+re_special = re.compile(fr"""(?:^|\s|,)({'|'.join(prefixes)}):((["']).*?[^\\]\3|\S*)""", flags=re.S)
+re_hex = re.compile('[a-f0-9]+', flags=re.S)
+
+
+def parse(query: str):
+    groups = []
+
+    def replace(m):
+        prefix = m.group(1).lower()
+        if prefix != 'has':
+            prefix = prefix.rstrip('s')
+        value = m.group(2).strip('"\'')
+        groups.append((prefix, value))
+        return ''
+
+    new_query = re_special.sub(replace, query)
+    return new_query.strip(' '), groups
