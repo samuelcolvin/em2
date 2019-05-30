@@ -36,9 +36,10 @@ async def search_create_conv(
     await conns.search.execute(
         """
         with conv as (insert into search_conv (conv_key, creator_email) values ($1, $2) returning id)
-        insert into search (conv, user_ids, vector)
+        insert into search (conv, action, user_ids, vector)
         select
           id,
+          1,
           $3,
           setweight(to_tsvector($4), 'A') ||
           setweight(to_tsvector($5), 'B') ||
@@ -78,34 +79,35 @@ class SearchUpdate:
             )
 
     async def __call__(
-        self, action: 'ActionModel', user_id: Optional[int], action_id: int, files: Optional[List['File']]
+        self, action: 'ActionModel', action_id: int, user_id: Optional[int], files: Optional[List['File']]
     ):
         from .core import ActionTypes
 
         if action.act is ActionTypes.subject_modify:
             await self.prepare()
-            await self._modify_subject(action)
+            await self._modify_subject(action, action_id)
         elif action.act in {ActionTypes.msg_add, ActionTypes.msg_modify}:
             await self.prepare()
-            await self._msg_change(action, files)
+            await self._msg_change(action, action_id, files)
         elif action.act is ActionTypes.prt_add:
             await self.prepare()
-            await self._prt_add(action, user_id)
+            await self._prt_add(action, action_id, user_id)
         elif action.act is ActionTypes.prt_remove:
             await self.prepare()
-            await self._prt_remove(action_id, user_id)
+            await self._prt_remove(user_id)
 
-    async def _modify_subject(self, action: 'ActionModel'):
+    async def _modify_subject(self, action: 'ActionModel', action_id: int):
         await self.conns.search.execute(
             """
-            update search set vector=vector || setweight(to_tsvector($1), 'A'), ts=current_timestamp
-            where conv=$2 and freeze_action=0
+            update search set vector=vector || setweight(to_tsvector($1), 'A'), action=$2, ts=current_timestamp
+            where conv=$3 and freeze_action=0
             """,
             action.body,
+            action_id,
             self.conv_id,
         )
 
-    async def _msg_change(self, action: 'ActionModel', files: Optional[List['File']]):
+    async def _msg_change(self, action: 'ActionModel', action_id: int, files: Optional[List['File']]):
         if files:
             files = {f.name for f in files if f.name}
             files.add(has_files_sentinel)
@@ -115,15 +117,16 @@ class SearchUpdate:
         await self.conns.search.execute(
             """
             update search set
-              vector=vector || setweight(to_tsvector($1), 'C') || to_tsvector($2), ts=current_timestamp
-            where conv=$3 and freeze_action=0
+              vector=vector || setweight(to_tsvector($1), 'C') || to_tsvector($2), action=$3, ts=current_timestamp
+            where conv=$4 and freeze_action=0
             """,
             ' '.join(files),
             message_simplify(action.body, action.msg_format),
+            action_id,
             self.conv_id,
         )
 
-    async def _prt_add(self, action: 'ActionModel', user_id: int):
+    async def _prt_add(self, action: 'ActionModel', action_id: int, user_id: int):
         # TODO remove the user from existing search entries on this conversation and delete them if required
         email = action.participant
         await self.conns.search.execute(
@@ -131,23 +134,24 @@ class SearchUpdate:
             update search set
               user_ids=user_ids || array[$1::bigint],
               vector=vector || setweight(to_tsvector($2), 'B'),
+              action=$3,
               ts=current_timestamp
-            where conv=$3 and freeze_action=0
+            where conv=$4 and freeze_action=0
             """,
             user_id,
             '{} {}'.format(email, email.split('@', 1)[1]),
+            action_id,
             self.conv_id,
         )
 
-    async def _prt_remove(self, action_id: int, user_id: int):
+    async def _prt_remove(self, user_id: int):
         await self.conns.search.execute(
             """
-            insert into search (conv, freeze_action, user_ids, vector)
-            select $1, $2, array[$3::bigint], s.vector from search s where conv=$1 and freeze_action=0
-            on conflict (conv, freeze_action) do update set user_ids=search.user_ids || array[$3::bigint]
+            insert into search (conv, action, freeze_action, user_ids, vector)
+            select $1, s.action, s.action, array[$2::bigint], s.vector from search s where conv=$1 and freeze_action=0
+            on conflict (conv, freeze_action) do update set user_ids=search.user_ids || array[$2::bigint]
             """,
             self.conv_id,
-            action_id,
             user_id,
         )
 

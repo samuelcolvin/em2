@@ -289,7 +289,7 @@ class _Act:
         else:
             raise NotImplementedError
 
-        await self.search_update(action, user_id, action_id, files)
+        await self.search_update(action, action_id, user_id, files)
         return action_id
 
     async def _seen(self) -> Optional[int]:
