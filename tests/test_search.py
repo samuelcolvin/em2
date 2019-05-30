@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from pytest_toolbox.comparison import AnyInt, CloseToNow
 
 from em2.core import ActionModel, ActionTypes
@@ -88,12 +89,38 @@ async def test_search_query(factory: Factory, conns):
     assert 1 == await conns.main.fetchval('select count(*) from search')
     r = json.loads(await search(conns, user.id, 'apple'))
     assert r == {'conversations': [{'conv_key': conv.key, 'ts': CloseToNow()}]}
-
     r = json.loads(await search(conns, user.id, 'banana'))
     assert r == {'conversations': []}
 
-    r = json.loads(await search(conns, user.id, '"flour and raisins"'))
-    assert r == {'conversations': [{'conv_key': conv.key, 'ts': CloseToNow()}]}
 
-    r = json.loads(await search(conns, user.id, '"eggs and raisins"'))
-    assert r == {'conversations': []}
+@pytest.mark.parametrize(
+    'query,count',
+    [
+        ('"flour and raisins"', 1),
+        ('"eggs and raisins"', 0),
+        ('subject:apple', 1),
+        ('subject:flour', 0),
+        ('from:testing@example.com', 1),
+        ('from:@example.com', 1),
+        ('testing@example.com', 1),
+        ('includes:testing@example.com', 1),
+        ('includes:@example.com', 1),
+        ('to:testing@example.com', 0),
+        ('to:@example.com', 0),
+        ('include:recipient@foobar.com', 1),
+        ('include:@foobar.com', 1),
+        ('to:recipient@foobar.com', 1),
+        ('to:@foobar.com', 1),
+        ('recipient@foobar.com', 1),
+        ('@foobar.com', 1),
+        ('from:recipient@foobar.com', 0),
+        # ('includes:"testing@example.com recipient@foobar.com"', 1),
+    ],
+)
+async def test_search_query_participants(factory: Factory, conns, query, count):
+    user = await factory.create_user(email='testing@example.com')
+    conv = await factory.create_conv(subject='apple pie', message='eggs, flour and raisins')
+    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant='recipient@foobar.com'))
+    # debug([dict(v) for v in await conns.search.fetch('select vector from search')])
+
+    assert len(json.loads(await search(conns, user.id, query))['conversations']) == count

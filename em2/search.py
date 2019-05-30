@@ -10,6 +10,9 @@ if TYPE_CHECKING:
     from .core import ActionModel, File, CreateConvModel  # noqa: F401
 
 
+has_files_sentinel = 'conversation.has.files'
+
+
 async def search_create_conv(
     conns: Connections,
     *,
@@ -21,10 +24,11 @@ async def search_create_conv(
     files: Optional[List['File']],
 ):
     addresses = users.keys() | {creator_email}
-    addresses |= {'@' + p.split('@', 1)[1] for p in addresses}
+    addresses |= {p.split('@', 1)[1] for p in addresses}
     if files:
         files = {f.name for f in files if f.name}
-        files |= set('.' + n.split('.', 1)[1] for n in files if '.' in n)
+        files.add(has_files_sentinel)
+        files |= set(n.split('.', 1)[1] for n in files if '.' in n)
     else:
         files = []
     body = message_simplify(conv.message, conv.msg_format)
@@ -100,6 +104,7 @@ class SearchUpdate:
     async def _msg_change(self, action: 'ActionModel', user_id, files):
         if files:
             files = {f.name for f in files if f.name}
+            files.add(has_files_sentinel)
             files |= set('.' + n.split('.', 1)[1] for n in files if '.' in n)
         else:
             files = []
@@ -118,10 +123,10 @@ class SearchUpdate:
         await self.conns.search.execute(
             'update search set user_ids=user_ids || array[$1::bigint] where conv=$2', user_id, self.conv_id
         )
-
         self.user_ids.add(user_id)
         email = action.participant
         domain = email.split('@', 1)[1]
+
         await self._insert(f'{email} @{domain}', 'B')
 
     async def _prt_remove(self, action: 'ActionModel', user_id, files):
@@ -166,8 +171,8 @@ select json_build_object(
 
 
 async def search(conns: Connections, user_id: int, query: str):
-    new_query, special_groups = parse(query)
-    if not (new_query or special_groups):
+    new_query, named_filters = parse(query)
+    if not (new_query or named_filters):
         # nothing to filter on
         return '{"results": []}'
 
@@ -181,14 +186,18 @@ async def search(conns: Connections, user_id: int, query: str):
         else:
             where &= query_match
 
-    # TODO process special_groups
+    for name, value in named_filters:
+        where &= apply_named_filters(name, value)
+    # debug(where)
 
     return await conns.search.fetchval_b(search_sql, where=where)
 
 
-prefixes = ('from', 'includes?', 'to', 'files?', 'attachments?', 'has', 'subjects?')
-re_special = re.compile(fr"""(?:^|\s|,)({'|'.join(prefixes)}):((["']).*?[^\\]\3|\S*)""", flags=re.S)
+prefixes = ('from', 'include', 'to', 'file', 'attachment', 'has', 'subject')
+re_special = re.compile(fr"""(?:^|\s|,)({'|'.join(prefixes)})s?:((["']).*?[^\\]\3|\S*)""", flags=re.S)
 re_hex = re.compile('[a-f0-9]+', flags=re.S)
+re_tsquery = re.compile(r"""[^:*&|%"'\s]{2,}""")
+re_file_match = re.compile(r'(?:file|attachment)s')
 
 
 def parse(query: str):
@@ -196,11 +205,41 @@ def parse(query: str):
 
     def replace(m):
         prefix = m.group(1).lower()
-        if prefix != 'has':
-            prefix = prefix.rstrip('s')
         value = m.group(2).strip('"\'')
         groups.append((prefix, value))
         return ''
 
     new_query = re_special.sub(replace, query)
     return new_query.strip(' '), groups
+
+
+def apply_named_filters(name: str, value: str):
+    if name == 'from':
+        return V('creator_email').like(f'%{value}%')
+    elif name == 'include':
+        return build_ts_query(value, 'B')
+    elif name == 'to':
+        addresses = re_tsquery.findall(value)
+        not_creator = [funcs.NOT(V('creator_email').like(f'%{a}%')) for a in addresses]
+        return funcs.AND(build_ts_query(value, 'B'), *not_creator)
+    elif re_file_match.fullmatch(name):
+        return build_ts_query(value, 'C', sentinel=has_files_sentinel)
+    elif name == 'has':
+        if value.lower() in {'file', 'files', 'attachment', 'attachments'}:
+            # this is just any files
+            return build_ts_query('', 'C', sentinel=has_files_sentinel)
+        else:
+            # assume this is the same as includes
+            return build_ts_query(value, 'B')
+    else:
+        assert name == 'subject', name
+        # TODO could do this better to get closer to websearch_to_tsquery
+        return build_ts_query(value, 'A', prefixes=False)
+
+
+def build_ts_query(value: str, weight: str, *, sentinel: Optional[str] = None, prefixes: bool = True):
+    parts = re_tsquery.findall(value)
+    query_parts = [f'{a}:{"*" if prefixes else ""}{weight}' for a in parts]
+    if sentinel:
+        query_parts.append(f'{sentinel}:{weight}')
+    return V('vector').matches(Func('to_tsquery', ' & '.join(query_parts)))
