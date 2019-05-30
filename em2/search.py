@@ -6,7 +6,7 @@ from buildpg import Empty, Func, V, funcs
 from em2.utils.core import message_simplify
 from em2.utils.db import Connections
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from .core import ActionModel, File, CreateConvModel  # noqa: F401
 
 
@@ -127,33 +127,54 @@ class SearchUpdate:
         )
 
     async def _prt_add(self, action: 'ActionModel', action_id: int, user_id: int):
-        # TODO remove the user from existing search entries on this conversation and delete them if required
         email = action.participant
-        await self.conns.search.execute(
-            """
-            update search set
-              user_ids=user_ids || array[$1::bigint],
-              vector=vector || setweight(to_tsvector($2), 'B'),
-              action=$3,
-              ts=current_timestamp
-            where conv=$4 and freeze_action=0
-            """,
-            user_id,
-            '{} {}'.format(email, email.split('@', 1)[1]),
-            action_id,
-            self.conv_id,
-        )
+        async with self.conns.search.transaction():
+            v = await self.conns.search.execute(
+                """
+                update search set user_ids=array_remove(user_ids, $1)
+                where conv=$2 and freeze_action!=0 and user_ids @> array[$1::bigint]
+                """,
+                user_id,
+                self.conv_id,
+            )
+            if v != 'UPDATE 0':
+                # if we've got any search entries with no users delete them
+                await self.conns.search.execute("delete from search where conv=$1 and user_ids='{}'", self.conv_id)
+            await self.conns.search.execute(
+                """
+                update search set
+                  user_ids=user_ids || array[$1::bigint],
+                  vector=vector || setweight(to_tsvector($2), 'B'),
+                  action=$3,
+                  ts=current_timestamp
+                where conv=$4 and freeze_action=0
+                """,
+                user_id,
+                '{} {}'.format(email, email.split('@', 1)[1]),
+                action_id,
+                self.conv_id,
+            )
 
     async def _prt_remove(self, user_id: int):
-        await self.conns.search.execute(
-            """
-            insert into search (conv, action, freeze_action, user_ids, vector)
-            select $1, s.action, s.action, array[$2::bigint], s.vector from search s where conv=$1 and freeze_action=0
-            on conflict (conv, freeze_action) do update set user_ids=search.user_ids || array[$2::bigint]
-            """,
-            self.conv_id,
-            user_id,
-        )
+        async with self.conns.search.transaction():
+            await self.conns.search.execute(
+                """
+                insert into search (conv, action, freeze_action, user_ids, vector)
+                select $1, s.action, s.action, array[$2::bigint], s.vector
+                from search s where conv=$1 and freeze_action=0
+                on conflict (conv, freeze_action) do update set user_ids=search.user_ids || array[$2::bigint]
+                """,
+                self.conv_id,
+                user_id,
+            )
+            await self.conns.search.execute(
+                """
+                update search set user_ids=array_remove(user_ids, $1), ts=current_timestamp
+                where conv=$2 and freeze_action=0
+                """,
+                user_id,
+                self.conv_id,
+            )
 
 
 search_sql = """
@@ -177,7 +198,7 @@ async def search(conns: Connections, user_id: int, query: str):
     new_query, named_filters = parse(query)
     if not (new_query or named_filters):
         # nothing to filter on
-        return '{"results": []}'
+        return '{"conversations": []}'
 
     where = Empty()
 
@@ -185,7 +206,7 @@ async def search(conns: Connections, user_id: int, query: str):
         query_match = V('vector').matches(Func('websearch_to_tsquery', new_query))
         if re_hex.fullmatch(new_query):
             # looks like it could be a conv key, search for that too
-            where &= funcs.OR(query_match, V('conv_key').like('%' + new_query + '%'))
+            where &= funcs.OR(query_match, V('conv_key').like('%' + new_query.lower() + '%'))
         else:
             where &= query_match
 
@@ -197,7 +218,7 @@ async def search(conns: Connections, user_id: int, query: str):
 
 prefixes = ('from', 'include', 'to', 'file', 'attachment', 'has', 'subject')
 re_special = re.compile(fr"""(?:^|\s|,)({'|'.join(prefixes)})s?:((["']).*?[^\\]\3|\S*)""", re.I)
-re_hex = re.compile('[a-f0-9]+', re.I)
+re_hex = re.compile('[a-f0-9]{5,}', re.I)
 re_tsquery = re.compile(r"""[^:*&|%"'\s]{2,}""")
 re_file_attachment = re.compile(r'(?:file|attachment)s?', re.I)
 
@@ -231,7 +252,7 @@ def apply_named_filters(name: str, value: str):
             # this is just any files
             return build_ts_query('', 'C', sentinel=has_files_sentinel)
         else:
-            # assume this is the same as includes
+            # assume this is the same as includes, this is a little weird, could ignore at the query stage.
             return build_ts_query(value, 'B')
     else:
         assert name == 'subject', name

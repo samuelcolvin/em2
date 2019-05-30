@@ -97,20 +97,44 @@ async def test_add_remove_prt(factory: Factory, db_conn):
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_remove, participant=email2, follows=4))
     assert 2 == await db_conn.fetchval('select count(*) from search')
     assert 5, 5 == await db_conn.fetchrow('select action, freeze_action from search where freeze_action!=0')
+    assert [user2_id] == await db_conn.fetchval('select user_ids from search where freeze_action!=0')
     assert 5, 0 == await db_conn.fetchrow('select action, freeze_action from search where freeze_action=0')
+    assert [user.id, user3_id] == await db_conn.fetchval('select user_ids from search where freeze_action=0')
 
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_remove, participant=email3, follows=5))
     assert 2 == await db_conn.fetchval('select count(*) from search')
     assert 5, 5 == await db_conn.fetchrow('select action, freeze_action from search where freeze_action!=0')
+    assert [user2_id, user3_id] == await db_conn.fetchval('select user_ids from search where freeze_action!=0')
     assert 5, 0 == await db_conn.fetchrow('select action, freeze_action from search where freeze_action=0')
+    assert [user.id] == await db_conn.fetchval('select user_ids from search where freeze_action=0')
 
     assert [8] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.msg_add, body='spagetti'))
     assert 2 == await db_conn.fetchval('select count(*) from search')
     assert 5, 5 == await db_conn.fetchrow('select action, freeze_action from search where freeze_action!=0')
     assert 8, 0 == await db_conn.fetchrow('select action, freeze_action from search where freeze_action=0')
 
-    assert 'spagetti' in await db_conn.fetchval('select vector from search where freeze_action=0')
     assert 'spagetti' not in await db_conn.fetchval('select vector from search where freeze_action!=0')
+    assert 'spagetti' in await db_conn.fetchval('select vector from search where freeze_action=0')
+
+
+async def test_readd_prt(factory: Factory, db_conn):
+    user = await factory.create_user(email='testing@example.com')
+    conv = await factory.create_conv()
+
+    email2 = 'different@foobar.com'
+    assert [4] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant=email2))
+    user2_id = await db_conn.fetchval('select id from users where email=$1', email2)
+    assert 1 == await db_conn.fetchval('select count(*) from search')
+    assert [user.id, user2_id] == await db_conn.fetchval('select user_ids from search where freeze_action=0')
+
+    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_remove, participant=email2, follows=4))
+    assert 2 == await db_conn.fetchval('select count(*) from search')
+    assert [user2_id] == await db_conn.fetchval('select user_ids from search where freeze_action=4')
+    assert [user.id] == await db_conn.fetchval('select user_ids from search where freeze_action=0')
+
+    assert [6] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant=email2))
+    assert 1 == await db_conn.fetchval('select count(*) from search')
+    assert [user.id, user2_id] == await db_conn.fetchval('select user_ids from search where freeze_action=0')
 
 
 async def test_search_query(factory: Factory, conns):
@@ -121,11 +145,15 @@ async def test_search_query(factory: Factory, conns):
     assert r == {'conversations': [{'conv_key': conv.key, 'ts': CloseToNow()}]}
     r = json.loads(await search(conns, user.id, 'banana'))
     assert r == {'conversations': []}
+    assert len(json.loads(await search(conns, user.id, conv.key[5:12]))['conversations']) == 1
+    assert len(json.loads(await search(conns, user.id, conv.key[5:12] + 'aaa'))['conversations']) == 0
+    assert len(json.loads(await search(conns, user.id, conv.key[5:8]))['conversations']) == 0
 
 
 @pytest.mark.parametrize(
     'query,count',
     [
+        ('', 0),
         ('"flour and raisins"', 1),
         ('"eggs and raisins"', 0),
         ('subject:apple', 1),
@@ -134,6 +162,7 @@ async def test_search_query(factory: Factory, conns):
         ('from:@example.com', 1),
         ('testing@example.com', 1),
         ('includes:testing@example.com', 1),
+        ('has:testing@example.com', 1),
         ('includes:@example.com', 1),
         ('to:testing@example.com', 0),
         ('to:@example.com', 0),
