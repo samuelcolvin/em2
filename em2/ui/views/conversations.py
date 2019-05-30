@@ -26,7 +26,7 @@ from em2.core import (
     update_conv_flags,
     update_conv_users,
 )
-from em2.search import search
+from em2.search import search, search_publish_conv
 from em2.utils.datetime import utcnow
 from em2.utils.db import or404
 from em2.utils.storage import S3, StorageNotFound, parse_storage_uri
@@ -242,6 +242,7 @@ class ConvPublish(ExecView):
 
         # could do more efficiently than this, but would require duplicate logic
         conv_summary = await construct_conv(self.conns, self.session.user_id, conv_prefix)
+        old_key = await self.conns.main.fetchval('select key from conversations where id=$1', conv_id)
 
         ts = utcnow()
         conv_key = generate_conv_key(self.session.email, ts, conv_summary['subject'])
@@ -297,6 +298,7 @@ class ConvPublish(ExecView):
             ),
         )
         await update_conv_flags(self.conns, *updates)
+        await search_publish_conv(self.conns, conv_id, old_key, conv_key)
         await push_all(self.conns, conv_id)
         return dict(key=conv_key)
 

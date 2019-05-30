@@ -9,6 +9,7 @@ from em2.utils.db import Connections
 if TYPE_CHECKING:  # pragma: no cover
     from .core import ActionModel, File, CreateConvModel  # noqa: F401
 
+__all__ = ['search_create_conv', 'search_publish_conv', 'SearchUpdate', 'search']
 
 has_files_sentinel = 'conversation.has.files'
 
@@ -23,14 +24,8 @@ async def search_create_conv(
     conv: 'CreateConvModel',
     files: Optional[List['File']],
 ):
-    addresses = users.keys() | {creator_email}
-    addresses |= {p.split('@', 1)[1] for p in addresses}
-    if files:
-        files = {f.name for f in files if f.name}
-        files.add(has_files_sentinel)
-        files |= set(n.split('.', 1)[1] for n in files if '.' in n)
-    else:
-        files = []
+    addresses = _prepare_address(creator_email, *users.keys())
+    files = _prepare_files(files)
     body = message_simplify(conv.message, conv.msg_format)
 
     await conns.search.execute(
@@ -51,15 +46,34 @@ async def search_create_conv(
         creator_email,
         list(users.values()) if conv.publish else [creator_id],
         conv.subject,
-        ' '.join(sorted(addresses)),  # sort just to make tests easier
-        ' '.join(sorted(files)),
+        addresses,
+        files,
         body,
+    )
+
+
+async def search_publish_conv(conns: Connections, conv_id: int, old_key: str, new_key: str):
+    user_ids = await conns.main.fetchval(
+        'select array_agg(user_id) from (select p.user_id from participants p where p.conv = $1) as t', conv_id
+    )
+    await conns.search.execute(
+        """
+        with conv as (update search_conv set conv_key=$1 where conv_key=$2 returning id)
+        update search set user_ids=$3, ts=current_timestamp from conv where search.conv=conv.id
+        """,
+        new_key,
+        old_key,
+        user_ids,
     )
 
 
 class SearchUpdate:
     """
-    TODO might need a "cleanup" method that adds a blank entry with to update user_ids and sets search_conv ts?
+    TODO might need a "cleanup" method that updates ts and conv details when added.
+
+    If this gets slow it could be done on the worker.
+
+    might need to use pg_column_size to
     """
 
     def __init__(self, conns: Connections, conv_key: str):
@@ -108,19 +122,13 @@ class SearchUpdate:
         )
 
     async def _msg_change(self, action: 'ActionModel', action_id: int, files: Optional[List['File']]):
-        if files:
-            files = {f.name for f in files if f.name}
-            files.add(has_files_sentinel)
-            files |= set('.' + n.split('.', 1)[1] for n in files if '.' in n)
-        else:
-            files = []
         await self.conns.search.execute(
             """
             update search set
               vector=vector || setweight(to_tsvector($1), 'C') || to_tsvector($2), action=$3, ts=current_timestamp
             where conv=$4 and freeze_action=0
             """,
-            ' '.join(files),
+            _prepare_files(files),
             message_simplify(action.body, action.msg_format),
             action_id,
             self.conv_id,
@@ -196,7 +204,7 @@ select json_build_object(
 
 async def search(conns: Connections, user_id: int, query: str):
     # TODO cache results based on user id and query, clear on prepare above
-    new_query, named_filters = parse(query)
+    new_query, named_filters = _parse_query(query)
     if not (new_query or named_filters):
         # nothing to filter on
         return '{"conversations": []}'
@@ -212,7 +220,7 @@ async def search(conns: Connections, user_id: int, query: str):
             where &= query_match
 
     for name, value in named_filters:
-        where &= apply_named_filters(name, value)
+        where &= _apply_named_filters(name, value)
 
     return await conns.search.fetchval_b(search_sql, user_id=user_id, where=where)
 
@@ -224,7 +232,7 @@ re_tsquery = re.compile(r"""[^:*&|%"'\s]{2,}""")
 re_file_attachment = re.compile(r'(?:file|attachment)s?', re.I)
 
 
-def parse(query: str):
+def _parse_query(query: str):
     groups = []
 
     def replace(m):
@@ -237,33 +245,48 @@ def parse(query: str):
     return new_query.strip(' '), groups
 
 
-def apply_named_filters(name: str, value: str):
+def _apply_named_filters(name: str, value: str):
     if name == 'from':
         return V('creator_email').like(f'%{value}%')
     elif name == 'include':
-        return build_ts_query(value, 'B')
+        return _build_ts_query(value, 'B')
     elif name == 'to':
         addresses = re_tsquery.findall(value)
         not_creator = [funcs.NOT(V('creator_email').like(f'%{a}%')) for a in addresses]
-        return funcs.AND(build_ts_query(value, 'B'), *not_creator)
+        return funcs.AND(_build_ts_query(value, 'B'), *not_creator)
     elif name in {'file', 'attachment'}:
-        return build_ts_query(value, 'C', sentinel=has_files_sentinel)
+        return _build_ts_query(value, 'C', sentinel=has_files_sentinel)
     elif name == 'has':
         if re_file_attachment.fullmatch(value):
             # this is just any files
-            return build_ts_query('', 'C', sentinel=has_files_sentinel)
+            return _build_ts_query('', 'C', sentinel=has_files_sentinel)
         else:
             # assume this is the same as includes, this is a little weird, could ignore at the query stage.
-            return build_ts_query(value, 'B')
+            return _build_ts_query(value, 'B')
     else:
         assert name == 'subject', name
         # TODO could do this better to get closer to websearch_to_tsquery
-        return build_ts_query(value, 'A', prefixes=False)
+        return _build_ts_query(value, 'A', prefixes=False)
 
 
-def build_ts_query(value: str, weight: str, *, sentinel: Optional[str] = None, prefixes: bool = True):
+def _build_ts_query(value: str, weight: str, *, sentinel: Optional[str] = None, prefixes: bool = True):
     parts = re_tsquery.findall(value)
     query_parts = [f'{a}:{"*" if prefixes else ""}{weight}' for a in parts]
     if sentinel:
         query_parts.append(f'{sentinel}:{weight}')
     return V('vector').matches(Func('to_tsquery', ' & '.join(query_parts)))
+
+
+def _prepare_address(*addresses: str) -> str:
+    a = set(addresses)
+    a |= {p.split('@', 1)[1] for p in a}
+    return ' '.join(sorted(a))  # sort just to make tests easier
+
+
+def _prepare_files(files: Optional[List['File']]) -> str:
+    if files:
+        f = {has_files_sentinel, *(f.name for f in files if f.name)}
+        f |= {n.split('.', 1)[1] for n in f if '.' in n}
+        return ' '.join(sorted(f))
+    else:
+        return ''

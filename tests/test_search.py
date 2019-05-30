@@ -34,6 +34,28 @@ async def test_create_conv(cli, factory: Factory, db_conn):
     }
 
 
+async def test_publish_conv(factory: Factory, cli, db_conn):
+    user = await factory.create_user()
+    participants = [{'email': 'anne@other.com'}, {'email': 'ben@other.com'}, {'email': 'charlie@other.com'}]
+    conv = await factory.create_conv(subject='apple pie', message='eggs, flour and raisins', participants=participants)
+    assert 1 == await db_conn.fetchval('select count(*) from search_conv')
+    assert 1 == await db_conn.fetchval('select count(*) from search')
+    assert conv.key == await db_conn.fetchval('select conv_key from search_conv')
+    assert [user.id] == await db_conn.fetchval('select user_ids from search')
+
+    r = await cli.post_json(factory.url('ui:publish', conv=conv.key), {'publish': True})
+    new_key = (await r.json())['key']
+
+    assert 1 == await db_conn.fetchval('select count(*) from search_conv')
+    assert 1 == await db_conn.fetchval('select count(*) from search')
+    assert new_key == await db_conn.fetchval('select conv_key from search_conv')
+    user_ids = await db_conn.fetchval(
+        'select array_agg(id) from (select id from users where email like $1) as t', '%@other.com'
+    )
+    assert len(user_ids) == 3
+    assert {user.id, *user_ids} == set(await db_conn.fetchval('select user_ids from search'))
+
+
 async def test_add_prt_add_msg(factory: Factory, db_conn):
     user = await factory.create_user()
     conv = await factory.create_conv()
