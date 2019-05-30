@@ -217,31 +217,27 @@ create index files_action ON files USING btree (action);
 create table search_conv (
   id bigserial primary key,
   conv_key varchar(64) unique,
-  ts timestamptz,
   creator_email varchar(255) not null
 );
 create index search_conv_key on search_conv using gin (conv_key gin_trgm_ops);
-create index search_conv_ts on search_conv using btree (ts);
 create index search_conv_creator_email on search_conv using gin (creator_email gin_trgm_ops);
 
 create table search (
   id bigserial primary key,
   conv bigint references search_conv,
+  freeze_action int not null default 0,
   user_ids bigint[] not null,
+  ts timestamptz not null default current_timestamp,
 
   -- might need other things like size, files, participants
-  vector tsvector
+  vector tsvector,
+  unique (conv, freeze_action)
 );
+create index search_conv_id on search using btree (conv);
+create index search_freeze_action on search using btree (freeze_action);
 create index search_user_ids on search using gin (user_ids);
+create index search_ts on search using btree (ts);
 create index search_vector on search using gin (vector);
-
-create or replace function search_insert() returns trigger as $$
-  begin
-    update search_conv set ts=current_timestamp where id=new.conv;
-    return null;
-  end;
-$$ language plpgsql;
-create trigger search_insert after insert on search for each row execute procedure search_insert();
 
 ----------------------------------------------------------------------------------
 -- auth tables, currently in the the same database as everything else, but with --

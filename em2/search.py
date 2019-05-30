@@ -1,7 +1,7 @@
 import re
-from typing import TYPE_CHECKING, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from buildpg import Func, V, funcs
+from buildpg import Empty, Func, V, funcs
 
 from em2.utils.core import message_simplify
 from em2.utils.db import Connections
@@ -64,44 +64,48 @@ class SearchUpdate:
     def __init__(self, conns: Connections, conv_key: str):
         self.conns = conns
         self.conv_key = conv_key
-        self.conv_id: int = None
-        self.user_ids: Set[int] = None
-        self.creator_email: str = None
-        from .core import ActionTypes
-
-        self.coro_lookup = {
-            ActionTypes.subject_modify: self._modify_subject,
-            ActionTypes.msg_add: self._msg_change,
-            ActionTypes.msg_modify: self._msg_change,
-            ActionTypes.prt_add: self._prt_add,
-            ActionTypes.prt_remove: self._prt_remove,
-        }
+        self.conv_id: Optional[int] = None
 
     async def prepare(self):
-        if self.user_ids is not None:
-            return
-        self.conv_id, prts, self.creator_email = await self.conns.search.fetchrow(
+        if self.conv_id is None:
+            self.conv_id = await self.conns.search.fetchval(
+                """
+                select conv from search s
+                join search_conv sc on s.conv = sc.id
+                where conv_key=$1
+                """,
+                self.conv_key,
+            )
+
+    async def __call__(
+        self, action: 'ActionModel', user_id: Optional[int], action_id: int, files: Optional[List['File']]
+    ):
+        from .core import ActionTypes
+
+        if action.act is ActionTypes.subject_modify:
+            await self.prepare()
+            await self._modify_subject(action)
+        elif action.act in {ActionTypes.msg_add, ActionTypes.msg_modify}:
+            await self.prepare()
+            await self._msg_change(action, files)
+        elif action.act is ActionTypes.prt_add:
+            await self.prepare()
+            await self._prt_add(action, user_id)
+        elif action.act is ActionTypes.prt_remove:
+            await self.prepare()
+            await self._prt_remove(action_id, user_id)
+
+    async def _modify_subject(self, action: 'ActionModel'):
+        await self.conns.search.execute(
             """
-            select conv, user_ids, creator_email from search s
-            join search_conv sc on s.conv = sc.id
-            where conv_key=$1
+            update search set vector=vector || setweight(to_tsvector($1), 'A'), ts=current_timestamp
+            where conv=$2 and freeze_action=0
             """,
-            self.conv_key,
+            action.body,
+            self.conv_id,
         )
-        self.user_ids = set(prts)
 
-    async def __call__(self, action: 'ActionModel', user_id: Optional[int], files: Optional[List['File']]):
-        coro = self.coro_lookup.get(action.act)
-        if coro is None:
-            return
-
-        await self.prepare()
-        await coro(action, user_id, files)
-
-    async def _modify_subject(self, action: 'ActionModel', user_id, files):
-        await self._insert(action.body, 'A')
-
-    async def _msg_change(self, action: 'ActionModel', user_id, files):
+    async def _msg_change(self, action: 'ActionModel', files: Optional[List['File']]):
         if files:
             files = {f.name for f in files if f.name}
             files.add(has_files_sentinel)
@@ -110,45 +114,41 @@ class SearchUpdate:
             files = []
         await self.conns.search.execute(
             """
-            insert into search (conv, user_ids, vector)
-            values ($1, $2, setweight(to_tsvector($3), 'C') || to_tsvector($4))
+            update search set
+              vector=vector || setweight(to_tsvector($1), 'C') || to_tsvector($2), ts=current_timestamp
+            where conv=$3 and freeze_action=0
             """,
-            self.conv_id,
-            self.user_ids,
             ' '.join(files),
             message_simplify(action.body, action.msg_format),
+            self.conv_id,
         )
 
-    async def _prt_add(self, action: 'ActionModel', user_id, files):
-        await self.conns.search.execute(
-            'update search set user_ids=user_ids || array[$1::bigint] where conv=$2', user_id, self.conv_id
-        )
-        self.user_ids.add(user_id)
+    async def _prt_add(self, action: 'ActionModel', user_id: int):
+        # TODO remove the user from existing search entries on this conversation and delete them if required
         email = action.participant
-        domain = email.split('@', 1)[1]
-
-        await self._insert(f'{email} @{domain}', 'B')
-
-    async def _prt_remove(self, action: 'ActionModel', user_id, files):
-        """
-        Have to create a search entry even though it has nothing in it so the removed participant is stored
-        for `prepare` next time
-        """
-        self.user_ids.remove(user_id)
-        await self.conns.search.execute(
-            'insert into search (conv, user_ids) values ($1, $2)', self.conv_id, self.user_ids
-        )
-
-    async def _insert(self, vector: str, weight: str):
         await self.conns.search.execute(
             """
-            insert into search (conv, user_ids, vector)
-            values ($1, $2, setweight(to_tsvector($3), $4::"char"))
+            update search set
+              user_ids=user_ids || array[$1::bigint],
+              vector=vector || setweight(to_tsvector($2), 'B'),
+              ts=current_timestamp
+            where conv=$3 and freeze_action=0
+            """,
+            user_id,
+            '{} {}'.format(email, email.split('@', 1)[1]),
+            self.conv_id,
+        )
+
+    async def _prt_remove(self, action_id: int, user_id: int):
+        await self.conns.search.execute(
+            """
+            insert into search (conv, freeze_action, user_ids, vector)
+            select $1, $2, array[$3::bigint], s.vector from search s where conv=$1 and freeze_action=0
+            on conflict (conv, freeze_action) do update set user_ids=search.user_ids || array[$3::bigint]
             """,
             self.conv_id,
-            self.user_ids,
-            vector,
-            weight.encode(),
+            action_id,
+            user_id,
         )
 
 
@@ -161,8 +161,7 @@ select json_build_object(
     select conv_key, ts
     from search s
     join search_conv sc on s.conv = sc.id
-    where :where
-    group by conv_key, ts
+    where user_ids @> array[:user_id::bigint] :where
     order by ts desc
     limit 50
   ) t
@@ -176,7 +175,7 @@ async def search(conns: Connections, user_id: int, query: str):
         # nothing to filter on
         return '{"results": []}'
 
-    where = V('user_ids').contains([user_id])
+    where = Empty()
 
     if new_query:
         query_match = V('vector').matches(Func('websearch_to_tsquery', new_query))
@@ -188,16 +187,15 @@ async def search(conns: Connections, user_id: int, query: str):
 
     for name, value in named_filters:
         where &= apply_named_filters(name, value)
-    # debug(where)
 
-    return await conns.search.fetchval_b(search_sql, where=where)
+    return await conns.search.fetchval_b(search_sql, user_id=user_id, where=where)
 
 
 prefixes = ('from', 'include', 'to', 'file', 'attachment', 'has', 'subject')
-re_special = re.compile(fr"""(?:^|\s|,)({'|'.join(prefixes)})s?:((["']).*?[^\\]\3|\S*)""", flags=re.S)
-re_hex = re.compile('[a-f0-9]+', flags=re.S)
+re_special = re.compile(fr"""(?:^|\s|,)({'|'.join(prefixes)})s?:((["']).*?[^\\]\3|\S*)""", re.I)
+re_hex = re.compile('[a-f0-9]+', re.I)
 re_tsquery = re.compile(r"""[^:*&|%"'\s]{2,}""")
-re_file_match = re.compile(r'(?:file|attachment)s')
+re_file_attachment = re.compile(r'(?:file|attachment)s?', re.I)
 
 
 def parse(query: str):
@@ -222,10 +220,10 @@ def apply_named_filters(name: str, value: str):
         addresses = re_tsquery.findall(value)
         not_creator = [funcs.NOT(V('creator_email').like(f'%{a}%')) for a in addresses]
         return funcs.AND(build_ts_query(value, 'B'), *not_creator)
-    elif re_file_match.fullmatch(name):
+    elif name in {'file', 'attachment'}:
         return build_ts_query(value, 'C', sentinel=has_files_sentinel)
     elif name == 'has':
-        if value.lower() in {'file', 'files', 'attachment', 'attachments'}:
+        if re_file_attachment.fullmatch(value):
             # this is just any files
             return build_ts_query('', 'C', sentinel=has_files_sentinel)
         else:
