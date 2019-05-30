@@ -411,20 +411,19 @@ User Label fields:
 
 Should separate search logic now to make elasticsearch integration in future easier.
 
-One search entry per action (where required) and maybe one per language per action in future:
-* the conv key
-* user ids - for filtering search entries, does not include deleted participants, thus you can
-  only search for stuff on conversations before you were removed
-* the search vector
-* creator email for `from:foobar@example.com` queries
+One search entry per conversation (where required) and maybe one per language per conv in future
+
+ Main search entry for a conversation holds a tsv:
+* when an action is performed a new tsv is appended to existing one
+* when a participant is removed a search entry is created or used and the
+  participant is added to it. Thus people can still search for conversations they're removed from.
+* when a new participant is added to a conversation their id is added to `user_ids` for the main conv search entry
 
 vector weights used to differentiate between different parts of the conversation::
 * `A`: Subject - highest priority but also we can do `subject:foobar` searches
 * `B`: email addresses of participants in the conv including domains for `includes:@foobar.com` searches
 * `C`: files including extensions for `files:*.png` searches
 * `D`: the body of messages
-
-When a new participant is added to a conversation their id is added to every earlier search entry.
 
 Specific ways of searching need to be dealt with specially:
 * `from:foobar@example.com` - creator is ...
@@ -443,8 +442,3 @@ address to allow search for that user.
 
 * `conv:create` - just create
 * `conv:publish` - update keys and add all participants to `user_ids`
-* `subject:modify` - new search entry with just subject
-* `message:add` - new search entry with just message and files
-* `message:modify` - new search entry with just message and files
-* `participant:add` - new search entry with just new participant, update all existing entries to include user id
-* `participant:remove` - blank search entry to just adjust the user ids

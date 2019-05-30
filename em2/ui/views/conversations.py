@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Tuple
 
 from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
 from buildpg import SetValues, V, funcs
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, constr, validator
 
 from em2.background import push_all, push_multiple
 from em2.core import (
@@ -26,6 +26,7 @@ from em2.core import (
     update_conv_flags,
     update_conv_users,
 )
+from em2.search import search
 from em2.utils.datetime import utcnow
 from em2.utils.db import or404
 from em2.utils.storage import S3, StorageNotFound, parse_storage_uri
@@ -483,3 +484,13 @@ class GetConvCounts(View):
             for r in await self.conn.fetch(self.labels_sql, self.session.user_id)
         ]
         return json_response(flags=flags, labels=labels)
+
+
+class Search(View):
+    class QueryModel(BaseModel):
+        query: constr(max_length=50) = ''
+
+    async def call(self):
+        query = parse_request_query(self.request, self.QueryModel).query
+        ans = await search(self.conns, self.session.user_id, query)
+        return raw_json_response(ans)

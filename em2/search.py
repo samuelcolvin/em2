@@ -195,6 +195,7 @@ select json_build_object(
 
 
 async def search(conns: Connections, user_id: int, query: str):
+    # TODO cache results based on user id and query, clear on prepare above
     new_query, named_filters = parse(query)
     if not (new_query or named_filters):
         # nothing to filter on

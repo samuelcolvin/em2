@@ -235,7 +235,7 @@ create table search (
   unique (conv, freeze_action)
 );
 create index idx_search_conv on search using btree (conv);
-create index idx_search_freeze_action on search using btree (freeze_action);
+create index idx_search_conv_action on search using btree (conv, action);
 create index idx_search_user_ids on search using gin (user_ids);
 create index idx_search_ts on search using btree (ts);
 create index idx_search_vector on search using gin (vector);

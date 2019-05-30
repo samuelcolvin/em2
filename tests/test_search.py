@@ -210,3 +210,16 @@ async def test_search_query_files(factory: Factory, conns, query, count):
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.msg_add, body='apple **pie**'), files=files)
 
     assert len(json.loads(await search(conns, user.id, query))['conversations']) == count
+
+
+async def test_http_search(factory: Factory, cli):
+    await factory.create_user()
+    await factory.create_conv(subject='apple pie', message='eggs, flour and raisins')
+
+    obj = await cli.get_json(factory.url('ui:search', query={'query': 'eggs'}))
+    assert obj == {'conversations': [{'conv_key': factory.conv.key, 'ts': CloseToNow()}]}
+
+    obj = await cli.get_json(factory.url('ui:search'))
+    assert obj == {'conversations': []}
+    obj = await cli.get_json(factory.url('ui:search', query={'query': 'bacon'}))
+    assert obj == {'conversations': []}
