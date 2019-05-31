@@ -178,7 +178,7 @@ select json_build_object(
 ) from (
   select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
   from (
-    select c.key as conv_key, s.ts
+    select c.key as conv_key, s.ts, c.details
     from search s
     join conversations c on s.conv = c.id
     where user_ids @> array[:user_id::bigint] :where

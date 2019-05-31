@@ -154,7 +154,23 @@ async def test_search_query(factory: Factory, conns):
     conv = await factory.create_conv(subject='apple pie', message='eggs, flour and raisins')
     assert 1 == await conns.main.fetchval('select count(*) from search')
     r = json.loads(await search(conns, user.id, 'apple'))
-    assert r == {'conversations': [{'conv_key': conv.key, 'ts': CloseToNow()}]}
+    assert r == {
+        'conversations': [
+            {
+                'conv_key': conv.key,
+                'ts': CloseToNow(),
+                'details': {
+                    'act': 'conv:create',
+                    'sub': 'apple pie',
+                    'email': user.email,
+                    'creator': user.email,
+                    'prev': 'eggs, flour and raisins',
+                    'prts': 1,
+                    'msgs': 1,
+                },
+            }
+        ]
+    }
     r = json.loads(await search(conns, user.id, 'banana'))
     assert r == {'conversations': []}
     assert len(json.loads(await search(conns, user.id, conv.key[5:12]))['conversations']) == 1
@@ -225,11 +241,27 @@ async def test_search_query_files(factory: Factory, conns, query, count):
 
 
 async def test_http_search(factory: Factory, cli):
-    await factory.create_user()
-    await factory.create_conv(subject='apple pie', message='eggs, flour and raisins')
+    user = await factory.create_user()
+    conv = await factory.create_conv(subject='spam sandwich', message='processed meat and bread')
 
-    obj = await cli.get_json(factory.url('ui:search', query={'query': 'eggs'}))
-    assert obj == {'conversations': [{'conv_key': factory.conv.key, 'ts': CloseToNow()}]}
+    obj = await cli.get_json(factory.url('ui:search', query={'query': 'meat'}))
+    assert obj == {
+        'conversations': [
+            {
+                'conv_key': conv.key,
+                'ts': CloseToNow(),
+                'details': {
+                    'act': 'conv:create',
+                    'sub': 'spam sandwich',
+                    'email': user.email,
+                    'creator': user.email,
+                    'prev': 'processed meat and bread',
+                    'prts': 1,
+                    'msgs': 1,
+                },
+            }
+        ]
+    }
 
     obj = await cli.get_json(factory.url('ui:search'))
     assert obj == {'conversations': []}
