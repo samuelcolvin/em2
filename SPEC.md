@@ -411,6 +411,9 @@ User Label fields:
 
 Should separate search logic now to make elasticsearch integration in future easier.
 
+Current PG based search can assume it's on the same db., but the interface shouldn't need to change if search moved
+to ElasticSearch or similar.
+
 One search entry per conversation (where required) and maybe one per language per conv in future
 
  Main search entry for a conversation holds a tsv:

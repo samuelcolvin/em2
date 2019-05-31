@@ -17,19 +17,18 @@ async def test_create_conv(cli, factory: Factory, db_conn):
     )
     obj = await r.json()
     conv_key = obj['key']
+    conv_id = await db_conn.fetchval('select id from conversations where key=$1', conv_key)
 
-    assert 1 == await db_conn.fetchval('select count(*) from search_conv')
-    search_conv = dict(await db_conn.fetchrow('select * from search_conv'))
-    assert search_conv == {'id': AnyInt(), 'conv_key': conv_key, 'creator_email': 'testing-1@example.com'}
     assert 1 == await db_conn.fetchval('select count(*) from search')
     s = dict(await db_conn.fetchrow('select * from search'))
     assert s == {
         'id': AnyInt(),
-        'conv': search_conv['id'],
+        'conv': conv_id,
         'action': 1,
         'freeze_action': 0,
         'ts': CloseToNow(),
         'user_ids': [user.id],
+        'creator_email': user.email,
         'vector': "'appl':3A 'discuss':1A 'example.com':4B 'prefer':7 'red':8 'testing-1@example.com':5B",
     }
 
@@ -38,17 +37,14 @@ async def test_publish_conv(factory: Factory, cli, db_conn):
     user = await factory.create_user()
     participants = [{'email': 'anne@other.com'}, {'email': 'ben@other.com'}, {'email': 'charlie@other.com'}]
     conv = await factory.create_conv(subject='apple pie', message='eggs, flour and raisins', participants=participants)
-    assert 1 == await db_conn.fetchval('select count(*) from search_conv')
     assert 1 == await db_conn.fetchval('select count(*) from search')
-    assert conv.key == await db_conn.fetchval('select conv_key from search_conv')
+    assert conv.id == await db_conn.fetchval('select conv from search')
     assert [user.id] == await db_conn.fetchval('select user_ids from search')
 
-    r = await cli.post_json(factory.url('ui:publish', conv=conv.key), {'publish': True})
-    new_key = (await r.json())['key']
+    await cli.post_json(factory.url('ui:publish', conv=conv.key), {'publish': True})
 
-    assert 1 == await db_conn.fetchval('select count(*) from search_conv')
     assert 1 == await db_conn.fetchval('select count(*) from search')
-    assert new_key == await db_conn.fetchval('select conv_key from search_conv')
+    assert conv.id == await db_conn.fetchval('select conv from search')
     user_ids = await db_conn.fetchval(
         'select array_agg(id) from (select id from users where email like $1) as t', '%@other.com'
     )
@@ -59,36 +55,32 @@ async def test_publish_conv(factory: Factory, cli, db_conn):
 async def test_add_prt_add_msg(factory: Factory, db_conn):
     user = await factory.create_user()
     conv = await factory.create_conv()
-    assert 1 == await db_conn.fetchval('select count(*) from search_conv')
     assert 1 == await db_conn.fetchval('select count(*) from search')
 
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.msg_add, body='apple **pie**'))
     assert 4 == await db_conn.fetchval('select count(*) from actions')
-    assert 1 == await db_conn.fetchval('select count(*) from search_conv')
     assert 1 == await db_conn.fetchval('select count(*) from search')
 
-    search_conv = dict(await db_conn.fetchrow('select * from search_conv'))
-    assert search_conv == {'id': AnyInt(), 'conv_key': conv.key, 'creator_email': user.email}
-
-    search = dict(await db_conn.fetchrow('select conv, action, user_ids, vector from search'))
+    search = dict(await db_conn.fetchrow('select conv, action, user_ids, creator_email, vector from search'))
     assert search == {
-        'conv': search_conv['id'],
+        'conv': conv.id,
         'action': 4,
         'user_ids': [user.id],
+        'creator_email': user.email,
         'vector': "'appl':7 'example.com':3B 'messag':6 'pie':8 'subject':2A 'test':1A,5 'testing-1@example.com':4B",
     }
 
     user2 = await factory.create_user()
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant=user2.email))
     assert 5 == await db_conn.fetchval('select count(*) from actions')
-    assert 1 == await db_conn.fetchval('select count(*) from search_conv')
     assert 1 == await db_conn.fetchval('select count(*) from search')
 
-    search = dict(await db_conn.fetchrow('select conv, action, user_ids, vector from search'))
+    search = dict(await db_conn.fetchrow('select conv, action, user_ids, creator_email, vector from search'))
     assert search == {
-        'conv': search_conv['id'],
+        'conv': conv.id,
         'action': 5,
         'user_ids': [user.id, user2.id],
+        'creator_email': user.email,
         'vector': (
             "'appl':7 'example.com':3B,10B 'messag':6 'pie':8 'subject':2A "
             "'test':1A,5 'testing-1@example.com':4B 'testing-2@example.com':9B"
@@ -103,7 +95,6 @@ async def test_add_remove_prt(factory: Factory, db_conn):
     email2 = 'different@foobar.com'
     assert [4] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant=email2))
     user2_id = await db_conn.fetchval('select id from users where email=$1', email2)
-    assert 1 == await db_conn.fetchval('select count(*) from search_conv')
     assert 1 == await db_conn.fetchval('select count(*) from search')
     assert 4 == await db_conn.fetchval('select action from search')
     assert [user.id, user2_id] == await db_conn.fetchval('select user_ids from search')
@@ -111,7 +102,6 @@ async def test_add_remove_prt(factory: Factory, db_conn):
     email3 = 'three@foobar.com'
     assert [5] == await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant=email3))
     user3_id = await db_conn.fetchval('select id from users where email=$1', email3)
-    assert 1 == await db_conn.fetchval('select count(*) from search_conv')
     assert 1 == await db_conn.fetchval('select count(*) from search')
     assert 5 == await db_conn.fetchval('select action from search')
     assert [user.id, user2_id, user3_id] == await db_conn.fetchval('select user_ids from search')

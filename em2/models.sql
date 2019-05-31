@@ -211,33 +211,28 @@ create table files (
 create index idx_files_action ON files USING btree (action);
 
 ---------------------------------------------------------------------------
--- search table, no references so it could be moved to a different db or --
--- entirely different db engine eg. elasticsearch                        --
+-- search table, this references conversations so must be the same db,   --
+-- other search solutions would need to record conv details and key      --
+-- in search entries.                                                    --
 ---------------------------------------------------------------------------
-create table search_conv (
-  id bigserial primary key,
-  conv_key varchar(64) unique,
-  creator_email varchar(255) not null
-);
-create index idx_search_conv_key on search_conv using gin (conv_key gin_trgm_ops);
-create index idx_search_conv_creator_email on search_conv using gin (creator_email gin_trgm_ops);
-
 create table search (
   id bigserial primary key,
-  conv bigint references search_conv,
+  conv bigint references conversations,
   action int not null,
   freeze_action int not null default 0,
   user_ids bigint[] not null,
   ts timestamptz not null default current_timestamp,
 
   -- might need other things like size, files, participants
+  creator_email varchar(255) not null,
   vector tsvector,
   unique (conv, freeze_action)
 );
 create index idx_search_conv on search using btree (conv);
-create index idx_search_conv_action on search using btree (conv, action);
+create index idx_search_action on search using btree (conv, action);
 create index idx_search_user_ids on search using gin (user_ids);
 create index idx_search_ts on search using btree (ts);
+create index idx_search_creator_email on search using gin (creator_email gin_trgm_ops);
 create index idx_search_vector on search using gin (vector);
 
 ----------------------------------------------------------------------------------

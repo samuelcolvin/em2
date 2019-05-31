@@ -1,5 +1,5 @@
 import re
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from buildpg import Empty, Func, V, funcs
 
@@ -9,7 +9,7 @@ from em2.utils.db import Connections
 if TYPE_CHECKING:  # pragma: no cover
     from .core import ActionModel, File, CreateConvModel  # noqa: F401
 
-__all__ = ['search_create_conv', 'search_publish_conv', 'SearchUpdate', 'search']
+__all__ = ['search_create_conv', 'search_publish_conv', 'search_update', 'search']
 
 has_files_sentinel = 'conversation.has.files'
 
@@ -17,7 +17,7 @@ has_files_sentinel = 'conversation.has.files'
 async def search_create_conv(
     conns: Connections,
     *,
-    conv_key: str,
+    conv_id: int,
     creator_id: int,
     creator_email: str,
     users: Dict[str, int],
@@ -28,23 +28,23 @@ async def search_create_conv(
     files = _prepare_files(files)
     body = message_simplify(conv.message, conv.msg_format)
 
-    await conns.search.execute(
+    await conns.main.execute(
         """
-        with conv as (insert into search_conv (conv_key, creator_email) values ($1, $2) returning id)
-        insert into search (conv, action, user_ids, vector)
-        select
-          id,
+        insert into search (conv, action, user_ids, creator_email, vector)
+        values (
+          $1,
           1,
+          $2,
           $3,
           setweight(to_tsvector($4), 'A') ||
           setweight(to_tsvector($5), 'B') ||
           setweight(to_tsvector($6), 'C') ||
           to_tsvector($7)
-        from conv
+        )
         """,
-        conv_key,
-        creator_email,
+        conv_id,
         list(users.values()) if conv.publish else [creator_id],
+        creator_email,
         conv.subject,
         addresses,
         files,
@@ -53,65 +53,52 @@ async def search_create_conv(
 
 
 async def search_publish_conv(conns: Connections, conv_id: int, old_key: str, new_key: str):
-    user_ids = await conns.main.fetchval(
-        'select array_agg(user_id) from (select p.user_id from participants p where p.conv = $1) as t', conv_id
-    )
-    await conns.search.execute(
+    await conns.main.execute(
         """
-        with conv as (update search_conv set conv_key=$1 where conv_key=$2 returning id)
-        update search set user_ids=$3, ts=current_timestamp from conv where search.conv=conv.id
+        with t as (
+            select p.conv, array_agg(p.user_id) user_ids
+            from participants p where p.conv = $1
+            group by p.conv
+        )
+        update search set user_ids=t.user_ids from t where search.conv=t.conv
         """,
-        new_key,
-        old_key,
-        user_ids,
+        conv_id,
     )
+
+
+async def search_update(
+    conns: Connections,
+    conv_id: int,
+    actions: List[Tuple[int, Optional[int], 'ActionModel']],
+    files: Optional[List['File']],
+):
+    """
+    If this gets slow it could be done on the worker.
+
+    might need to use pg_column_size to to avoid vector getting too long.
+    """
+    from .core import ActionTypes
+
+    s_update = SearchUpdate(conns, conv_id)
+    async with conns.main.transaction():
+        for action_id, user_id, action in actions:
+            if action.act is ActionTypes.subject_modify:
+                await s_update.modify_subject(action, action_id)
+            elif action.act in {ActionTypes.msg_add, ActionTypes.msg_modify}:
+                await s_update.msg_change(action, action_id, files)
+            elif action.act is ActionTypes.prt_add:
+                await s_update.prt_add(action, action_id, user_id)
+            elif action.act is ActionTypes.prt_remove:
+                await s_update.prt_remove(user_id)
 
 
 class SearchUpdate:
-    """
-    TODO might need a "cleanup" method that updates ts and conv details when added.
-
-    If this gets slow it could be done on the worker.
-
-    might need to use pg_column_size to
-    """
-
-    def __init__(self, conns: Connections, conv_key: str):
+    def __init__(self, conns: Connections, conv_id: int):
         self.conns = conns
-        self.conv_key = conv_key
-        self.conv_id: Optional[int] = None
+        self.conv_id: int = conv_id
 
-    async def prepare(self):
-        if self.conv_id is None:
-            self.conv_id = await self.conns.search.fetchval(
-                """
-                select conv from search s
-                join search_conv sc on s.conv = sc.id
-                where conv_key=$1
-                """,
-                self.conv_key,
-            )
-
-    async def __call__(
-        self, action: 'ActionModel', action_id: int, user_id: Optional[int], files: Optional[List['File']]
-    ):
-        from .core import ActionTypes
-
-        if action.act is ActionTypes.subject_modify:
-            await self.prepare()
-            await self._modify_subject(action, action_id)
-        elif action.act in {ActionTypes.msg_add, ActionTypes.msg_modify}:
-            await self.prepare()
-            await self._msg_change(action, action_id, files)
-        elif action.act is ActionTypes.prt_add:
-            await self.prepare()
-            await self._prt_add(action, action_id, user_id)
-        elif action.act is ActionTypes.prt_remove:
-            await self.prepare()
-            await self._prt_remove(user_id)
-
-    async def _modify_subject(self, action: 'ActionModel', action_id: int):
-        await self.conns.search.execute(
+    async def modify_subject(self, action: 'ActionModel', action_id: int):
+        await self.conns.main.execute(
             """
             update search set vector=vector || setweight(to_tsvector($1), 'A'), action=$2, ts=current_timestamp
             where conv=$3 and freeze_action=0
@@ -121,8 +108,8 @@ class SearchUpdate:
             self.conv_id,
         )
 
-    async def _msg_change(self, action: 'ActionModel', action_id: int, files: Optional[List['File']]):
-        await self.conns.search.execute(
+    async def msg_change(self, action: 'ActionModel', action_id: int, files: Optional[List['File']]):
+        await self.conns.main.execute(
             """
             update search set
               vector=vector || setweight(to_tsvector($1), 'C') || to_tsvector($2), action=$3, ts=current_timestamp
@@ -134,10 +121,10 @@ class SearchUpdate:
             self.conv_id,
         )
 
-    async def _prt_add(self, action: 'ActionModel', action_id: int, user_id: int):
+    async def prt_add(self, action: 'ActionModel', action_id: int, user_id: int):
         email = action.participant
-        async with self.conns.search.transaction():
-            v = await self.conns.search.execute(
+        async with self.conns.main.transaction():
+            v = await self.conns.main.execute(
                 """
                 update search set user_ids=array_remove(user_ids, $1)
                 where conv=$2 and freeze_action!=0 and user_ids @> array[$1::bigint]
@@ -147,8 +134,8 @@ class SearchUpdate:
             )
             if v != 'UPDATE 0':
                 # if we've got any search entries with no users delete them
-                await self.conns.search.execute("delete from search where conv=$1 and user_ids='{}'", self.conv_id)
-            await self.conns.search.execute(
+                await self.conns.main.execute("delete from search where conv=$1 and user_ids='{}'", self.conv_id)
+            await self.conns.main.execute(
                 """
                 update search set
                   user_ids=user_ids || array[$1::bigint],
@@ -163,19 +150,19 @@ class SearchUpdate:
                 self.conv_id,
             )
 
-    async def _prt_remove(self, user_id: int):
-        async with self.conns.search.transaction():
-            await self.conns.search.execute(
+    async def prt_remove(self, user_id: int):
+        async with self.conns.main.transaction():
+            await self.conns.main.execute(
                 """
-                insert into search (conv, action, freeze_action, user_ids, vector)
-                select $1, s.action, s.action, array[$2::bigint], s.vector
+                insert into search (conv, action, freeze_action, user_ids, creator_email, vector)
+                select $1, s.action, s.action, array[$2::bigint], s.creator_email, s.vector
                 from search s where conv=$1 and freeze_action=0
                 on conflict (conv, freeze_action) do update set user_ids=search.user_ids || array[$2::bigint]
                 """,
                 self.conv_id,
                 user_id,
             )
-            await self.conns.search.execute(
+            await self.conns.main.execute(
                 """
                 update search set user_ids=array_remove(user_ids, $1), ts=current_timestamp
                 where conv=$2 and freeze_action=0
@@ -191,11 +178,11 @@ select json_build_object(
 ) from (
   select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
   from (
-    select conv_key, ts
+    select c.key as conv_key, s.ts
     from search s
-    join search_conv sc on s.conv = sc.id
+    join conversations c on s.conv = c.id
     where user_ids @> array[:user_id::bigint] :where
-    order by ts desc
+    order by s.ts desc
     limit 50
   ) t
 ) conversations
@@ -212,17 +199,17 @@ async def search(conns: Connections, user_id: int, query: str):
     where = Empty()
 
     if new_query:
-        query_match = V('vector').matches(Func('websearch_to_tsquery', new_query))
+        query_match = V('s.vector').matches(Func('websearch_to_tsquery', new_query))
         if re_hex.fullmatch(new_query):
             # looks like it could be a conv key, search for that too
-            where &= funcs.OR(query_match, V('conv_key').like('%' + new_query.lower() + '%'))
+            where &= funcs.OR(query_match, V('c.key').like('%' + new_query.lower() + '%'))
         else:
             where &= query_match
 
     for name, value in named_filters:
         where &= _apply_named_filters(name, value)
 
-    return await conns.search.fetchval_b(search_sql, user_id=user_id, where=where)
+    return await conns.main.fetchval_b(search_sql, user_id=user_id, where=where)
 
 
 prefixes = ('from', 'include', 'to', 'file', 'attachment', 'has', 'subject')
@@ -247,12 +234,12 @@ def _parse_query(query: str):
 
 def _apply_named_filters(name: str, value: str):
     if name == 'from':
-        return V('creator_email').like(f'%{value}%')
+        return V('s.creator_email').like(f'%{value}%')
     elif name == 'include':
         return _build_ts_query(value, 'B')
     elif name == 'to':
         addresses = re_tsquery.findall(value)
-        not_creator = [funcs.NOT(V('creator_email').like(f'%{a}%')) for a in addresses]
+        not_creator = [funcs.NOT(V('s.creator_email').like(f'%{a}%')) for a in addresses]
         return funcs.AND(_build_ts_query(value, 'B'), *not_creator)
     elif name in {'file', 'attachment'}:
         return _build_ts_query(value, 'C', sentinel=has_files_sentinel)
@@ -274,7 +261,7 @@ def _build_ts_query(value: str, weight: str, *, sentinel: Optional[str] = None, 
     query_parts = [f'{a}:{"*" if prefixes else ""}{weight}' for a in parts]
     if sentinel:
         query_parts.append(f'{sentinel}:{weight}')
-    return V('vector').matches(Func('to_tsquery', ' & '.join(query_parts)))
+    return V('s.vector').matches(Func('to_tsquery', ' & '.join(query_parts)))
 
 
 def _prepare_address(*addresses: str) -> str:

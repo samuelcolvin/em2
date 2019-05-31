@@ -104,7 +104,7 @@ async def _fix_db_conn(loop, settings, clean_db):
 
 @pytest.fixture(name='conns')
 def _fix_conns(db_conn, redis, settings):
-    return Connections(db_conn, redis, db_conn, settings)
+    return Connections(db_conn, redis, settings)
 
 
 @pytest.yield_fixture
@@ -186,7 +186,7 @@ class Factory:
         self.redis: ArqRedis = redis
         self.cli = cli
         self.conn = self.cli.server.app['pg']
-        self.conns = Connections(self.conn, self.redis, self.conn, cli.server.app['settings'])
+        self.conns = Connections(self.conn, self.redis, cli.server.app['settings'])
         self.email_index = 1
 
         self.user: User = None

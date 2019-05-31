@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Awaitable, Optional
+from typing import Any, Awaitable
 
 from arq import ArqRedis
 from atoolbox import JsonErrors
@@ -24,9 +24,8 @@ async def or404(coro: Awaitable, *, msg: str = 'unable to find value') -> Any:
 class Connections:
     main: BuildPgConnection
     redis: ArqRedis
-    search: Optional[BuildPgConnection]
     settings: Settings
 
 
 def conns_from_request(request) -> Connections:
-    return Connections(request['conn'], request.app['redis'], request['conn'], request.app['settings'])
+    return Connections(request['conn'], request.app['redis'], request.app['settings'])

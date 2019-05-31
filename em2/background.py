@@ -21,7 +21,7 @@ class Background:
         self.connections: Dict[int, List[WebSocketResponse]] = {}
         self.loop = asyncio.get_event_loop()
         self.loop.create_task(self._run())
-        self.conns = Connections(self.app['pg'], self.app['redis'], None, self.settings)
+        self.conns = Connections(self.app['pg'], self.app['redis'], self.settings)
 
     def add_ws(self, user_id: int, ws: WebSocketResponse):
         if user_id in self.connections:

@@ -11,7 +11,7 @@ from atoolbox import JsonErrors
 from buildpg import MultipleValues, V, Values
 from pydantic import BaseModel, EmailStr, constr, validator
 
-from .search import SearchUpdate, search_create_conv
+from .search import search_create_conv, search_update
 from .utils.core import MsgFormat, message_preview
 from .utils.datetime import to_unix_ms, utcnow
 from .utils.db import Connections, or404
@@ -245,7 +245,7 @@ class _Act:
     See act() below for details.
     """
 
-    __slots__ = 'conns', 'actor_user_id', 'conv_id', 'new_user_ids', 'spam', 'warnings', 'last_action', 'search_update'
+    __slots__ = 'conns', 'actor_user_id', 'conv_id', 'new_user_ids', 'spam', 'warnings', 'last_action'
 
     def __init__(self, conns: Connections, actor_user_id: int, spam: bool, warnings: Dict[str, str]):
         self.conns = conns
@@ -256,30 +256,28 @@ class _Act:
         self.spam = True if spam else None
         self.warnings = json.dumps(warnings) if warnings else None
         self.last_action = None
-        self.search_update: SearchUpdate = None
 
     async def prepare(self, conv_ref: StrInt) -> Tuple[int, int]:
         self.conv_id, self.last_action = await get_conv_for_user(self.conns, self.actor_user_id, conv_ref)
 
         # we must be in a transaction
         # this is a hard check that conversations can only have on act applied at a time
-        creator, conv_key = await self.conns.main.fetchrow(
-            'select creator, key from conversations where id=$1 for no key update', self.conv_id
+        creator = await self.conns.main.fetchval(
+            'select creator from conversations where id=$1 for no key update', self.conv_id
         )
-        self.search_update = SearchUpdate(self.conns, conv_key)
         return self.conv_id, creator
 
-    async def run(self, action: ActionModel, files: Optional[List[File]]) -> Optional[int]:
+    async def run(self, action: ActionModel, files: Optional[List[File]]) -> Tuple[Optional[int], Optional[int]]:
         if action.act is ActionTypes.seen:
-            return await self._seen()
+            return await self._seen(), None
 
         # you can mark a conversation as seen when removed, but nothing else
         if self.last_action:
             raise JsonErrors.HTTPBadRequest(message="You can't act on conversations you've been removed from")
 
-        user_id = None
+        changed_user_id = None
         if action.act in _prt_action_types:
-            action_id, user_id = await self._act_on_participant(action)
+            action_id, changed_user_id = await self._act_on_participant(action)
         elif action.act in _msg_action_types:
             action_id, action_pk = await self._act_on_message(action)
             if files:
@@ -289,8 +287,7 @@ class _Act:
         else:
             raise NotImplementedError
 
-        await self.search_update(action, action_id, user_id, files)
-        return action_id
+        return action_id, changed_user_id
 
     async def _seen(self) -> Optional[int]:
         # could use "parent" to identify what was seen
@@ -556,31 +553,31 @@ async def apply_actions(
 
     Should be used for both remote platforms adding events and local users adding actions.
     """
-    action_ids = []
+    actions_with_ids: List[Tuple[int, Optional[int], ActionModel]] = []
     act_cls = _Act(conns, actor_user_id, spam, warnings)
     actor_user_id_seen = None
     from_deleted, from_archive, already_inbox = [], [], []
     async with conns.main.transaction():
-        # IMPORTANT we do nothing that could be slow (eg. networking) inside this transaction,
+        # IMPORTANT must not do anything that could be slow (eg. networking) inside this transaction,
         # as the conv is locked for update from prepare onwards
         conv_id, creator_id = await act_cls.prepare(conv_ref)
 
         for action in actions:
-            action_id = await act_cls.run(action, files)
+            action_id, changed_user_id = await act_cls.run(action, files)
             if action_id:
-                action_ids.append(action_id)
+                actions_with_ids.append((action_id, changed_user_id, action))
 
-        if action_ids:
-            # the actor is assumed to have seen the conversation as they've acted upon it
-            actor_user_id_seen = await conns.main.fetchval(
-                'update participants set seen=true where conv=$1 and user_id=$2 and seen is not true returning user_id',
-                conv_id,
-                actor_user_id,
-            )
-            # everyone else hasn't seen this action if it's "worth seeing"
-            if any(a.act not in _meta_action_types for a in actions):
-                from_deleted, from_archive, already_inbox = await user_flag_moves(conns, conv_id, actor_user_id)
-            await update_conv_users(conns, conv_id)
+    if actions_with_ids:
+        # the actor is assumed to have seen the conversation as they've acted upon it
+        actor_user_id_seen = await conns.main.fetchval(
+            'update participants set seen=true where conv=$1 and user_id=$2 and seen is not true returning user_id',
+            conv_id,
+            actor_user_id,
+        )
+        # everyone else hasn't seen this action if it's "worth seeing"
+        if any(a.act not in _meta_action_types for a in actions):
+            from_deleted, from_archive, already_inbox = await user_flag_moves(conns, conv_id, actor_user_id)
+        await update_conv_users(conns, conv_id)
 
     updates = [
         *(
@@ -622,7 +619,8 @@ async def apply_actions(
         updates.append(UpdateFlag(actor_user_id_seen, [(ConvFlags.unseen, -1)]))
     if updates:
         await update_conv_flags(conns, *updates)
-    return conv_id, action_ids
+    await search_update(conns, conv_id, actions_with_ids, files)
+    return conv_id, [a[0] for a in actions_with_ids]
 
 
 async def user_flag_moves(
@@ -902,7 +900,7 @@ async def create_conv(
     await update_conv_flags(conns, *updates)
     await search_create_conv(
         conns,
-        conv_key=conv_key,
+        conv_id=conv_id,
         creator_email=creator_email,
         creator_id=creator_id,
         users=part_users,
