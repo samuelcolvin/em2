@@ -2,8 +2,9 @@ from aiohttp_session import get_session
 from atoolbox import ExecView, decrypt_json, json_response
 from pydantic import BaseModel
 
-from em2.core import Connections, UserTypes, get_create_user
+from em2.core import UserTypes, get_create_user
 from em2.ui.middleware import dead_session_key, finish_session
+from em2.utils.db import conns_from_request
 
 
 class AuthExchangeToken(ExecView):
@@ -17,9 +18,8 @@ class AuthExchangeToken(ExecView):
     async def execute(self, m: Model):
         d = decrypt_json(self.app, m.auth_token, ttl=30)
         session = await get_session(self.request)
-        conns = Connections(self.conn, self.redis, self.settings)
         session[d['session_id']] = {
-            'user_id': await get_create_user(conns, d['email'], UserTypes.local),
+            'user_id': await get_create_user(conns_from_request(self.request), d['email'], UserTypes.local),
             'email': d['email'],
             'ts': d['ts'],
         }

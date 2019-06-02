@@ -1,24 +1,20 @@
 import asyncio
 import hashlib
 import json
-import re
 import secrets
-import textwrap
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, unique
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
-from arq import ArqRedis
 from atoolbox import JsonErrors
-from bs4 import BeautifulSoup
 from buildpg import MultipleValues, V, Values
-from buildpg.asyncpg import BuildPgConnection
 from pydantic import BaseModel, EmailStr, constr, validator
 
-from .settings import Settings
+from .search import search_create_conv, search_update
+from .utils.core import MsgFormat, message_preview
 from .utils.datetime import to_unix_ms, utcnow
-from .utils.db import or404
+from .utils.db import Connections, or404
 
 StrInt = Union[str, int]
 
@@ -29,8 +25,8 @@ class ActionTypes(str, Enum):
     Action types (component and verb), used for both urls and in db ENUM see models.sql
     """
 
-    conv_publish = 'conv:publish'
     conv_create = 'conv:create'
+    conv_publish = 'conv:publish'
     subject_modify = 'subject:modify'
     subject_lock = 'subject:lock'
     subject_release = 'subject:release'
@@ -49,25 +45,11 @@ class ActionTypes(str, Enum):
 
 
 @unique
-class MsgFormat(str, Enum):
-    markdown = 'markdown'
-    plain = 'plain'
-    html = 'html'
-
-
-@unique
 class UserTypes(str, Enum):
     new = 'new'
     local = 'local'
     remote_em2 = 'remote_em2'
     remote_other = 'remote_other'
-
-
-@dataclass
-class Connections:
-    main: BuildPgConnection
-    redis: ArqRedis
-    settings: Settings
 
 
 async def get_create_user(conns: Connections, email: str, user_type: UserTypes = UserTypes.new) -> int:
@@ -285,25 +267,27 @@ class _Act:
         )
         return self.conv_id, creator
 
-    async def run(self, action: ActionModel, files: Optional[List[File]]) -> Optional[int]:
+    async def run(self, action: ActionModel, files: Optional[List[File]]) -> Tuple[Optional[int], Optional[int]]:
         if action.act is ActionTypes.seen:
-            return await self._seen()
+            return await self._seen(), None
 
         # you can mark a conversation as seen when removed, but nothing else
         if self.last_action:
             raise JsonErrors.HTTPBadRequest(message="You can't act on conversations you've been removed from")
 
+        changed_user_id = None
         if action.act in _prt_action_types:
-            return await self._act_on_participant(action)
+            action_id, changed_user_id = await self._act_on_participant(action)
         elif action.act in _msg_action_types:
             action_id, action_pk = await self._act_on_message(action)
             if files:
                 await create_files(self.conns, files, self.conv_id, action_pk)
-            return action_id
         elif action.act in _subject_action_types:
-            return await self._act_on_subject(action)
+            action_id = await self._act_on_subject(action)
+        else:
+            raise NotImplementedError
 
-        raise NotImplementedError
+        return action_id, changed_user_id
 
     async def _seen(self) -> Optional[int]:
         # could use "parent" to identify what was seen
@@ -342,7 +326,7 @@ class _Act:
             self.actor_user_id,
         )
 
-    async def _act_on_participant(self, action: ActionModel) -> int:
+    async def _act_on_participant(self, action: ActionModel) -> Tuple[int, int]:
         follows_pk = None
         if action.act == ActionTypes.prt_add:
             prts_count = await self.conns.main.fetchval('select count(*) from participants where conv=$1', self.conv_id)
@@ -421,7 +405,7 @@ class _Act:
                 action_id,
                 prt_id,
             )
-        return action_id
+        return action_id, prt_user_id
 
     async def _act_on_message(self, action: ActionModel) -> Tuple[int, int]:
         if action.act == ActionTypes.msg_add:
@@ -569,31 +553,31 @@ async def apply_actions(
 
     Should be used for both remote platforms adding events and local users adding actions.
     """
-    action_ids = []
+    actions_with_ids: List[Tuple[int, Optional[int], ActionModel]] = []
     act_cls = _Act(conns, actor_user_id, spam, warnings)
     actor_user_id_seen = None
     from_deleted, from_archive, already_inbox = [], [], []
     async with conns.main.transaction():
-        # IMPORTANT we do nothing that could be slow (eg. networking) inside this transaction,
+        # IMPORTANT must not do anything that could be slow (eg. networking) inside this transaction,
         # as the conv is locked for update from prepare onwards
         conv_id, creator_id = await act_cls.prepare(conv_ref)
 
         for action in actions:
-            action_id = await act_cls.run(action, files)
+            action_id, changed_user_id = await act_cls.run(action, files)
             if action_id:
-                action_ids.append(action_id)
+                actions_with_ids.append((action_id, changed_user_id, action))
 
-        if action_ids:
-            # the actor is assumed to have seen the conversation as they've acted upon it
-            actor_user_id_seen = await conns.main.fetchval(
-                'update participants set seen=true where conv=$1 and user_id=$2 and seen is not true returning user_id',
-                conv_id,
-                actor_user_id,
-            )
-            # everyone else hasn't seen this action if it's "worth seeing"
-            if any(a.act not in _meta_action_types for a in actions):
-                from_deleted, from_archive, already_inbox = await user_flag_moves(conns, conv_id, actor_user_id)
-            await update_conv_users(conns, conv_id)
+    if actions_with_ids:
+        # the actor is assumed to have seen the conversation as they've acted upon it
+        actor_user_id_seen = await conns.main.fetchval(
+            'update participants set seen=true where conv=$1 and user_id=$2 and seen is not true returning user_id',
+            conv_id,
+            actor_user_id,
+        )
+        # everyone else hasn't seen this action if it's "worth seeing"
+        if any(a.act not in _meta_action_types for a in actions):
+            from_deleted, from_archive, already_inbox = await user_flag_moves(conns, conv_id, actor_user_id)
+        await update_conv_users(conns, conv_id)
 
     updates = [
         *(
@@ -635,7 +619,8 @@ async def apply_actions(
         updates.append(UpdateFlag(actor_user_id_seen, [(ConvFlags.unseen, -1)]))
     if updates:
         await update_conv_flags(conns, *updates)
-    return conv_id, action_ids
+    await search_update(conns, conv_id, actions_with_ids, files)
+    return conv_id, [a[0] for a in actions_with_ids]
 
 
 async def user_flag_moves(
@@ -913,6 +898,15 @@ async def create_conv(
         )
 
     await update_conv_flags(conns, *updates)
+    await search_create_conv(
+        conns,
+        conv_id=conv_id,
+        creator_email=creator_email,
+        creator_id=creator_id,
+        users=part_users,
+        conv=conv,
+        files=files,
+    )
     return conv_id, conv_key
 
 
@@ -933,44 +927,6 @@ async def create_files(conns: Connections, files: List[File], conv_id: int, acti
         for f in files
     ]
     await conns.main.execute_b('insert into files (:values__names) values :values', values=MultipleValues(*values))
-
-
-_clean_markdown = [
-    (re.compile(r'<.*?>', flags=re.S), ''),
-    (re.compile(r'_(\S.*?\S)_'), r'\1'),
-    (re.compile(r'\[(.+?)\]\(.*?\)'), r'\1'),
-    (re.compile(r'(\*\*|`)'), ''),
-    (re.compile(r'^(#+|\*|\d+\.) ', flags=re.M), ''),
-]
-_clean_all = [
-    (re.compile(r'^\s+'), ''),
-    (re.compile(r'\s+$'), ''),
-    (re.compile(r'[\x00-\x1f\x7f-\xa0]'), ''),
-    (re.compile(r'[\t\n]+'), ' '),
-    (re.compile(r' {2,}'), ' '),
-]
-
-
-def message_preview(body: str, msg_format: MsgFormat) -> str:
-    if msg_format == MsgFormat.markdown:
-        preview = body
-        for regex, p in _clean_markdown:
-            preview = regex.sub(p, preview)
-    elif msg_format == MsgFormat.html:
-        soup = BeautifulSoup(body, 'html.parser')
-        soup = soup.find('body') or soup
-
-        for el_name in ('div.gmail_signature', 'style', 'script'):
-            for el in soup.select(el_name):
-                el.decompose()
-        preview = soup.text
-    else:
-        assert msg_format == MsgFormat.plain, msg_format
-        preview = body
-
-    for regex, p in _clean_all:
-        preview = regex.sub(p, preview)
-    return textwrap.shorten(preview, width=140, placeholder='…')
 
 
 conv_flag_count_sql = """

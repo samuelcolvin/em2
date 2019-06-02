@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from email.message import EmailMessage
 from io import BytesIO
-from typing import List
+from typing import List, Optional
 
 import aiodns
 import pytest
@@ -23,7 +23,7 @@ from PIL import Image, ImageDraw
 
 from em2.auth.utils import mk_password
 from em2.background import push_multiple
-from em2.core import ActionModel, Connections, apply_actions
+from em2.core import ActionModel, Connections, File, apply_actions
 from em2.main import create_app
 from em2.protocol.smtp import LogSmtpHandler, SesSmtpHandler
 from em2.settings import Settings
@@ -268,8 +268,10 @@ class Factory:
             'insert into labels (:values__names) values :values returning id', values=values
         )
 
-    async def act(self, actor_user_id: int, conv_id: int, action: ActionModel) -> List[int]:
-        conv_id, action_ids = await apply_actions(self.conns, actor_user_id, conv_id, [action])
+    async def act(
+        self, actor_user_id: int, conv_id: int, action: ActionModel, files: Optional[List[File]] = None
+    ) -> List[int]:
+        conv_id, action_ids = await apply_actions(self.conns, actor_user_id, conv_id, [action], files=files)
 
         if action_ids:
             await push_multiple(self.conns, conv_id, action_ids)

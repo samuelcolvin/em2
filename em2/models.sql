@@ -9,7 +9,7 @@ create table users (
   email varchar(255) not null unique,
   v bigint default 1  -- null for remote users, set thus when the local check returns false
 );
-create index user_type on users using btree (user_type);
+create index idx_user_type on users using btree (user_type);
 
 create table labels (
   id bigserial primary key,
@@ -20,8 +20,8 @@ create table labels (
   description varchar(1027),
   color varchar(31)
 );
-create index labels_user_id on labels using btree (user_id);
-create index labels_ordering on labels using btree (ordering);
+create index idx_labels_user_id on labels using btree (user_id);
+create index idx_labels_ordering on labels using btree (ordering);
 
 create or replace function remove_labels_on_delete() returns trigger as $$
   begin
@@ -44,11 +44,11 @@ create table conversations (
   last_action_id int not null default 0 check (last_action_id >= 0),
   details json
 );
-create index conversations_key on conversations using gin (key gin_trgm_ops);
-create index conversations_created_ts on conversations using btree (created_ts);
-create index conversations_updated_ts on conversations using btree (updated_ts);
-create index conversations_publish_ts on conversations using btree (publish_ts);
-create index conversations_creator on conversations using btree (creator);
+create index idx_conversations_key on conversations using gin (key gin_trgm_ops);
+create index idx_conversations_created_ts on conversations using btree (created_ts);
+create index idx_conversations_updated_ts on conversations using btree (updated_ts);
+create index idx_conversations_publish_ts on conversations using btree (publish_ts);
+create index idx_conversations_creator on conversations using btree (creator);
 
 create table participants (
   id bigserial primary key,
@@ -67,13 +67,13 @@ create table participants (
   -- todo permissions, hidden
   unique (conv, user_id)  -- like normal composite index can be used to scan on conv but not user_id
 );
-create index participants_user_removal_action on participants using btree (user_id, removal_action_id);
-create index participants_user_seen on participants using btree (user_id, seen);
-create index participants_user_inbox on participants using btree (user_id, inbox);
-create index participants_user_deleted on participants using btree (user_id, deleted);
-create index participants_deleted_ts on participants using btree (deleted_ts);
-create index participants_user_spam on participants using btree (user_id, spam);
-create index participants_label_ids on participants using gin (label_ids);
+create index idx_participants_user_removal_action on participants using btree (user_id, removal_action_id);
+create index idx_participants_user_seen on participants using btree (user_id, seen);
+create index idx_participants_user_inbox on participants using btree (user_id, inbox);
+create index idx_participants_user_deleted on participants using btree (user_id, deleted);
+create index idx_participants_deleted_ts on participants using btree (deleted_ts);
+create index idx_participants_user_spam on participants using btree (user_id, spam);
+create index idx_participants_label_ids on participants using gin (label_ids);
 
 -- see core.ActionTypes enum which matches this
 create type ActionTypes as enum (
@@ -113,9 +113,9 @@ create table actions (
   -- only one action can follow a given action: where follows is required, a linear direct time line is enforced
   unique (conv, follows)
 );
-create index action_id on actions using btree (id);
-create index action_act_id on actions using btree (conv, act, id);
-create index action_conv_parent on actions using btree (conv, parent);
+create index idx_action_id on actions using btree (id);
+create index idx_action_act_id on actions using btree (conv, act, id);
+create index idx_action_conv_parent on actions using btree (conv, parent);
 
 -- { action-insert
 create or replace function action_insert() returns trigger as $$
@@ -178,7 +178,7 @@ create table sends (
   unique (action, node),
   unique (action, ref)
 );
-create index sends_ref ON sends USING btree (outbound, node, ref);
+create index idx_sends_ref ON sends USING btree (outbound, node, ref);
 
 create table send_events (
   id bigserial primary key,
@@ -188,8 +188,8 @@ create table send_events (
   user_ids int[],
   extra json
 );
-create index send_events_send ON send_events USING btree (send);
-create index send_events_user_ids ON send_events USING gin (user_ids);
+create index idx_send_events_send ON send_events USING btree (send);
+create index idx_send_events_user_ids ON send_events USING gin (user_ids);
 
 create type ContentDisposition as enum ('attachment', 'inline');
 
@@ -208,29 +208,32 @@ create table files (
   size bigint,
   unique (conv, content_id)
 );
-create index files_action ON files USING btree (action);
+create index idx_files_action ON files USING btree (action);
 
 ---------------------------------------------------------------------------
--- search table, no references so it could be moved to a different db or --
--- entirely different db engine eg. elasticsearch                        --
+-- search table, this references conversations so must be the same db,   --
+-- other search solutions would need to record conv details and key      --
+-- in search entries.                                                    --
 ---------------------------------------------------------------------------
 create table search (
   id bigserial primary key,
-  conv_key varchar(64),
-  participant_ids bigint[] not null,
-  action_id int not null,
+  conv bigint references conversations,
+  action int not null,
+  freeze_action int not null default 0,
+  user_ids bigint[] not null,
+  ts timestamptz not null default current_timestamp,
 
-  creator_email varchar(255),
-
-  files varchar(255)[],  -- needs to contain main part and extensions separately
-  -- might need other things like size
+  -- might need other things like size, files, participants
+  creator_email varchar(255) not null,
   vector tsvector,
-  unique (conv_key, action_id)  -- and language when it's added
+  unique (conv, freeze_action)
 );
-create index search_participant_ids on search using gin (participant_ids);
-create index search_creator_email on search using gin (creator_email gin_trgm_ops);
-create index search_files on search using gin (files);
-create index search_vector on search using gin (vector);
+create index idx_search_conv on search using btree (conv);
+create index idx_search_action on search using btree (conv, action);
+create index idx_search_user_ids on search using gin (user_ids);
+create index idx_search_ts on search using btree (ts);
+create index idx_search_creator_email on search using gin (creator_email gin_trgm_ops);
+create index idx_search_vector on search using gin (vector);
 
 ----------------------------------------------------------------------------------
 -- auth tables, currently in the the same database as everything else, but with --
@@ -252,7 +255,7 @@ create table auth_users (
   -- todo: node that the user is registered to
 );
 -- could be a composite index with email:
-create index auth_users_account_status on auth_users using btree (account_status);
+create index idx_auth_users_account_status on auth_users using btree (account_status);
 
 create table auth_sessions (
   id bigserial primary key,
@@ -262,7 +265,7 @@ create table auth_sessions (
   active boolean default true,  -- todo need a cron job to close expired sessions just so they look sensible
   events json[]
 );
-create index auth_sessions_user_id on auth_sessions using btree (user_id);
-create index auth_sessions_active on auth_sessions using btree (active, last_active);
+create index idx_auth_sessions_user_id on auth_sessions using btree (user_id);
+create index idx_auth_sessions_active on auth_sessions using btree (active, last_active);
 
 -- todo add address book, domains, organisations and teams, perhaps new db/app.

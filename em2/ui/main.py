@@ -21,6 +21,7 @@ from .views.conversations import (
     ConvList,
     ConvPublish,
     GetConvCounts,
+    Search,
     SetConvFlag,
 )
 from .views.files import GetFile, UploadFile
@@ -58,6 +59,7 @@ async def create_app_ui(settings=None):
         # no trailing slash so we capture everything and deal with weird/ugly content ids
         web.get(s + fr'conv/{conv_match}/get-image/{{content_id:.*}}', GetFile.view(), name='get-file'),
         web.get(s + fr'conv/{conv_match}/upload-file/', UploadFile.view(), name='upload-file'),
+        web.get(s + 'search/', Search.view(), name='search'),
         web.get(s + 'ws/', websocket, name='websocket'),
         # ui auth views:
         web.route('*', '/auth/token/', AuthExchangeToken.view(), name='auth-token'),

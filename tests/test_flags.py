@@ -110,7 +110,7 @@ async def test_set_flag(cli, factory: Factory, conns, user_actions):
                 changes[k] = diff
         assert changes == action.get('change', {}), (i, obj['counts'])
         counts = obj['counts']
-        true_counts = await get_flag_counts(conns, user.id, force_update=True)
+        true_counts = await get_flag_counts(conns, factory.user.id, force_update=True)
         assert true_counts == counts
 
 
