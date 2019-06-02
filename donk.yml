@@ -11,6 +11,7 @@ format:
 - +isort
 - +black
 - ./tests/clean_python.py
+- cd js && yarn --offline lintfix
 
 lint:
 - flake8 em2/ tests/

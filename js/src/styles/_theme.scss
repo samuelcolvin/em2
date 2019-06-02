@@ -64,6 +64,9 @@ $status-height: 28px;
   input, .dropdown-menu {
     width: 100%;
   }
+  .dropdown-item.active .text-muted {
+    color: $gray-200 !important;
+  }
 }
 
 .search.rbt {

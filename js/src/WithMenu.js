@@ -5,6 +5,7 @@ import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {Error, NotFound, WithContext, as_title} from 'reactstrap-toolbox'
 import ListConversations from './conversations/List'
+import SearchResults from './conversations/SearchResults'
 import ConversationDetails from './conversations/Details'
 import CreateConversation from './conversations/Create'
 import Wait from './conversations/Wait'
@@ -123,6 +124,7 @@ export const RoutesWithMenu = () => (
       <Switch>
         <Route exact path="/" component={ListConversations}/>
         <Route exact path="/:flag(draft|sent|archive|all|spam|deleted)/" component={ListConversations}/>
+        <Route exact path="/search/" component={SearchResults}/>
         <Route exact path="/create/" component={CreateConversation}/>
         <Route path="/:key([a-f0-9]{10,64})/" render={render_conv_details}/>
         <Route path="/wait/:key([a-f0-9]{10,64})/" component={Wait}/>

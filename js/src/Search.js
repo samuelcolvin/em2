@@ -4,6 +4,7 @@ import {Highlighter} from 'react-bootstrap-typeahead'
 import {Dropdown, DropdownToggle, DropdownMenu, DropdownItem} from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
+import {sleep} from 'reactstrap-toolbox'
 
 
 class Search extends React.Component {
@@ -13,8 +14,20 @@ class Search extends React.Component {
     this.input_ref = React.createRef()
   }
 
-  componentDidMount() {
+  componentDidMount () {
     this.get_searches()
+    if (this.props.location.pathname === '/search/') {
+      const query = decodeURI(this.props.location.search.substr(1))
+      this.setState({query})
+      this.get_searches(query)
+    }
+  }
+
+  componentDidUpdate (prevProps) {
+    const p = this.props.location.pathname
+    if (p !== prevProps.location.pathname && p !== '/search/') {
+      this.clean()
+    }
   }
 
   clean_state = () => ({convs: [], recent_searches: [], ongoing_searches: 0, query: '', open: false, selection: 0})
@@ -22,6 +35,7 @@ class Search extends React.Component {
   clean = () => {
     this.setState(this.clean_state())
     this.input_ref.current && this.input_ref.current.blur()
+    this.get_searches()
   }
 
   get_searches = async query => {
@@ -44,12 +58,12 @@ class Search extends React.Component {
 
   onChange = e => {
     const query = e.target.value
-    this.setState({query, selection: 0})
+    this.setState({query, selection: 0, open: true})
     this.search(query)
     this.get_searches(query)
   }
 
-  selection_max = () => this.state.convs.length + 1
+  selection_max = () => this.state.convs.length + this.state.recent_searches.length + 1
 
   onKeyDown = e => {
     if (e.key === 'Enter') {
@@ -58,7 +72,8 @@ class Search extends React.Component {
     } else if (e.key === 'ArrowDown') {
       this.setState(s => ({selection: (s.selection + 1) % this.selection_max()}))
     } else if (e.key === 'ArrowUp') {
-      this.setState(s => ({selection: s.selection === 0 ? 4 : (s.selection - 1) % this.selection_max()}))
+      const m = this.selection_max()
+      this.setState(s => ({selection: s.selection === 0 ? m : (s.selection - 1) % m}))
     } else if (e.key === 'Escape') {
       this.setState({open: false})
     }
@@ -67,18 +82,37 @@ class Search extends React.Component {
   onEnter = () => {
     let selection = this.state.selection
     if (selection === 0) {
-      throw Error('not implemented')
+      this.pageSearch(this.state.query)
+      return
     }
-    const conv = this.state.convs[selection + 1]
-    if (conv) {
-      this.onSelect(conv.key)
+    if (selection <= this.state.recent_searches.length) {
+      const rc = this.state.recent_searches[selection - 1]
+      this.pageSearch(rc)
+    } else {
+      const conv = this.state.convs[selection - this.state.recent_searches.length - 1]
+      if (conv) {
+        this.onSelect(conv.key)
+      }
     }
   }
 
-  onSelect = (key, query) => {
+  pageSearch = async query => {
+    if (query.length < window.logic.search.min_length) {
+      return
+    }
+    if (this.state.query === '' || !query.startsWith(this.state.query)) {
+      this.setState({query})
+    }
+    window.logic.search.mark_visible(query)
+    this.props.history.push(`/search/?${encodeURI(query)}`)
+    await sleep(100)
+    this.setState({open: false})
+  }
+
+  onSelect = key => {
     window.logic.search.mark_visible(this.state.query)
     this.clean()
-    this.props.history.push(`/${key}/`)
+    this.props.history.push(`/${key.substr(0, 10)}/`)
   }
 
   render () {
@@ -97,42 +131,44 @@ class Search extends React.Component {
           />
         </DropdownToggle>
         <DropdownMenu>
-          <RecentSearches {...this.state} onClick={this.onSelect}/>
-          <Conversations {...this.state} onClick={this.onSelect}/>
+          <RecentSearches {...this.state} pageSearch={this.pageSearch}/>
+          <Conversations {...this.state} onSelect={this.onSelect}/>
         </DropdownMenu>
       </Dropdown>
     )
   }
 }
 
-const RecentSearches = ({recent_searches, convs, selection, onClick}) => {
+const RecentSearches = ({recent_searches, convs, selection, query, pageSearch}) => {
   if (!recent_searches.length) {
     return null
   }
   return [
     <DropdownItem key="h" header>Recent Searches</DropdownItem>,
     ...recent_searches.map((q, i) => (
-      <DropdownItem key={i} active={selection === i + 1} onClick={() => onClick(null, q)}>
-        <FontAwesomeIcon icon={fas.faSearch} className="mr-2"/>
-        {q}
+      <DropdownItem key={i} active={selection === i + 1} onClick={() => pageSearch(q)}>
+        <FontAwesomeIcon icon={fas.faSearch} className="mr-2 text-muted small"/>
+        <Highlighter search={query}>
+          {q}
+        </Highlighter>
       </DropdownItem>
     )),
     convs.length ? <DropdownItem key="d" divider /> : null,
   ]
 }
 
-const Conversations = ({onClick, convs, selection, query}) => {
+const Conversations = ({recent_searches, convs, selection, query, onSelect}) => {
   if (!convs.length) {
     return null
   }
-
+  selection = selection - recent_searches.length
   return [
     <DropdownItem key="h" header>Conversations</DropdownItem>,
     ...convs.map((c, i) => (
-      <DropdownItem key={c.key} active={selection === i + 1} onClick={() => onClick(c.key)}>
+      <DropdownItem key={c.key} active={selection === i + 1} onClick={() => onSelect(c.key)}>
         <div className="d-flex justify-content-between">
           <div>
-            <FontAwesomeIcon icon={fas.faEnvelope} className="mr-2"/>
+            <FontAwesomeIcon icon={fas.faEnvelope} className="mr-2 text-muted small"/>
             <Highlighter search={query}>
               {c.details.sub}
             </Highlighter>
@@ -145,4 +181,5 @@ const Conversations = ({onClick, convs, selection, query}) => {
     )),
   ]
 }
+
 export default withRouter(Search)

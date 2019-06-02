@@ -27,6 +27,9 @@ async def search_create_conv(
     addresses = _prepare_address(creator_email, *users.keys())
     files = _prepare_files(files)
     body = message_simplify(conv.message, conv.msg_format)
+    user_ids = [creator_id]
+    if conv.publish:
+        user_ids += list(users.values())
 
     await conns.main.execute(
         """
@@ -43,7 +46,7 @@ async def search_create_conv(
         )
         """,
         conv_id,
-        list(users.values()) if conv.publish else [creator_id],
+        user_ids,
         creator_email,
         conv.subject,
         addresses,
@@ -172,13 +175,33 @@ class SearchUpdate:
             )
 
 
-search_sql = """
+search_rank_sql = """
 select json_build_object(
   'conversations', conversations
 ) from (
   select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
   from (
-    select c.key, s.ts, c.details
+    select key, ts, details, publish_ts
+    from (
+      select c.key, s.ts, c.details, c.publish_ts, s.vector, ts_rank_cd(vector, :query_func, 16) rank
+      from search s
+      join conversations c on s.conv = c.id
+      where user_ids @> array[:user_id::bigint] :where
+      order by s.ts desc
+      limit 50
+    ) tt
+    order by rank desc
+  ) t
+) conversations
+"""
+
+search_ts_sql = """
+select json_build_object(
+  'conversations', conversations
+) from (
+  select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
+  from (
+    select c.key, s.ts, c.details, c.publish_ts
     from search s
     join conversations c on s.conv = c.id
     where user_ids @> array[:user_id::bigint] :where
@@ -192,30 +215,37 @@ select json_build_object(
 async def search(conns: Connections, user_id: int, query: str):
     # TODO cache results based on user id and query, clear on prepare above
     new_query, named_filters = _parse_query(query)
-    if not (new_query or named_filters):
+    if not (len(new_query) > 2 or named_filters):
         # nothing to filter on
         return '{"conversations": []}'
 
     where = Empty()
 
-    if new_query:
-        query_match = V('s.vector').matches(Func('websearch_to_tsquery', new_query))
+    if len(new_query) > 2:
+        query_func = Func('websearch_to_tsquery', new_query)
+        query_match = V('s.vector').matches(query_func)
         if re_hex.fullmatch(new_query):
             # looks like it could be a conv key, search for that too
             where &= funcs.OR(query_match, V('c.key').like('%' + new_query.lower() + '%'))
         else:
             where &= query_match
+        sql = search_rank_sql
+    else:
+        query_func = Empty()
+        sql = search_ts_sql
 
     for name, value in named_filters:
         where &= _apply_named_filters(name, value)
 
-    return await conns.main.fetchval_b(search_sql, user_id=user_id, where=where)
+    return await conns.main.fetchval_b(sql, user_id=user_id, where=where, query_func=query_func)
 
 
 prefixes = ('from', 'include', 'to', 'file', 'attachment', 'has', 'subject')
 re_special = re.compile(fr"""(?:^|\s|,)({'|'.join(prefixes)})s?:((["']).*?[^\\]\3|\S*)""", re.I)
 re_hex = re.compile('[a-f0-9]{5,}', re.I)
-re_tsquery = re.compile(r"""[^:*&|%"'\s]{2,}""")
+# characters that can mean something special in postgres searches
+pg_search_chars = ':', '&', '|', '%', '"', "'"
+re_tsquery = re.compile(fr"""[^{''.join(pg_search_chars)}\s]{{2,}}""")
 re_file_attachment = re.compile(r'(?:file|attachment)s?', re.I)
 
 

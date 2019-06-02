@@ -4,10 +4,11 @@ export default class Contacts {
   constructor (main) {
     this._main = main
     this._debounce_search = debounce(this._raw_search, 300)
+    this.min_length = 4
   }
 
   search = async query => {
-    if (query.length < 3) {
+    if (query.length <= this.min_length) {
       return
     }
     const cached_search = await this._search_table().get(query)
@@ -28,12 +29,14 @@ export default class Contacts {
   }
 
   recent_searches = async query => {
-    if (!query) {
-      const r = await this._search_table().where({visible: 1}).reverse().sortBy('ts')
-      return r.map(s => s.query)
+    let q = this._search_table()
+    if (query) {
+      q = q.where('query').startsWith(query).filter(s => s.visible)
     } else {
-      return []
+      q = q.where({visible: 1})
     }
+    q = await q.reverse().sortBy('ts')
+    return q.slice(0, 5).map(s => s.query)
   }
 
   mark_visible = async query => {
@@ -48,7 +51,7 @@ export default class Contacts {
       visible: 0,
       live: 1,
       ts: (new Date()).getTime(),
-      convs
+      convs,
     })
     return convs
   }
