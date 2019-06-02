@@ -229,7 +229,7 @@ export default class Conversations {
     this._requests = this._main.requests
   }
 
-  list = async (data) => {
+  list = async data => {
     const online = await this._main.online()
     if (!this._main.session.current) {
       return []

@@ -123,6 +123,12 @@ export default class Session {
         'id',
         'ordering',
       ].join(','),
+      search: [
+        '&query',
+        'visible',
+        'live',
+        'ts',
+      ].join(','),
     })
     await this.db.open()
     sessionStorage['session_id'] = JSON.stringify(this.id)
