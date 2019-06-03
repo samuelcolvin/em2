@@ -67,7 +67,6 @@ const NavbarUser = ({app_state}) => (
       em2
     </NavbarBrand>
     <form className="form-inline custom-nav-item flex-grow-1">
-      {/*<input id="search" className="form-control" type="text" placeholder="Search"/>*/}
       <Search/>
     </form>
     <Nav navbar className="custom-nav-item ml-2">

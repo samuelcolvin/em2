@@ -70,6 +70,9 @@ export default class Session {
   update = async changes => {
     Object.assign(this.current, changes)
     await session_db.sessions.update(this.id, changes)
+    if ('cache' in changes) {
+      await this.db.search.toCollection().modify({live: 0})
+    }
   }
 
   update_cache = async cache_key => {

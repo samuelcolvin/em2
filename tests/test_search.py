@@ -26,7 +26,7 @@ async def test_create_conv(cli, factory: Factory, db_conn):
         'conv': conv_id,
         'action': 1,
         'freeze_action': 0,
-        'ts': CloseToNow(),
+        'ts': None,
         'user_ids': [user.id],
         'creator_email': user.email,
         'vector': "'appl':3A 'discuss':1A 'example.com':4B 'prefer':7 'red':8 'testing-1@example.com':5B",

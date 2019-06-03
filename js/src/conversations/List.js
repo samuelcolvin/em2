@@ -24,7 +24,7 @@ export const ConvList = ({conversations, user_email}) => conversations.map((conv
         <FontAwesomeIcon icon={fas.faUsers}/> {conv.details.prts}
       </span>
       <span>
-        {format_ts(conv.updated_ts)}
+        {format_ts(conv.updated_ts || conv.ts)}
       </span>
     </div>
   </Link>

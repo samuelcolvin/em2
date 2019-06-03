@@ -33,7 +33,10 @@ class ConvListView extends React.Component {
       } else {
         this.props.ctx.setTitle(`Search: ${query}`)
         this.props.ctx.setMenuItem('search')
-        this.setState({conversations: await window.logic.search.search(query), query})
+        let conversations = await window.logic.search.search(query)
+        conversations = conversations.map(c => Object.assign(c, {_raw_ts: (new Date(c.ts)).getTime()}))
+        conversations = conversations.sort((a, b) => b._raw_ts - a._raw_ts)
+        this.setState({conversations, query})
       }
     }
   }

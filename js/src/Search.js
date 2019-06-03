@@ -133,6 +133,7 @@ class Search extends React.Component {
             ref={this.input_ref}
             value={this.state.query}
             onChange={this.onChange}
+            onPaste={this.onChange}
             onKeyDown={this.onKeyDown}
           />
         </DropdownToggle>
