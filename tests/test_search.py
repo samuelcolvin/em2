@@ -216,6 +216,7 @@ async def test_search_query(factory: Factory, conns):
         ('"rais"', 0),
         ('rais!', 0),
         ('rais!', 0),
+        ('\x1e' * 5, 0),
     ],
 )
 async def test_search_query_participants(factory: Factory, conns, query, count):
