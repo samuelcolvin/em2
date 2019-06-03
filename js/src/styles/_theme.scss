@@ -67,6 +67,9 @@ $status-height: 28px;
   .dropdown-item.active .text-muted {
     color: $gray-200 !important;
   }
+  .rbt-loader {
+    border-width: 3px;
+  }
 }
 
 .search.rbt {

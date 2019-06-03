@@ -32,10 +32,12 @@ class Search extends React.Component {
 
   clean_state = () => ({convs: [], recent_searches: [], ongoing_searches: 0, query: '', open: false, selection: 0})
 
-  clean = () => {
+  clean = (blur = true) => {
     this.setState(this.clean_state())
-    this.input_ref.current && this.input_ref.current.blur()
     this.get_searches()
+    if (blur && this.input_ref.current) {
+     this.input_ref.current.blur()
+    }
   }
 
   get_searches = async query => {
@@ -49,11 +51,12 @@ class Search extends React.Component {
 
     const convs = await window.logic.search.search(query)
     // null when the request was cancelled, or offline
-    if (convs) {
-      this.setState({convs})
+    if (this.state.ongoing_searches > 0) {
+      if (convs) {
+        this.setState({convs})
+      }
+      this.setState(s => ({ongoing_searches: s.ongoing_searches - 1}))
     }
-    // TODO deal with the case that we've called clean by now
-    this.setState(s => ({ongoing_searches: s.ongoing_searches - 1}))
   }
 
   onChange = e => {
@@ -75,7 +78,7 @@ class Search extends React.Component {
       const m = this.selection_max()
       this.setState(s => ({selection: s.selection === 0 ? m : (s.selection - 1) % m}))
     } else if (e.key === 'Escape') {
-      this.setState({open: false})
+      this.clean(false)
     }
   }
 
@@ -116,12 +119,15 @@ class Search extends React.Component {
   }
 
   render () {
-    const open = Boolean(this.state.open && (this.state.convs.length || this.state.recent_searches.length))
+    const open = Boolean(
+      this.state.open &&
+      (this.state.query.length || this.state.convs.length || this.state.recent_searches.length)
+    )
     return (
       <Dropdown id="search" isOpen={open} toggle={() => this.setState(s => ({open: !s.open}))}>
         <DropdownToggle tag="div">
           <input
-            className="form-control pr-4"
+            className="form-control"
             type="text"
             placeholder="Search..."
             ref={this.input_ref}
@@ -129,9 +135,6 @@ class Search extends React.Component {
             onChange={this.onChange}
             onKeyDown={this.onKeyDown}
           />
-          <div className={this.state.ongoing_searches ? 'rbt-aux' : 'd-none'}>
-            <div className="rbt-loader"/>
-          </div>
         </DropdownToggle>
         <DropdownMenu>
           <RecentSearches {...this.state} pageSearch={this.pageSearch}/>
@@ -160,9 +163,22 @@ const RecentSearches = ({recent_searches, convs, selection, query, pageSearch}) 
   ]
 }
 
-const Conversations = ({recent_searches, convs, selection, query, onSelect}) => {
+const Conversations = ({recent_searches, convs, selection, query, ongoing_searches, onSelect}) => {
   if (!convs.length) {
-    return null
+    if (query.length) {
+      return [
+        <DropdownItem key="h" header>Conversations</DropdownItem>,
+        <DropdownItem key="d" disabled className="h-33">
+          {ongoing_searches ?
+            <div className="rbt-loader"/>
+            :
+            <span>No Conversations found</span>
+          }
+        </DropdownItem>,
+      ]
+    } else {
+      return null
+    }
   }
   selection = selection - recent_searches.length
   return [

@@ -183,12 +183,13 @@ select json_build_object(
 ) from (
   select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
   from (
-    select key, ts, details, publish_ts
+    select key, ts, details, publish_ts, seen
     from (
-      select c.key, s.ts, c.details, c.publish_ts, s.vector, ts_rank_cd(vector, :query_func, 16) rank
+      select c.key, s.ts, c.details, c.publish_ts, p.seen, s.vector, ts_rank_cd(vector, :query_func, 16) rank
       from search s
       join conversations c on s.conv = c.id
-      where user_ids @> array[:user_id::bigint] :where
+      join participants p on c.id = p.conv
+      where p.user_id = :user_id and user_ids @> array[:user_id::bigint] :where
       order by s.ts desc
       limit 200
     ) tt
@@ -204,10 +205,11 @@ select json_build_object(
 ) from (
   select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
   from (
-    select c.key, s.ts, c.details, c.publish_ts
+    select c.key, s.ts, c.details, c.publish_ts, p.seen
     from search s
     join conversations c on s.conv = c.id
-    where user_ids @> array[:user_id::bigint] :where
+    join participants p on c.id = p.conv
+    where p.user_id = :user_id and user_ids @> array[:user_id::bigint] :where
     order by s.ts desc
     limit 50
   ) t
@@ -247,10 +249,15 @@ re_null = re.compile('\x00')
 prefixes = ('from', 'include', 'to', 'file', 'attachment', 'has', 'subject')
 re_special = re.compile(fr"""(?:^|\s|,)({'|'.join(prefixes)})s?:((["']).*?[^\\]\3|\S*)""", re.I)
 re_hex = re.compile('[a-f0-9]{5,}', re.I)
-# characters that can mean something special in postgres searches
-pg_special_chars = ''.join((':', '&', '|', '%', '"', "'", r'\-', '<', '>', '!', '*', '(', ')'))
-re_tsquery = re.compile(fr'[^{pg_special_chars}\s]{{2,}}')
-re_websearch = re.compile(fr'(?:[{pg_special_chars}]|\sor\s)', re.I)
+
+# characters that cause syntax errors in to_tsquery and/or should be used to split
+pg_tsquery_split = ''.join((':', '&', '|', '"', "'", '!', '*', r'\s'))
+re_tsquery = re.compile(f'[^{pg_tsquery_split}]{{2,}}')
+
+# any of these and we should fall back to websearch_to_tsquery
+pg_requires_websearch = ''.join((':', '&', '|', '%', '"', "'", '<', '>', '!', '*', '(', ')'))
+re_websearch = re.compile(fr'(?:[{pg_requires_websearch}]|\sor\s)', re.I)
+
 re_file_attachment = re.compile(r'(?:file|attachment)s?', re.I)
 
 

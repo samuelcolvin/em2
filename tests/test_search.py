@@ -152,14 +152,16 @@ async def test_readd_prt(factory: Factory, db_conn):
 async def test_search_query(factory: Factory, conns):
     user = await factory.create_user()
     conv = await factory.create_conv(subject='apple pie', message='eggs, flour and raisins')
+    await conns.main.execute('update participants set seen=False')
     assert 1 == await conns.main.fetchval('select count(*) from search')
-    r = json.loads(await search(conns, user.id, 'apple'))
-    assert r == {
+    r1 = json.loads(await search(conns, user.id, 'apple'))
+    assert r1 == {
         'conversations': [
             {
                 'key': conv.key,
                 'ts': CloseToNow(),
                 'publish_ts': None,
+                'seen': False,
                 'details': {
                     'act': 'conv:create',
                     'sub': 'apple pie',
@@ -172,6 +174,9 @@ async def test_search_query(factory: Factory, conns):
             }
         ]
     }
+    # this is the other way of building queries, so check the output is the same
+    r2 = json.loads(await search(conns, user.id, 'includes:' + user.email))
+    assert r2 == r1
     r = json.loads(await search(conns, user.id, 'banana'))
     assert r == {'conversations': []}
     assert len(json.loads(await search(conns, user.id, conv.key[5:12]))['conversations']) == 1
@@ -258,6 +263,7 @@ async def test_http_search(factory: Factory, cli):
                 'key': conv.key,
                 'ts': CloseToNow(),
                 'publish_ts': CloseToNow(),
+                'seen': True,
                 'details': {
                     'act': 'conv:publish',
                     'sub': 'spam sandwich',
