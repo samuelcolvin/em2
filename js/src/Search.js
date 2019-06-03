@@ -121,7 +121,7 @@ class Search extends React.Component {
       <Dropdown id="search" isOpen={open} toggle={() => this.setState(s => ({open: !s.open}))}>
         <DropdownToggle tag="div">
           <input
-            className="form-control"
+            className="form-control pr-4"
             type="text"
             placeholder="Search..."
             ref={this.input_ref}
@@ -129,6 +129,9 @@ class Search extends React.Component {
             onChange={this.onChange}
             onKeyDown={this.onKeyDown}
           />
+          <div className={this.state.ongoing_searches ? 'rbt-aux' : 'd-none'}>
+            <div className="rbt-loader"/>
+          </div>
         </DropdownToggle>
         <DropdownMenu>
           <RecentSearches {...this.state} pageSearch={this.pageSearch}/>

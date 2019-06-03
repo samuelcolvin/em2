@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Tuple
 
 from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
 from buildpg import SetValues, V, funcs
-from pydantic import BaseModel, constr, validator
+from pydantic import BaseModel, validator
 
 from em2.background import push_all, push_multiple
 from em2.core import (
@@ -490,7 +490,7 @@ class GetConvCounts(View):
 
 class Search(View):
     class QueryModel(BaseModel):
-        query: constr(max_length=50) = ''
+        query: str = ''
 
     async def call(self):
         query = parse_request_query(self.request, self.QueryModel).query

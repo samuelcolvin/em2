@@ -12,6 +12,8 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = ['search_create_conv', 'search_publish_conv', 'search_update', 'search']
 
 has_files_sentinel = 'conversation.has.files'
+min_length = 3
+max_length = 100
 
 
 async def search_create_conv(
@@ -216,13 +218,13 @@ select json_build_object(
 async def search(conns: Connections, user_id: int, query: str):
     # TODO cache results based on user id and query, clear on prepare above
     new_query, named_filters = _parse_query(query)
-    if not (len(new_query) > 2 or named_filters):
+    if not new_query and not named_filters:
         # nothing to filter on
         return '{"conversations": []}'
 
     where = Empty()
 
-    if len(new_query) > 2:
+    if new_query:
         query_func = _build_main_query(new_query)
         query_match = V('s.vector').matches(query_func)
         if re_hex.fullmatch(new_query):
@@ -252,7 +254,7 @@ re_websearch = re.compile(fr'(?:[{pg_special_chars}]|\sor\s)', re.I)
 re_file_attachment = re.compile(r'(?:file|attachment)s?', re.I)
 
 
-def _parse_query(query: str):
+def _parse_query(query: str) -> Tuple[Optional[str], List[str]]:
     groups = []
 
     def replace(m):
@@ -261,9 +263,11 @@ def _parse_query(query: str):
         groups.append((prefix, value))
         return ''
 
-    new_query = re_null.sub('', query)
-    new_query = re_special.sub(replace, new_query)
-    return new_query.strip(' '), groups
+    new_query = re_null.sub('', query)[:max_length]
+    new_query = re_special.sub(replace, new_query).strip(' ')
+    if len(new_query) < min_length:
+        new_query = None
+    return new_query, groups
 
 
 def _build_main_query(query: str):

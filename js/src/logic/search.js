@@ -4,11 +4,11 @@ export default class Contacts {
   constructor (main) {
     this._main = main
     this._debounce_search = debounce(this._raw_search, 300)
-    this.min_length = 4
+    this.min_length = 3
   }
 
   search = async query => {
-    if (query.length <= this.min_length) {
+    if (query.length < this.min_length) {
       return
     }
     const cached_search = await this._search_table().get(query)
@@ -53,6 +53,11 @@ export default class Contacts {
       ts: (new Date()).getTime(),
       convs,
     })
+    const search_count = await this._search_table().count()
+    if (search_count > 100) {
+      // delete the oldest 10 searches
+      await this._search_table().orderBy('ts').limit(10).delete()
+    }
     return convs
   }
 

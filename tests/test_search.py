@@ -276,6 +276,9 @@ async def test_http_search(factory: Factory, cli):
     obj = await cli.get_json(factory.url('ui:search', query={'query': 'bacon'}))
     assert obj == {'conversations': []}
 
+    obj = await cli.get_json(factory.url('ui:search', query={'query': 'x' * 200}))
+    assert obj == {'conversations': []}
+
 
 async def test_search_ranking(factory: Factory, conns):
     user = await factory.create_user()
