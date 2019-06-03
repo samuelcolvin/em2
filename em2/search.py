@@ -188,9 +188,10 @@ select json_build_object(
       join conversations c on s.conv = c.id
       where user_ids @> array[:user_id::bigint] :where
       order by s.ts desc
-      limit 50
+      limit 200
     ) tt
     order by rank desc
+    limit 50
   ) t
 ) conversations
 """
@@ -222,7 +223,7 @@ async def search(conns: Connections, user_id: int, query: str):
     where = Empty()
 
     if len(new_query) > 2:
-        query_func = Func('websearch_to_tsquery', new_query)
+        query_func = _build_main_query(new_query)
         query_match = V('s.vector').matches(query_func)
         if re_hex.fullmatch(new_query):
             # looks like it could be a conv key, search for that too
@@ -240,12 +241,14 @@ async def search(conns: Connections, user_id: int, query: str):
     return await conns.main.fetchval_b(sql, user_id=user_id, where=where, query_func=query_func)
 
 
+re_null = re.compile('\x00')
 prefixes = ('from', 'include', 'to', 'file', 'attachment', 'has', 'subject')
 re_special = re.compile(fr"""(?:^|\s|,)({'|'.join(prefixes)})s?:((["']).*?[^\\]\3|\S*)""", re.I)
 re_hex = re.compile('[a-f0-9]{5,}', re.I)
 # characters that can mean something special in postgres searches
-pg_search_chars = ':', '&', '|', '%', '"', "'"
-re_tsquery = re.compile(fr"""[^{''.join(pg_search_chars)}\s]{{2,}}""")
+pg_special_chars = ''.join((':', '&', '|', '%', '"', "'", r'\-', '<', '>', '!', '*', '(', ')'))
+re_tsquery = re.compile(fr'[^{pg_special_chars}\s]{{2,}}')
+re_websearch = re.compile(fr'(?:[{pg_special_chars}]|\sor\s)', re.I)
 re_file_attachment = re.compile(r'(?:file|attachment)s?', re.I)
 
 
@@ -258,8 +261,20 @@ def _parse_query(query: str):
         groups.append((prefix, value))
         return ''
 
-    new_query = re_special.sub(replace, query)
+    new_query = re_null.sub('', query)
+    new_query = re_special.sub(replace, new_query)
     return new_query.strip(' '), groups
+
+
+def _build_main_query(query: str):
+    if not re_websearch.search(query):
+        words = re_tsquery.findall(query)
+        if words:
+            # nothing funny and words found, use a "foo & bar:*"
+            return Func('to_tsquery', ' & '.join(words) + ':*')
+
+    # query has got special characters in, just use websearch_to_tsquery
+    return Func('websearch_to_tsquery', query)
 
 
 def _apply_named_filters(name: str, value: str):

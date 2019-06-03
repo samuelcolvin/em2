@@ -205,6 +205,12 @@ async def test_search_query(factory: Factory, conns):
         ('includes:"testing@example.com recipient@foobar.com"', 1),
         ('files:*', 0),
         ('has:files', 0),
+        ('rais', 1),  # prefix search
+        ('rai', 1),  # prefix search
+        ('ra', 0),
+        ('"rais"', 0),
+        ('rais!', 0),
+        ('rais!', 0),
     ],
 )
 async def test_search_query_participants(factory: Factory, conns, query, count):
@@ -212,7 +218,7 @@ async def test_search_query_participants(factory: Factory, conns, query, count):
     conv = await factory.create_conv(subject='apple pie', message='eggs, flour and raisins')
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant='recipient@foobar.com'))
 
-    assert len(json.loads(await search(conns, user.id, query))['conversations']) == count
+    assert len(json.loads(await search(conns, user.id, query))['conversations']) == count, repr(query)
 
 
 @pytest.mark.parametrize(
