@@ -183,10 +183,10 @@ select json_build_object(
 ) from (
   select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
   from (
-    select key, ts, details, publish_ts, seen
+    select key, updated_ts, details, publish_ts, seen
     from (
       select
-        c.key, coalesce(s.ts, c.updated_ts) ts, c.details, c.publish_ts, p.seen, s.vector,
+        c.key, coalesce(s.ts, c.updated_ts) updated_ts, c.details, c.publish_ts, p.seen, s.vector,
         ts_rank_cd(vector, :query_func, 16) rank
       from search s
       join conversations c on s.conv = c.id
@@ -207,7 +207,7 @@ select json_build_object(
 ) from (
   select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
   from (
-    select c.key, coalesce(s.ts, c.updated_ts) ts, c.details, c.publish_ts, p.seen
+    select c.key, coalesce(s.ts, c.updated_ts) updated_ts, c.details, c.publish_ts, p.seen
     from search s
     join conversations c on s.conv = c.id
     join participants p on c.id = p.conv

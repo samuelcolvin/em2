@@ -159,7 +159,7 @@ async def test_search_query(factory: Factory, conns):
         'conversations': [
             {
                 'key': conv.key,
-                'ts': CloseToNow(),
+                'updated_ts': CloseToNow(),
                 'publish_ts': None,
                 'seen': False,
                 'details': {
@@ -262,7 +262,7 @@ async def test_http_search(factory: Factory, cli):
         'conversations': [
             {
                 'key': conv.key,
-                'ts': CloseToNow(),
+                'updated_ts': CloseToNow(),
                 'publish_ts': CloseToNow(),
                 'seen': True,
                 'details': {
