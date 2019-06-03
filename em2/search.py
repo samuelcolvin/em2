@@ -12,6 +12,8 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = ['search_create_conv', 'search_publish_conv', 'search_update', 'search']
 
 has_files_sentinel = 'conversation.has.files'
+min_length = 3
+max_length = 100
 
 
 async def search_create_conv(
@@ -27,6 +29,9 @@ async def search_create_conv(
     addresses = _prepare_address(creator_email, *users.keys())
     files = _prepare_files(files)
     body = message_simplify(conv.message, conv.msg_format)
+    user_ids = [creator_id]
+    if conv.publish:
+        user_ids += list(users.values())
 
     await conns.main.execute(
         """
@@ -43,7 +48,7 @@ async def search_create_conv(
         )
         """,
         conv_id,
-        list(users.values()) if conv.publish else [creator_id],
+        user_ids,
         creator_email,
         conv.subject,
         addresses,
@@ -172,16 +177,41 @@ class SearchUpdate:
             )
 
 
-search_sql = """
+search_rank_sql = """
 select json_build_object(
   'conversations', conversations
 ) from (
   select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
   from (
-    select c.key as conv_key, s.ts, c.details
+    select key, updated_ts, details, publish_ts, seen
+    from (
+      select
+        c.key, coalesce(s.ts, c.updated_ts) updated_ts, c.details, c.publish_ts, p.seen, s.vector,
+        ts_rank_cd(vector, :query_func, 16) rank
+      from search s
+      join conversations c on s.conv = c.id
+      join participants p on c.id = p.conv
+      where p.user_id = :user_id and user_ids @> array[:user_id::bigint] :where
+      order by s.ts desc
+      limit 200
+    ) tt
+    order by rank desc
+    limit 50
+  ) t
+) conversations
+"""
+
+search_ts_sql = """
+select json_build_object(
+  'conversations', conversations
+) from (
+  select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
+  from (
+    select c.key, coalesce(s.ts, c.updated_ts) updated_ts, c.details, c.publish_ts, p.seen
     from search s
     join conversations c on s.conv = c.id
-    where user_ids @> array[:user_id::bigint] :where
+    join participants p on c.id = p.conv
+    where p.user_id = :user_id and user_ids @> array[:user_id::bigint] :where
     order by s.ts desc
     limit 50
   ) t
@@ -192,34 +222,48 @@ select json_build_object(
 async def search(conns: Connections, user_id: int, query: str):
     # TODO cache results based on user id and query, clear on prepare above
     new_query, named_filters = _parse_query(query)
-    if not (new_query or named_filters):
+    if not new_query and not named_filters:
         # nothing to filter on
         return '{"conversations": []}'
 
     where = Empty()
 
     if new_query:
-        query_match = V('s.vector').matches(Func('websearch_to_tsquery', new_query))
+        query_func = _build_main_query(new_query)
+        query_match = V('s.vector').matches(query_func)
         if re_hex.fullmatch(new_query):
             # looks like it could be a conv key, search for that too
             where &= funcs.OR(query_match, V('c.key').like('%' + new_query.lower() + '%'))
         else:
             where &= query_match
+        sql = search_rank_sql
+    else:
+        query_func = Empty()
+        sql = search_ts_sql
 
     for name, value in named_filters:
         where &= _apply_named_filters(name, value)
 
-    return await conns.main.fetchval_b(search_sql, user_id=user_id, where=where)
+    return await conns.main.fetchval_b(sql, user_id=user_id, where=where, query_func=query_func)
 
 
+re_null = re.compile('\x00')
 prefixes = ('from', 'include', 'to', 'file', 'attachment', 'has', 'subject')
 re_special = re.compile(fr"""(?:^|\s|,)({'|'.join(prefixes)})s?:((["']).*?[^\\]\3|\S*)""", re.I)
 re_hex = re.compile('[a-f0-9]{5,}', re.I)
-re_tsquery = re.compile(r"""[^:*&|%"'\s]{2,}""")
+
+# characters that cause syntax errors in to_tsquery and/or should be used to split
+pg_tsquery_split = ''.join((':', '&', '|', '"', "'", '!', '*', r'\s'))
+re_tsquery = re.compile(f'[^{pg_tsquery_split}]{{2,}}')
+
+# any of these and we should fall back to websearch_to_tsquery
+pg_requires_websearch = ''.join((':', '&', '|', '%', '"', "'", '<', '>', '!', '*', '(', ')'))
+re_websearch = re.compile(fr'(?:[{pg_requires_websearch}]|\sor\s)', re.I)
+
 re_file_attachment = re.compile(r'(?:file|attachment)s?', re.I)
 
 
-def _parse_query(query: str):
+def _parse_query(query: str) -> Tuple[Optional[str], List[str]]:
     groups = []
 
     def replace(m):
@@ -228,8 +272,22 @@ def _parse_query(query: str):
         groups.append((prefix, value))
         return ''
 
-    new_query = re_special.sub(replace, query)
-    return new_query.strip(' '), groups
+    new_query = re_null.sub('', query)[:max_length]
+    new_query = re_special.sub(replace, new_query).strip(' ')
+    if len(new_query) < min_length:
+        new_query = None
+    return new_query, groups
+
+
+def _build_main_query(query: str):
+    if not re_websearch.search(query):
+        words = re_tsquery.findall(query)
+        if words:
+            # nothing funny and words found, use a "foo & bar:*"
+            return Func('to_tsquery', ' & '.join(words) + ':*')
+
+    # query has got special characters in, just use websearch_to_tsquery
+    return Func('websearch_to_tsquery', query)
 
 
 def _apply_named_filters(name: str, value: str):

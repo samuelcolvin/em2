@@ -6,7 +6,7 @@ import {WithContext, InputLabel, InputHelpText, message_toast} from 'reactstrap-
 
 const render_option = o => o.name ? `${o.name} <${o.email}>` : o.email
 const token = (option, props, index) => (
-  <Token key={index} onRemove={props.onRemove} className>
+  <Token key={index} onRemove={props.onRemove}>
     {render_option(option)}
   </Token>
 )
@@ -32,7 +32,7 @@ class Participants extends React.Component {
   selected = () => this.state.options.filter(o => this.props.value.includes(o.email))
 
   search = async query => {
-    this.setState({ongoing_searches: this.state.ongoing_searches + 1})
+    this.setState(s => ({ongoing_searches: s.ongoing_searches + 1}))
 
     const options1 = await window.logic.contacts.fast_email_lookup(query)
     // null when the address is invalid
@@ -48,7 +48,7 @@ class Participants extends React.Component {
       // eg. options2.concat(options1 || [])
       this.setState({options: options2})
     }
-    this.setState({ongoing_searches: this.state.ongoing_searches - 1})
+    this.setState(s => ({ongoing_searches: s.ongoing_searches - 1}))
   }
 
   onPaste = async e => {
@@ -78,15 +78,19 @@ class Participants extends React.Component {
     const count = this.props.value.length
     return (
       <div>
-        <AsyncTypeahead {...static_props} {...this.state} isLoading={this.state.ongoing_searches > 0}
-                      onSearch={this.search}
-                      selected={this.props.value}
-                      disabled={this.props.disabled}
-                      name={this.props.name}
-                      id={this.props.name}
-                      required={this.props.required}
-                      inputProps={{onPaste: this.onPaste}}
-                      onChange={this.onChange}/>
+        <AsyncTypeahead
+          {...static_props}
+          {...this.state}
+          isLoading={this.state.ongoing_searches > 0}
+          onSearch={this.search}
+          selected={this.props.value}
+          disabled={this.props.disabled}
+          name={this.props.name}
+          id={this.props.name}
+          required={this.props.required}
+          inputProps={{onPaste: this.onPaste}}
+          onChange={this.onChange}
+        />
         {count ? (
           <small className="text-muted">{count} {count === 1 ? 'Person' : 'People'}</small>
         ) : null}

@@ -3,6 +3,7 @@ import {make_url, statuses, Requests} from './network'
 import Session from './session'
 import Websocket from './ws'
 import Conversations from './conversations'
+import Serach from './search'
 import Contacts from './contacts'
 import Auth from './auth'
 
@@ -16,6 +17,7 @@ export default class LogicMain {
     this.ws = new Websocket(this)
     this.session = new Session(this)
     this.conversations = new Conversations(this)
+    this.search = new Serach(this)
     this.contacts = new Contacts(this)
     this.auth = new Auth(this)
     this._conn_status = null

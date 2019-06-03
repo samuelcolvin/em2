@@ -15,6 +15,7 @@ import {
   Col,
 } from 'reactstrap'
 import {statuses} from './logic/network'
+import Search from './Search'
 
 const AccountSummary = ({conn_status, user}) => {
   const [show_tooltip, set_tooltip] = React.useState(false)
@@ -66,7 +67,7 @@ const NavbarUser = ({app_state}) => (
       em2
     </NavbarBrand>
     <form className="form-inline custom-nav-item flex-grow-1">
-      <input id="search" className="form-control" type="text" placeholder="Search"/>
+      <Search/>
     </form>
     <Nav navbar className="custom-nav-item ml-2">
       <UncontrolledDropdown nav inNavbar className="ml-auto">

@@ -6,7 +6,7 @@ import {withRouter} from 'react-router-dom'
 import {WithContext, Loading} from 'reactstrap-toolbox'
 import {format_ts} from '../utils/dt'
 
-const ConvList = ({conversations, user_email}) => conversations.map((conv, i) => (
+export const ConvList = ({conversations, user_email}) => conversations.map((conv, i) => (
   <Link key={i} to={`/${conv.key.substr(0, 10)}/`} className={conv.seen ? 'seen' : ''}>
     <div className="subject">{conv.details.sub}</div>
     <div className="summary">
@@ -108,21 +108,20 @@ class ConvListView extends React.Component {
   }
 
   render () {
-    const user_email = this.props.ctx.user && this.props.ctx.user.email
-    const conversations = this.state && this.state.conversations
-    if (!conversations) {
+    if (!this.state.conversations) {
       return <Loading/>
-    } else if (conversations.length === 0) {
+    } else if (this.state.conversations.length === 0) {
       return (
-        <div key="f" className="text-muted text-center h5 pt-3 pb-4">
+        <div className="text-muted text-center h5 pt-3 pb-4">
           No Conversations found
         </div>
       )
     }
+    const user_email = this.props.ctx.user && this.props.ctx.user.email
     return (
       <div>
         <div className="box conv-list">
-          <ConvList conversations={conversations} user_email={user_email}/>
+          <ConvList conversations={this.state.conversations} user_email={user_email}/>
         </div>
         <div className="d-flex justify-content-center">
           <Paginate current={this.get_page()} onClick={this.on_pagination_click} pages={this.state.pages}/>

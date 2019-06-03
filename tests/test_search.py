@@ -26,7 +26,7 @@ async def test_create_conv(cli, factory: Factory, db_conn):
         'conv': conv_id,
         'action': 1,
         'freeze_action': 0,
-        'ts': CloseToNow(),
+        'ts': None,
         'user_ids': [user.id],
         'creator_email': user.email,
         'vector': "'appl':3A 'discuss':1A 'example.com':4B 'prefer':7 'red':8 'testing-1@example.com':5B",
@@ -152,13 +152,16 @@ async def test_readd_prt(factory: Factory, db_conn):
 async def test_search_query(factory: Factory, conns):
     user = await factory.create_user()
     conv = await factory.create_conv(subject='apple pie', message='eggs, flour and raisins')
+    await conns.main.execute('update participants set seen=False')
     assert 1 == await conns.main.fetchval('select count(*) from search')
-    r = json.loads(await search(conns, user.id, 'apple'))
-    assert r == {
+    r1 = json.loads(await search(conns, user.id, 'apple'))
+    assert r1 == {
         'conversations': [
             {
-                'conv_key': conv.key,
-                'ts': CloseToNow(),
+                'key': conv.key,
+                'updated_ts': CloseToNow(),
+                'publish_ts': None,
+                'seen': False,
                 'details': {
                     'act': 'conv:create',
                     'sub': 'apple pie',
@@ -171,6 +174,9 @@ async def test_search_query(factory: Factory, conns):
             }
         ]
     }
+    # this is the other way of building queries, so check the output is the same
+    r2 = json.loads(await search(conns, user.id, 'includes:' + user.email))
+    assert r2 == r1
     r = json.loads(await search(conns, user.id, 'banana'))
     assert r == {'conversations': []}
     assert len(json.loads(await search(conns, user.id, conv.key[5:12]))['conversations']) == 1
@@ -204,6 +210,13 @@ async def test_search_query(factory: Factory, conns):
         ('includes:"testing@example.com recipient@foobar.com"', 1),
         ('files:*', 0),
         ('has:files', 0),
+        ('rais', 1),  # prefix search
+        ('rai', 1),  # prefix search
+        ('ra', 0),
+        ('"rais"', 0),
+        ('rais!', 0),
+        ('rais!', 0),
+        ('\x1e' * 5, 0),
     ],
 )
 async def test_search_query_participants(factory: Factory, conns, query, count):
@@ -211,7 +224,7 @@ async def test_search_query_participants(factory: Factory, conns, query, count):
     conv = await factory.create_conv(subject='apple pie', message='eggs, flour and raisins')
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant='recipient@foobar.com'))
 
-    assert len(json.loads(await search(conns, user.id, query))['conversations']) == count
+    assert len(json.loads(await search(conns, user.id, query))['conversations']) == count, repr(query)
 
 
 @pytest.mark.parametrize(
@@ -242,16 +255,18 @@ async def test_search_query_files(factory: Factory, conns, query, count):
 
 async def test_http_search(factory: Factory, cli):
     user = await factory.create_user()
-    conv = await factory.create_conv(subject='spam sandwich', message='processed meat and bread')
+    conv = await factory.create_conv(subject='spam sandwich', message='processed meat and bread', publish=True)
 
     obj = await cli.get_json(factory.url('ui:search', query={'query': 'meat'}))
     assert obj == {
         'conversations': [
             {
-                'conv_key': conv.key,
-                'ts': CloseToNow(),
+                'key': conv.key,
+                'updated_ts': CloseToNow(),
+                'publish_ts': CloseToNow(),
+                'seen': True,
                 'details': {
-                    'act': 'conv:create',
+                    'act': 'conv:publish',
                     'sub': 'spam sandwich',
                     'email': user.email,
                     'creator': user.email,
@@ -267,3 +282,15 @@ async def test_http_search(factory: Factory, cli):
     assert obj == {'conversations': []}
     obj = await cli.get_json(factory.url('ui:search', query={'query': 'bacon'}))
     assert obj == {'conversations': []}
+
+    obj = await cli.get_json(factory.url('ui:search', query={'query': 'x' * 200}))
+    assert obj == {'conversations': []}
+
+
+async def test_search_ranking(factory: Factory, conns):
+    user = await factory.create_user()
+    await factory.create_conv(subject='fish pie', message='could include apples')
+    await factory.create_conv(subject='apple pie', message='eggs, flour and raisins')
+    assert 2 == await conns.main.fetchval('select count(*) from search')
+    results = [c['details']['sub'] for c in json.loads(await search(conns, user.id, 'apple'))['conversations']]
+    assert results == ['apple pie', 'fish pie']

@@ -61,6 +61,21 @@ $status-height: 28px;
 
 #search {
   width: 100%;
+  input, .dropdown-menu {
+    width: 100%;
+  }
+  .dropdown-item.active .text-muted {
+    color: $gray-200 !important;
+  }
+  .rbt-loader {
+    border-width: 3px;
+  }
+}
+
+.search.rbt {
+  .rbt-input-main {
+    width: 100%;
+  }
 }
 
 .login {

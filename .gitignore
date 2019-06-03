@@ -5,6 +5,7 @@
 .pytest_cache/
 .coverage
 /htmlcov/
+/.hypothesis/
 
 /em2/.index/
 
@@ -28,7 +29,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# msic
+# misc
 /.idea/
 /sandbox/
 /activate.local.sh

@@ -221,7 +221,7 @@ create table search (
   action int not null,
   freeze_action int not null default 0,
   user_ids bigint[] not null,
-  ts timestamptz not null default current_timestamp,
+  ts timestamptz,
 
   -- might need other things like size, files, participants
   creator_email varchar(255) not null,
