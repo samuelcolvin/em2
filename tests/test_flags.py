@@ -75,6 +75,11 @@ from .conftest import Factory
         ],
         [{'conv': 'draft', 'flag': 'inbox', 'status': 400, 'message': 'deleted, spam or draft conversation cannot'}],
         [{'conv': 'draft', 'flag': 'archive', 'status': 409, 'message': 'conversation not in inbox'}],
+        [{'conv': 'inbox_unseen', 'mark_seen': True, 'change': {'unseen': -1}}],
+        [
+            {'conv': 'inbox_unseen', 'flag': 'archive', 'change': {'inbox': -1, 'unseen': -1, 'archive': 1}},
+            {'conv': 'inbox_unseen', 'mark_seen': True},
+        ],
     ],
 )
 async def test_set_flag(cli, factory: Factory, conns, user_actions):
@@ -88,28 +93,34 @@ async def test_set_flag(cli, factory: Factory, conns, user_actions):
         'inbox_unseen': await factory.create_conv(publish=True, session_id=other_user.session_id, participants=p),
         'inbox': await factory.create_conv(publish=True, session_id=other_user.session_id, participants=p),
     }
-
     await factory.act(user.id, convs['inbox'].id, ActionModel(act=ActionTypes.seen))
+
     counts = await get_flag_counts(conns, user.id)
     assert counts == {'inbox': 2, 'unseen': 1, 'draft': 1, 'sent': 1, 'archive': 0, 'all': 4, 'spam': 0, 'deleted': 0}
 
     for i, action in enumerate(user_actions):
-        conv, flag = action['conv'], action['flag']
-        r = await cli.post_json(
-            factory.url('ui:set-conv-flag', conv=convs[conv].key, query={'flag': flag}),
-            status=action.get('status', 200),
-        )
-        obj = await r.json()
-        if r.status != 200:
-            assert obj['message'].startswith(action['message']), i
-            continue
+        conv = action['conv']
+        if action.get('mark_seen'):
+            await factory.act(user.id, convs[conv].id, ActionModel(act=ActionTypes.seen))
+            counts_new = await get_flag_counts(conns, user.id)
+        else:
+            flag = action['flag']
+            r = await cli.post_json(
+                factory.url('ui:set-conv-flag', conv=convs[conv].key, query={'flag': flag}),
+                status=action.get('status', 200),
+            )
+            obj = await r.json()
+            if r.status != 200:
+                assert obj['message'].startswith(action['message']), i
+                continue
+            counts_new = obj['counts']
         changes = {}
-        for k, v in obj['counts'].items():
+        for k, v in counts_new.items():
             diff = v - counts[k]
             if diff:
                 changes[k] = diff
-        assert changes == action.get('change', {}), (i, obj['counts'])
-        counts = obj['counts']
+        assert changes == action.get('change', {}), (i, counts_new)
+        counts = counts_new
         true_counts = await get_flag_counts(conns, factory.user.id, force_update=True)
         assert true_counts == counts
 
@@ -473,3 +484,20 @@ async def test_add_remove_add_prt(factory: Factory, conns):
 
     flags = await get_flag_counts(conns, user2.id)
     assert flags == {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
+
+
+async def test_spam_seen(factory: Factory, conns, cli, url, create_ses_email):
+    user = await factory.create_user()
+
+    msg = create_ses_email(to=(user.email,), receipt_extra=dict(spamVerdict={'status': 'FAIL'}))
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=msg)
+    assert r.status == 204, await r.text()
+
+    counts = await get_flag_counts(conns, user.id)
+    assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 1, 'deleted': 0}
+
+    conv_id = await conns.main.fetchval('select id from conversations')
+    await factory.act(user.id, conv_id, ActionModel(act=ActionTypes.seen))
+
+    counts = await get_flag_counts(conns, user.id)
+    assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 1, 'deleted': 0}

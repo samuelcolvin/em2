@@ -213,7 +213,9 @@ async def test_ses_new_spam(factory: Factory, db_conn, cli, url, create_ses_emai
 
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
-    assert True is await db_conn.fetchval('select spam from participants where user_id=$1', user.id)
+    assert (True, True) == tuple(
+        await db_conn.fetchrow('select inbox, spam from participants where user_id=$1', user.id)
+    )
 
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
 

@@ -469,6 +469,9 @@ class SetConvFlag(View):
 
 
 class GetConvCounts(View):
+    class QueryModel(BaseModel):
+        force_update: bool = False
+
     labels_sql = """
     select l.id, name, color, description
     from labels l
@@ -479,7 +482,8 @@ class GetConvCounts(View):
     """
 
     async def call(self):
-        flags = await get_flag_counts(self.conns, self.session.user_id)
+        force_update = parse_request_query(self.request, self.QueryModel).force_update
+        flags = await get_flag_counts(self.conns, self.session.user_id, force_update=force_update)
         label_counts = await get_label_counts(self.conns, self.session.user_id)
         labels = [
             dict(id=r[0], name=r[1], color=r[2], description=r[3], count=label_counts[str(r[0])])

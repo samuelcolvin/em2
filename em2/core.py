@@ -555,7 +555,7 @@ async def apply_actions(
     """
     actions_with_ids: List[Tuple[int, Optional[int], ActionModel]] = []
     act_cls = _Act(conns, actor_user_id, spam, warnings)
-    actor_user_id_seen = None
+    decrement_seen_id = None
     from_deleted, from_archive, already_inbox = [], [], []
     async with conns.main.transaction():
         # IMPORTANT must not do anything that could be slow (eg. networking) inside this transaction,
@@ -569,11 +569,21 @@ async def apply_actions(
 
     if actions_with_ids:
         # the actor is assumed to have seen the conversation as they've acted upon it
-        actor_user_id_seen = await conns.main.fetchval(
-            'update participants set seen=true where conv=$1 and user_id=$2 and seen is not true returning user_id',
+        v = await conns.main.execute(
+            'update participants set seen=true where conv=$1 and user_id=$2 and seen is not true',
             conv_id,
             actor_user_id,
         )
+        if v == 'UPDATE 1':
+            # decrement unseen for the actor if we did mark the conversation as seen and it's in the inbox
+            decrement_seen_id = await conns.main.fetchval(
+                """
+                select user_id from participants
+                where conv=$1 and user_id=$2 and inbox is true and deleted is not true and spam is not true
+                """,
+                conv_id,
+                actor_user_id,
+            )
         # everyone else hasn't seen this action if it's "worth seeing"
         if any(a.act not in _meta_action_types for a in actions):
             from_deleted, from_archive, already_inbox = await user_flag_moves(conns, conv_id, actor_user_id)
@@ -615,8 +625,9 @@ async def apply_actions(
             for u_id in act_cls.new_user_ids
         ]
 
-    if actor_user_id_seen:
-        updates.append(UpdateFlag(actor_user_id_seen, [(ConvFlags.unseen, -1)]))
+    if decrement_seen_id:
+        updates.append(UpdateFlag(decrement_seen_id, [(ConvFlags.unseen, -1)]))
+
     if updates:
         await update_conv_flags(conns, *updates)
     await search_update(conns, conv_id, actions_with_ids, files)
