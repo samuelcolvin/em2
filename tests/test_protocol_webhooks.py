@@ -221,3 +221,24 @@ async def test_ses_new_spam(factory: Factory, db_conn, cli, url, create_ses_emai
 
     warnings = await db_conn.fetchval("select warnings from actions where act='message:add'")
     assert json.loads(warnings) == {'spam': 'FAIL'}
+
+
+async def test_no_message_id(factory: Factory, db_conn, cli, url, create_ses_email):
+    user = await factory.create_user()
+
+    msg = create_ses_email(to=(user.email,), message_id=None)
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=msg)
+    assert r.status == 204, await r.text()
+
+    assert 0 == await db_conn.fetchval('select count(*) from conversations')
+
+
+async def test_em2_id(factory: Factory, db_conn, cli, url, create_ses_email):
+    user = await factory.create_user()
+
+    msg = create_ses_email(to=(user.email,), headers={'em2-id': 'xxx'})
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=msg)
+    assert r.status == 204, await r.text()
+
+    assert 0 == await db_conn.fetchval('select count(*) from conversations')
+

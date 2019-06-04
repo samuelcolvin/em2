@@ -385,7 +385,8 @@ def _fix_create_email():
         headers=None,
     ):
         email_msg = EmailMessage()
-        email_msg['Message-ID'] = message_id
+        if message_id is not None:
+            email_msg['Message-ID'] = message_id
         email_msg['Subject'] = subject
         email_msg['From'] = e_from
         email_msg['To'] = ','.join(to)
@@ -423,7 +424,9 @@ def _fix_create_ses_email(dummy_server, sns_data, create_email):
         dummy_server.app['s3_files'][key] = msg.as_string()
 
         headers = headers or {}
-        h = [{'name': 'Message-ID', 'value': message_id}] + [{'name': k, 'value': v} for k, v in headers.items()]
+        h = [{'name': k, 'value': v} for k, v in headers.items()]
+        if message_id is not None:
+            h.append({'name': 'Message-ID', 'value': message_id})
         mail = dict(headers=h, commonHeaders={'to': list(to)})
         receipt = dict(
             action={'type': 'S3', 'bucketName': 'em2-testing', 'objectKeyPrefix': '', 'objectKey': key},
