@@ -82,7 +82,11 @@ async def _record_email_message(request, message: Dict):
         # this is an em2 message and should be received via the proper route too
         return
 
-    message_id = headers['message-id'].strip('<> ')
+    try:
+        message_id = headers['message-id'].strip('<> ')
+    except KeyError:
+        # malformed email, ignore
+        return
     common_headers = mail['commonHeaders']
     to, cc = common_headers.get('to', []), common_headers.get('cc', [])
     # make sure we don't process unnecessary messages

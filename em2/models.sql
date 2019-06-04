@@ -172,7 +172,7 @@ create table sends (
   action bigint references actions not null,
   outbound boolean not null default false,
   node varchar(255),  -- null for smtp
-  ref varchar(100),
+  ref varchar(500),
   complete boolean not null default false,
   storage varchar(100),
   unique (action, node),
