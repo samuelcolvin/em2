@@ -8,7 +8,7 @@ from pytest_toolbox.comparison import RegexStr
 
 from em2.background import push_all
 from em2.core import File, conv_actions_json, get_flag_counts
-from em2.protocol.views.smtp_utils import process_smtp, InvalidEmailMsg
+from em2.protocol.views.smtp_utils import InvalidEmailMsg, process_smtp
 from em2.utils.smtp import CopyToTemp, find_smtp_files
 
 from .conftest import Factory
