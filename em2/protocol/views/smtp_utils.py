@@ -96,8 +96,12 @@ class ProcessSMTP:
         assert actor_email, actor_email
         actor_email = actor_email.lower()
 
-        message_id = msg.get('Message-ID', '').strip('<> ')
-        timestamp = email.utils.parsedate_to_datetime(msg['Date'])
+        try:
+            message_id = msg.get('Message-ID', '').strip('<> ')
+            timestamp = email.utils.parsedate_to_datetime(msg['Date'])
+        except (KeyError, TypeError, ValueError) as e:
+            logger.warning('invalid email %s: %s', e.__class__.__name__, e, exc_info=True, extra={msg: msg})
+            return
 
         conv_id, original_actor_id = await self.get_conv(msg)
         actor_id = await get_create_user(self.conns, actor_email, UserTypes.remote_other)
