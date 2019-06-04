@@ -1,10 +1,8 @@
 import asyncio
 import base64
-import email
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime
 from email.message import EmailMessage
 from io import BytesIO
 from typing import List, Optional
@@ -391,7 +389,8 @@ def _fix_create_email():
         email_msg['Subject'] = subject
         email_msg['From'] = e_from
         email_msg['To'] = ','.join(to)
-        email_msg['Date'] = email.utils.format_datetime(datetime(2032, 1, 1, 12, 0))
+        # email.utils.format_datetime(datetime(2032, 1, 1, 12, 0))
+        email_msg['Date'] = 'Thu, 01 Jan 2032 12:00:00 -0000'
 
         for k, v in (headers or {}).items():
             email_msg[k] = v

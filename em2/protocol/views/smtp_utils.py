@@ -29,6 +29,10 @@ logger = logging.getLogger('em2.protocol.views.smtp')
 __all__ = ['remove_participants', 'get_email_recipients', 'process_smtp']
 
 
+class InvalidEmailMsg(ValueError):
+    pass
+
+
 async def remove_participants(conn: BuildPgConnection, conv_id: int, ts: datetime, user_ids: List[int]):
     """
     Remove participants from a conversation, doesn't use actions since apply_actions is not used, and actor changes.
@@ -93,15 +97,22 @@ class ProcessSMTP:
     async def run(self, msg: EmailMessage, recipients: Set[str], storage: str, spam: bool, warnings: dict):
         # TODO deal with non multipart
         _, actor_email = email.utils.parseaddr(msg['From'])
-        assert actor_email, actor_email
+        if not actor_email:
+            logger.warning('invalid smtp msg: "From" header', exc_info=True, extra={msg: msg})
+            raise InvalidEmailMsg('invalid "From" header')
         actor_email = actor_email.lower()
 
         try:
-            message_id = msg.get('Message-ID', '').strip('<> ')
+            message_id = msg['Message-ID'].strip('<> ')
+        except AttributeError as e:
+            logger.warning('invalid smtp msg (Message-ID): %s', e, exc_info=True, extra={msg: msg})
+            raise InvalidEmailMsg('no "Message-ID" header found') from e
+
+        try:
             timestamp = email.utils.parsedate_to_datetime(msg['Date'])
-        except (KeyError, TypeError, ValueError) as e:
-            logger.warning('invalid email %s: %s', e.__class__.__name__, e, exc_info=True, extra={msg: msg})
-            return
+        except (TypeError, ValueError) as e:
+            logger.warning('invalid smtp msg (Date) %s: %s', e.__class__.__name__, e, exc_info=True, extra={msg: msg})
+            raise InvalidEmailMsg('invalid "Date" header')
 
         conv_id, original_actor_id = await self.get_conv(msg)
         actor_id = await get_create_user(self.conns, actor_email, UserTypes.remote_other)

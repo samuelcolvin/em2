@@ -1,4 +1,5 @@
 import json
+from email.message import EmailMessage
 
 import pytest
 from aiohttp.web_exceptions import HTTPGatewayTimeout
@@ -7,7 +8,7 @@ from pytest_toolbox.comparison import RegexStr
 
 from em2.background import push_all
 from em2.core import File, conv_actions_json, get_flag_counts
-from em2.protocol.views.smtp_utils import process_smtp
+from em2.protocol.views.smtp_utils import process_smtp, InvalidEmailMsg
 from em2.utils.smtp import CopyToTemp, find_smtp_files
 
 from .conftest import Factory
@@ -365,3 +366,37 @@ async def test_reply_attachment(factory, conns, db_conn, create_email, send_to_r
             }
         ],
     }
+
+
+async def test_invalid_email_from(conns):
+    msg = EmailMessage()
+    msg['To'] = 'testing@example.com'
+    msg.set_content('testing')
+
+    with pytest.raises(InvalidEmailMsg) as exc_info:
+        await process_smtp(conns, msg, {'testing@example.com'}, 's3://foobar/whatever')
+    assert exc_info.value.args[0] == 'invalid "From" header'
+
+
+async def test_invalid_email_msg_id(conns):
+    msg = EmailMessage()
+    msg['From'] = 'other@remote.com'
+    msg['To'] = 'testing@example.com'
+    msg.set_content('testing')
+
+    with pytest.raises(InvalidEmailMsg) as exc_info:
+        await process_smtp(conns, msg, {'testing@example.com'}, 's3://foobar/whatever')
+    assert exc_info.value.args[0] == 'no "Message-ID" header found'
+
+
+async def test_invalid_email_no_date(conns):
+    msg = EmailMessage()
+    msg['From'] = 'other@remote.com'
+    msg['To'] = 'testing@example.com'
+    msg['Message-ID'] = 'testing@remote.com'
+    # msg['Date'] = 'Thu, 01 Jan 2032 12:00:00 -0000'
+    msg.set_content('testing')
+
+    with pytest.raises(InvalidEmailMsg) as exc_info:
+        await process_smtp(conns, msg, {'testing@example.com'}, 's3://foobar/whatever')
+    assert exc_info.value.args[0] == 'invalid "Date" header'

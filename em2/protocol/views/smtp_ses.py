@@ -23,7 +23,7 @@ from em2.utils.db import conns_from_request
 from em2.utils.smtp import parse_smtp
 from em2.utils.storage import S3
 
-from .smtp_utils import get_email_recipients, process_smtp, remove_participants
+from .smtp_utils import InvalidEmailMsg, get_email_recipients, process_smtp, remove_participants
 
 logger = logging.getLogger('em2.protocol.ses')
 
@@ -112,7 +112,11 @@ async def _record_email_message(request, message: Dict):
     msg = parse_smtp(body)
     del body
     conns = conns_from_request(request)
-    await process_smtp(conns, msg, recipients, f's3://{bucket}/{path}', spam=spam, warnings=warnings)
+    try:
+        await process_smtp(conns, msg, recipients, f's3://{bucket}/{path}', spam=spam, warnings=warnings)
+    except InvalidEmailMsg:
+        # TODO mark message for deletion from S3
+        pass
 
 
 async def _record_email_event(request, message: Dict):
