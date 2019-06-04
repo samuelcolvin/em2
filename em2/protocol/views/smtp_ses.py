@@ -66,19 +66,23 @@ async def ses_webhook(request):
 async def _record_email_message(request, message: Dict):
     """
     Record the email, check email should be processed before downloading from s3.
+
+    https://docs.aws.amazon.com/ses/latest/DeveloperGuide/receiving-email-notifications-contents.html
+
+    TODO if we don't want the message, store it in a new table to be deleted later
     """
-    # TODO if we don't want the message, store it in a new table to be deleted later
     mail = message['mail']
+    receipt = message['receipt']
     if mail.get('messageId') == 'AMAZON_SES_SETUP_NOTIFICATION':
         logger.info('SES setup notification, ignoring')
         return
 
-    headers = {h['name']: h['value'] for h in mail['headers']}
-    if headers.get('EM2-ID'):
+    headers = {h['name'].lower(): h['value'] for h in mail['headers']}
+    if headers.get('em2-id'):
         # this is an em2 message and should be received via the proper route too
         return
 
-    message_id = headers['Message-ID'].strip('<> ')
+    message_id = headers['message-id'].strip('<> ')
     common_headers = mail['commonHeaders']
     to, cc = common_headers.get('to', []), common_headers.get('cc', [])
     # make sure we don't process unnecessary messages
@@ -86,13 +90,14 @@ async def _record_email_message(request, message: Dict):
 
     warnings = {}
     for k in ('spam', 'virus', 'spf', 'dkim', 'dmarc'):
-        status = mail[k + 'Verdict']['status']
-        if status != 'PASS':
+        status = receipt[k + 'Verdict']['status']
+        # DISABLED when "Enable spam and virus scanning" is unchecked
+        if status not in {'PASS', 'DISABLED'}:
             warnings[k] = status
 
     spam = 'spam' in warnings or 'virus' in warnings
 
-    s3_action = message['receipt']['action']
+    s3_action = receipt['action']
     bucket, prefix, path = s3_action['bucketName'], s3_action['objectKeyPrefix'], s3_action['objectKey']
     if prefix:
         path = f'{prefix}/{path}'

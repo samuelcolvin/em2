@@ -417,7 +417,7 @@ def _fix_create_ses_email(dummy_server, sns_data, create_email):
         key='foobar',
         headers=None,
         message_id='message-id@remote.com',
-        mail_extra=None,
+        receipt_extra=None,
         **kwargs,
     ):
         msg = create_email(*args, to=to, message_id=message_id, headers=headers, **kwargs)
@@ -425,22 +425,17 @@ def _fix_create_ses_email(dummy_server, sns_data, create_email):
 
         headers = headers or {}
         h = [{'name': 'Message-ID', 'value': message_id}] + [{'name': k, 'value': v} for k, v in headers.items()]
-        mail = dict(
-            headers=h,
-            commonHeaders={'to': list(to)},
+        mail = dict(headers=h, commonHeaders={'to': list(to)})
+        receipt = dict(
+            action={'type': 'S3', 'bucketName': 'em2-testing', 'objectKeyPrefix': '', 'objectKey': key},
             spamVerdict={'status': 'PASS'},
             virusVerdict={'status': 'PASS'},
             spfVerdict={'status': 'PASS'},
             dkimVerdict={'status': 'PASS'},
             dmarcVerdict={'status': 'PASS'},
         )
-        mail.update(mail_extra or {})
-        return sns_data(
-            message_id,
-            notificationType='Received',
-            mail=mail,
-            receipt={'action': {'type': 'S3', 'bucketName': 'em2-testing', 'objectKeyPrefix': '', 'objectKey': key}},
-        )
+        receipt.update(receipt_extra or {})
+        return sns_data(message_id, notificationType='Received', mail=mail, receipt=receipt)
 
     return run
 

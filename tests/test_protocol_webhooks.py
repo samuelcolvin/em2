@@ -207,7 +207,7 @@ async def test_ses_reply_different_email(factory: Factory, db_conn, conns, cli, 
 async def test_ses_new_spam(factory: Factory, db_conn, cli, url, create_ses_email):
     user = await factory.create_user()
 
-    msg = create_ses_email(to=(user.email,), mail_extra=dict(spamVerdict={'status': 'FAIL'}))
+    msg = create_ses_email(to=(user.email,), receipt_extra=dict(spamVerdict={'status': 'FAIL'}))
     r = await cli.post(url('protocol:webhook-ses', token='testing'), json=msg)
     assert r.status == 204, await r.text()
 
