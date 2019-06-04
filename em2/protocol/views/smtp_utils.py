@@ -245,7 +245,8 @@ def get_smtp_body(msg: EmailMessage, message_id: str, existing_conv: bool) -> Tu
     body = m.get_content()
     is_html = m.get_content_type() == 'text/html'
     if is_html and m['Content-Transfer-Encoding'] == 'quoted-printable':
-        body = quopri.decodestring(body).decode()
+        # are there any other special characters to remove?
+        body = quopri.decodestring(body.replace('\xa0', '')).decode()
 
     if not body:
         logger.warning('Unable to find body in email "%s"', message_id)
