@@ -10,7 +10,6 @@ export const ConvList = ({conversations, user_email}) => conversations.map((conv
   <Link key={i} to={`/${conv.key.substr(0, 10)}/`} className={conv.seen ? 'seen' : ''}>
     <div className="subject">{conv.details.sub}</div>
     <div className="summary">
-      {!conv.publish_ts && <span className="badge badge-dark mr-2">Draft</span>}
       <span className="body">
         {conv.details.email === user_email ? 'you' : conv.details.email}: {conv.details.prev}
       </span>

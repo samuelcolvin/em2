@@ -72,10 +72,11 @@ async def _record_email_message(request, message: Dict):
     TODO if we don't want the message, store it in a new table to be deleted later
     """
     mail = message['mail']
-    receipt = message['receipt']
     if mail.get('messageId') == 'AMAZON_SES_SETUP_NOTIFICATION':
         logger.info('SES setup notification, ignoring')
         return
+
+    receipt = message['receipt']
 
     headers = {h['name'].lower(): h['value'] for h in mail['headers']}
     if headers.get('em2-id'):
