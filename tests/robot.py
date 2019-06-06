@@ -129,11 +129,7 @@ class Client:
 
     async def _post_json(self, view_name, *, headers_=None, inc_session_id_=True, **request_data):
         # TODO origin will need to be fixed for non local host usage
-        headers = {
-            'Content-Type': 'application/json',
-            'Origin': self.origin,
-            'Referer': self.origin + '/testing.js',
-        }
+        headers = {'Content-Type': 'application/json', 'Origin': self.origin, 'Referer': self.origin + '/testing.js'}
         if headers_:
             headers.update(headers_)
         headers = {k: v for k, v in headers.items() if v is not None}
