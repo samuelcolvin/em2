@@ -193,7 +193,7 @@ const Conversations = ({recent_searches, convs, selection, query, ongoing_search
               {c.details.sub}
             </Highlighter>
           </div>
-          <div className="text-muted small text-right">
+          <div className="text-muted small">
             {c.key.substr(0, 7)}
           </div>
         </div>
