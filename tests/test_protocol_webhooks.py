@@ -1,3 +1,4 @@
+import base64
 import json
 from datetime import datetime, timezone
 
@@ -207,15 +208,68 @@ async def test_ses_reply_different_email(factory: Factory, db_conn, conns, cli, 
 async def test_ses_new_spam(factory: Factory, db_conn, cli, url, create_ses_email):
     user = await factory.create_user()
 
-    msg = create_ses_email(to=(user.email,), mail_extra=dict(spamVerdict={'status': 'FAIL'}))
+    msg = create_ses_email(to=(user.email,), receipt_extra=dict(spamVerdict={'status': 'FAIL'}))
     r = await cli.post(url('protocol:webhook-ses', token='testing'), json=msg)
     assert r.status == 204, await r.text()
 
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
 
-    assert True is await db_conn.fetchval('select spam from participants where user_id=$1', user.id)
+    assert (True, True) == tuple(
+        await db_conn.fetchrow('select inbox, spam from participants where user_id=$1', user.id)
+    )
 
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
 
     warnings = await db_conn.fetchval("select warnings from actions where act='message:add'")
     assert json.loads(warnings) == {'spam': 'FAIL'}
+
+
+async def test_no_message_id(factory: Factory, db_conn, cli, url, create_ses_email):
+    user = await factory.create_user()
+
+    msg = create_ses_email(to=(user.email,), message_id=None)
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=msg)
+    assert r.status == 204, await r.text()
+
+    assert 0 == await db_conn.fetchval('select count(*) from conversations')
+
+
+async def test_em2_id(factory: Factory, db_conn, cli, url, create_ses_email):
+    user = await factory.create_user()
+
+    msg = create_ses_email(to=(user.email,), headers={'em2-id': 'xxx'})
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=msg)
+    assert r.status == 204, await r.text()
+
+    assert 0 == await db_conn.fetchval('select count(*) from conversations')
+
+
+async def test_invalid_json(cli, url):
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), data=b'xxx')
+    assert r.status == 400, await r.text()
+    assert await r.json() == {'message': 'invalid json'}
+
+
+async def test_wrong_token(cli, url):
+    r = await cli.post(url('protocol:webhook-ses', token='wrong'), data=b'xxx')
+    assert r.status == 403, await r.text()
+    assert await r.json() == {'message': 'invalid url'}
+
+
+async def test_ses_setup(cli, url, sns_data):
+    data = sns_data('testing', notificationType='Received', mail={'messageId': 'AMAZON_SES_SETUP_NOTIFICATION'})
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
+    assert r.status == 204, await r.text()
+
+
+async def test_sns_subscribe(cli, url, dummy_server, mocker):
+    mocker.patch('em2.protocol.views.smtp_ses.x509.load_pem_x509_certificate')
+    data = {
+        'Type': 'SubscriptionConfirmation',
+        'SigningCertURL': dummy_server.server_name + '/sns_signing_url.pem',
+        'Signature': base64.b64encode(b'the signature').decode(),
+        'SubscribeURL': dummy_server.server_name + '/status/200/',
+    }
+    r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
+    assert r.status == 204, await r.text()
+    assert dummy_server.log == ['GET sns_signing_url.pem', 'HEAD status/200']

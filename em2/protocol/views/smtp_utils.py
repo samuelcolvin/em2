@@ -29,6 +29,10 @@ logger = logging.getLogger('em2.protocol.views.smtp')
 __all__ = ['remove_participants', 'get_email_recipients', 'process_smtp']
 
 
+class InvalidEmailMsg(ValueError):
+    pass
+
+
 async def remove_participants(conn: BuildPgConnection, conv_id: int, ts: datetime, user_ids: List[int]):
     """
     Remove participants from a conversation, doesn't use actions since apply_actions is not used, and actor changes.
@@ -93,11 +97,22 @@ class ProcessSMTP:
     async def run(self, msg: EmailMessage, recipients: Set[str], storage: str, spam: bool, warnings: dict):
         # TODO deal with non multipart
         _, actor_email = email.utils.parseaddr(msg['From'])
-        assert actor_email, actor_email
+        if not actor_email:
+            logger.warning('invalid smtp msg: "From" header', exc_info=True, extra={msg: msg})
+            raise InvalidEmailMsg('invalid "From" header')
         actor_email = actor_email.lower()
 
-        message_id = msg.get('Message-ID', '').strip('<> ')
-        timestamp = email.utils.parsedate_to_datetime(msg['Date'])
+        try:
+            message_id = msg['Message-ID'].strip('<> ')
+        except AttributeError as e:
+            logger.warning('invalid smtp msg (Message-ID): %s', e, exc_info=True, extra={msg: msg})
+            raise InvalidEmailMsg('no "Message-ID" header found') from e
+
+        try:
+            timestamp = email.utils.parsedate_to_datetime(msg['Date'])
+        except (TypeError, ValueError) as e:
+            logger.warning('invalid smtp msg (Date) %s: %s', e.__class__.__name__, e, exc_info=True, extra={msg: msg})
+            raise InvalidEmailMsg('invalid "Date" header')
 
         conv_id, original_actor_id = await self.get_conv(msg)
         actor_id = await get_create_user(self.conns, actor_email, UserTypes.remote_other)
@@ -241,7 +256,8 @@ def get_smtp_body(msg: EmailMessage, message_id: str, existing_conv: bool) -> Tu
     body = m.get_content()
     is_html = m.get_content_type() == 'text/html'
     if is_html and m['Content-Transfer-Encoding'] == 'quoted-printable':
-        body = quopri.decodestring(body).decode()
+        # are there any other special characters to remove?
+        body = quopri.decodestring(body.replace('\xa0', '')).decode()
 
     if not body:
         logger.warning('Unable to find body in email "%s"', message_id)

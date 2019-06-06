@@ -1,10 +1,8 @@
 import asyncio
 import base64
-import email
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime
 from email.message import EmailMessage
 from io import BytesIO
 from typing import List, Optional
@@ -387,11 +385,13 @@ def _fix_create_email():
         headers=None,
     ):
         email_msg = EmailMessage()
-        email_msg['Message-ID'] = message_id
+        if message_id is not None:
+            email_msg['Message-ID'] = message_id
         email_msg['Subject'] = subject
         email_msg['From'] = e_from
         email_msg['To'] = ','.join(to)
-        email_msg['Date'] = email.utils.format_datetime(datetime(2032, 1, 1, 12, 0))
+        # email.utils.format_datetime(datetime(2032, 1, 1, 12, 0))
+        email_msg['Date'] = 'Thu, 01 Jan 2032 12:00:00 -0000'
 
         for k, v in (headers or {}).items():
             email_msg[k] = v
@@ -417,30 +417,27 @@ def _fix_create_ses_email(dummy_server, sns_data, create_email):
         key='foobar',
         headers=None,
         message_id='message-id@remote.com',
-        mail_extra=None,
+        receipt_extra=None,
         **kwargs,
     ):
         msg = create_email(*args, to=to, message_id=message_id, headers=headers, **kwargs)
         dummy_server.app['s3_files'][key] = msg.as_string()
 
         headers = headers or {}
-        h = [{'name': 'Message-ID', 'value': message_id}] + [{'name': k, 'value': v} for k, v in headers.items()]
-        mail = dict(
-            headers=h,
-            commonHeaders={'to': list(to)},
+        h = [{'name': k, 'value': v} for k, v in headers.items()]
+        if message_id is not None:
+            h.append({'name': 'Message-ID', 'value': message_id})
+        mail = dict(headers=h, commonHeaders={'to': list(to)})
+        receipt = dict(
+            action={'type': 'S3', 'bucketName': 'em2-testing', 'objectKeyPrefix': '', 'objectKey': key},
             spamVerdict={'status': 'PASS'},
             virusVerdict={'status': 'PASS'},
             spfVerdict={'status': 'PASS'},
             dkimVerdict={'status': 'PASS'},
             dmarcVerdict={'status': 'PASS'},
         )
-        mail.update(mail_extra or {})
-        return sns_data(
-            message_id,
-            notificationType='Received',
-            mail=mail,
-            receipt={'action': {'type': 'S3', 'bucketName': 'em2-testing', 'objectKeyPrefix': '', 'objectKey': key}},
-        )
+        receipt.update(receipt_extra or {})
+        return sns_data(message_id, notificationType='Received', mail=mail, receipt=receipt)
 
     return run
 
