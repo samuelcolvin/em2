@@ -70,11 +70,14 @@ $status-height: 28px;
   .rbt-loader {
     border-width: 3px;
   }
-}
-
-.search.rbt {
-  .rbt-input-main {
-    width: 100%;
+  .item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    > div {
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap;
+    }
   }
 }
 

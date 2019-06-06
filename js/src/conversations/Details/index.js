@@ -3,7 +3,7 @@ import {Button, Col, Row, UncontrolledTooltip} from 'reactstrap'
 import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
-import {WithContext, sleep, Loading, confirm_modal} from 'reactstrap-toolbox'
+import {WithContext, Loading, confirm_modal} from 'reactstrap-toolbox'
 import Message from './Message'
 import RightPanel from './RightPanel'
 import Subject from './Subject'
@@ -70,12 +70,9 @@ class ConvDetailsView extends React.Component {
         this.action_ids = null
         this.setState({locked: false})
       }
-      if (!this.marked_seen) {
+      if (!this.marked_seen && this.mounted) {
         this.marked_seen = true
-        await sleep(1000)
-        if (this.mounted) {
-          await window.logic.conversations.seen(this.state.conv.key)
-        }
+        await window.logic.conversations.seen(this.state.conv.key)
       }
     }
   }

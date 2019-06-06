@@ -1,10 +1,12 @@
 import secrets
+from typing import Tuple
 
 from aiohttp import web
 from aiohttp.abc import Application
 from aiohttp.web_exceptions import HTTPForbidden
 from aiohttp.web_fileresponse import FileResponse
 from atoolbox.utils import slugify
+from yarl import URL
 
 from em2.settings import SRC_DIR, Settings
 
@@ -54,17 +56,14 @@ def add_access_control(app: web.Application):
 
 
 class MakeUrl:
-    __slots__ = ('main_app',)
+    __slots__ = 'main_app', 'settings'
 
     def __init__(self, main_app: Application):
+        self.settings: Settings = main_app['settings']
         self.main_app = main_app
 
-    def __call__(self, name, *, query=None, **kwargs):
-        # TODO if this is used in main code base it should be moved there and reused.
-        try:
-            app_name, route_name = name.split(':')
-        except ValueError:
-            raise RuntimeError('not app name, use format "<app name>:<route name>"')
+    def get_path(self, name: str, *, query=None, **kwargs) -> URL:
+        app_name, route_name = self._split_name(name)
 
         try:
             app = self.main_app[app_name + '_app']
@@ -82,6 +81,24 @@ class MakeUrl:
         if query:
             url = url.with_query(query)
         return url
+
+    def get_url(self, name: str, *, query=None, **kwargs) -> str:
+        path = self.get_path(name, query=query, **kwargs)
+        if self.settings.domain == 'localhost':
+            host = f'http://{self.settings.domain}:8000'
+        else:
+            app_name, _ = self._split_name(name)
+            host = f'https://{app_name}.{self.settings.domain}'
+        return f'{host}{path}'
+
+    @staticmethod
+    def _split_name(name: str) -> Tuple[str, str]:
+        try:
+            app_name, route_name = name.split(':')
+        except ValueError:
+            raise RuntimeError('no app name, use format "<app name>:<route name>"')
+        else:
+            return app_name, route_name
 
 
 def full_url(settings: Settings, app: str, path: str):

@@ -186,7 +186,7 @@ const Conversations = ({recent_searches, convs, selection, query, ongoing_search
     <DropdownItem key="h" header>Conversations</DropdownItem>,
     ...convs.map((c, i) => (
       <DropdownItem key={c.key} active={selection === i + 1} onClick={() => onSelect(c.key)}>
-        <div className="d-flex justify-content-between">
+        <div className="item">
           <div>
             <FontAwesomeIcon icon={fas.faEnvelope} className="mr-2 text-muted small"/>
             <Highlighter search={query}>
