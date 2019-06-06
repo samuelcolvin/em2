@@ -20,7 +20,6 @@ sys.path.append(str(THIS_DIR.parent))
 from em2.main import create_app  # noqa: E402
 from em2.utils.web import MakeUrl  # noqa: E402
 
-host = 'localhost:8000'
 email = 'robot@example.com'
 password = 'testing'
 
@@ -33,6 +32,7 @@ class Client:
         self._make_path = MakeUrl(main_app)
         self.convs = []
         self.em2_session_id = em2_session_id
+        self.origin = main_app['expected_origin'] + '/testing.js'
 
     async def run(self):
         while True:
@@ -131,8 +131,8 @@ class Client:
         # TODO origin will need to be fixed for non local host usage
         headers = {
             'Content-Type': 'application/json',
-            'Origin': 'http://localhost:3000',
-            'Referer': 'http://localhost:3000/testing.js',
+            'Origin': self.origin,
+            'Referer': self.origin + '/testing.js',
         }
         if headers_:
             headers.update(headers_)
@@ -152,16 +152,9 @@ class Client:
     def _make_url(self, view_name, *, query=None, inc_session_id_=True, **kwargs):
         if view_name.startswith('http'):
             return view_name
-        assert not host.endswith('/'), f'host must not end with "/": "{host}"'
         if inc_session_id_:
             kwargs['session_id'] = self.em2_session_id
-        path = self._make_path(view_name, query=query, **kwargs)
-        app = view_name.split(':', 1)[0]
-
-        if 'localhost' in host:
-            return f'http://{host}{path}'
-        else:
-            return f'https://{app}.{host}{path}'
+        return self._make_path.get_url(view_name, query=query, **kwargs)
 
 
 async def main():

@@ -835,7 +835,7 @@ async def create_conv(
             ts,
         )
         if conv_id is None:
-            raise JsonErrors.HTTPConflict(error='key conflicts with existing conversation')
+            raise JsonErrors.HTTPConflict(message='key conflicts with existing conversation')
 
         # TODO currently only email is used
         participants = set(p.email for p in conv.participants)

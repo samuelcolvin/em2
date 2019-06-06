@@ -159,7 +159,7 @@ async def _fix_cli(settings, db_conn, aiohttp_client, redis, loop):
 
 @pytest.fixture(name='url')
 def _fix_url(cli):
-    return MakeUrl(cli.server.app)
+    return MakeUrl(cli.server.app).get_path
 
 
 @dataclass
