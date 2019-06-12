@@ -101,7 +101,7 @@ export default withRouter(({history, conv_state, publish, lock_subject, set_subj
   return (
     <div className="conv-subject">
       <div className="box d-flex justify-content-between flex-wrap">
-        <div className="align-self-center pb-1">
+        <div className="align-self-center">
           <h2 className="conv-title">{conv_state.conv.subject}</h2>
         </div>
         <div>

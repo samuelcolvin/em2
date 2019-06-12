@@ -6,8 +6,8 @@ import {WithContext} from 'reactstrap-toolbox'
 import ParticipantsInput from '../ParticipantsInput'
 
 const scroll_threshold = 108
-// needs to match $grid-breakpoints: lg
-const width_threshold = 992
+// needs to match $grid-breakpoints: xl
+const width_threshold = 1200
 const fixed_top = '103px'
 
 const ScrollSpy = ({children}) => {
