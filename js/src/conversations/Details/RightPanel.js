@@ -5,23 +5,25 @@ import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext} from 'reactstrap-toolbox'
 import ParticipantsInput from '../ParticipantsInput'
 
+const scroll_threshold = 108
+// needs to match $grid-breakpoints: lg
+const width_threshold = 992
+const fixed_top = '103px'
 
 const ScrollSpy = ({children}) => {
   const scroll_ref = React.createRef()
   let fixed = false
 
-  const scroll_threshold = 108
-  const fixed_top = '103px'
-
   const set_fixed = () => {
-    if (!fixed && window.scrollY > scroll_threshold) {
+    const fix = window.scrollY > scroll_threshold && document.body.offsetWidth > width_threshold
+    if (!fixed && fix) {
       fixed = true
       if (scroll_ref.current) {
         scroll_ref.current.style.position = 'fixed'
         scroll_ref.current.style.top = fixed_top
         scroll_ref.current.style.width = document.getElementById('main').offsetWidth / 4 - 30 + 'px'
       }
-    } else if (fixed && window.scrollY <= scroll_threshold) {
+    } else if (fixed && !fix) {
       fixed = false
       if (scroll_ref.current) {
         scroll_ref.current.style.position = null

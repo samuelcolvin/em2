@@ -61,6 +61,9 @@ $status-height: 28px;
 
 #search {
   width: 100%;
+  input {
+    border: none;
+  }
   input, .dropdown-menu {
     width: 100%;
   }
@@ -189,6 +192,15 @@ $status-height: 28px;
     }
     &:first-child {
       border-radius: $border-radius $border-radius 0 0;
+    }
+  }
+}
+
+.conv-subject {
+  .icon {
+    @extend .mr-2;
+    @include media-breakpoint-down(md) {
+      display: none;
     }
   }
 }

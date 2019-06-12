@@ -191,7 +191,16 @@ class ConvDetailsView extends React.Component {
           ) : null}
         </div>
         <Row>
-          <Col md="8">
+          <Col lg="4 order-lg-8">
+            <RightPanel
+              edit_locked={edit_locked}
+              state={this.state}
+              add_participants={this.add_participants}
+              remove_participants={this.remove_participants}
+              set_participants={extra_prts => this.setState({extra_prts})}
+            />
+          </Col>
+          <Col lg="8">
             {this.state.conv.messages.map(msg => (
               <Message msg={msg}
                        edit_locked={edit_locked}
@@ -231,15 +240,6 @@ class ConvDetailsView extends React.Component {
                 </div>
               </div>
             </div>
-          </Col>
-          <Col md="4">
-            <RightPanel
-              edit_locked={edit_locked}
-              state={this.state}
-              add_participants={this.add_participants}
-              remove_participants={this.remove_participants}
-              set_participants={extra_prts => this.setState({extra_prts})}
-            />
           </Col>
         </Row>
       </div>
