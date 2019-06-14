@@ -1,5 +1,6 @@
 import {make_url, statuses} from './network'
 import {unix_ms, bool_int} from './utils'
+import {start_sw} from './push_api'
 
 const meta_action_types = new Set([
   'seen',
@@ -25,6 +26,7 @@ export default class Websocket {
   }
 
   connect = () => {
+    start_sw()
     if (this._socket) {
       console.warn('ws already connected, not connecting again')
       return
