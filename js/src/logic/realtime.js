@@ -22,7 +22,7 @@ export default class RealTime {
 
   connect = async () => {
     const web_push = new WebPush(this)
-    const web_push_successful = web_push.connect()
+    const web_push_successful = await web_push.connect()
     if (web_push_successful) {
       console.debug('using web push for notifications')
       this._conn = web_push
