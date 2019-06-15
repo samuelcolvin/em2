@@ -22,11 +22,6 @@ def web_push_user_key(user_id):
     return f'web-push-subs:{user_id}'
 
 
-class SubKeys(BaseModel):
-    p256dh: str
-    auth: str
-
-
 class SubscriptionModel(BaseModel):
     """
     Model as generated from PushSubscription.toJSON()
@@ -37,6 +32,11 @@ class SubscriptionModel(BaseModel):
 
     endpoint: UrlStr
     expirationTime: Optional[int]
+
+    class SubKeys(BaseModel):
+        p256dh: str
+        auth: str
+
     keys: SubKeys
 
 

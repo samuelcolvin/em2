@@ -1,4 +1,6 @@
 import {on_mobile} from 'reactstrap-toolbox'
+import {now_ms} from './utils'
+import {statuses} from './network'
 
 export default class WebPush {
   constructor (realtime) {
@@ -17,13 +19,15 @@ export default class WebPush {
       !('PushManager' in window)) {
       return false
     }
+    this._main.set_conn_status(statuses.connecting)
     const sub = await this._subscribe()
     if (!sub) {
       // unable to subscribe return and fallback to websockets
       return false
     }
     navigator.serviceWorker.addEventListener('message', this.on_message)
-    await this._main.requests.post('ui', `/${this._main.session.id}/webpush-subscribe/`, sub.toJSON())
+    await this._record_sub(sub.toJSON())
+    this._main.set_conn_status(statuses.online)
     return true
   }
 
@@ -49,6 +53,16 @@ export default class WebPush {
     }
     console.debug('new web-push subscription created')
     return sub
+  }
+
+  _record_sub = async sub_info => {
+    const now = now_ms()
+    const j = btoa(JSON.stringify(sub_info))
+    const t_before = parseInt(localStorage[j])
+    if (!Number.isFinite(t_before) || now - t_before > 20 * 3600 * 1000) {
+      await this._main.requests.post('ui', `/${this._main.session.id}/webpush-subscribe/`, sub_info)
+      localStorage[j] = now
+    }
   }
 
   _unsubscribe = async () => {

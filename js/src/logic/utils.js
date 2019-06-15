@@ -1,4 +1,5 @@
-export const unix_ms = s => (new Date(s)).getTime()
+export const unix_ms = s => new Date(s).getTime()
+export const now_ms = () => new Date().getTime()
 
 export const per_page = 50  // list pagination
 
