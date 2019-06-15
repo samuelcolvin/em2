@@ -11,6 +11,8 @@ from em2.protocol.push import push_actions
 from em2.protocol.smtp import BaseSmtpHandler, smtp_send
 from em2.settings import Settings
 from em2.ui.views.files import delete_stale_upload
+from em2.utils.db import Connections
+from em2.utils.web_push import web_push
 
 
 async def startup(ctx):
@@ -24,14 +26,14 @@ async def startup(ctx):
     smtp_handler_cls: Type[BaseSmtpHandler] = import_string(settings.smtp_handler)
     smtp_handler = smtp_handler_cls(ctx)
     await smtp_handler.startup()
-    ctx['smtp_handler'] = smtp_handler
+    ctx.update(smtp_handler=smtp_handler, conns=Connections(ctx['pg'], ctx['redis'], settings))
 
 
 async def shutdown(ctx):
     await asyncio.gather(ctx['session'].close(), ctx['pg'].close(), ctx['smtp_handler'].shutdown())
 
 
-functions = [smtp_send, push_actions, delete_stale_upload]
+functions = [smtp_send, push_actions, delete_stale_upload, web_push]
 worker_settings = dict(functions=functions, on_startup=startup, on_shutdown=shutdown)
 
 

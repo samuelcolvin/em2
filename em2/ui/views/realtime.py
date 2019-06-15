@@ -6,10 +6,12 @@ from aiohttp.web_ws import WebSocketResponse
 from atoolbox import JsonErrors
 
 from em2.background import Background
+from em2.utils.web_push import SubscriptionModel, subscribe, unsubscribe
 
 from ..middleware import WsReauthenticate, load_session
+from .utils import ExecView
 
-logger = logging.getLogger('em2.ui.ws')
+logger = logging.getLogger('em2.ui.realtime')
 
 
 async def websocket(request):
@@ -51,3 +53,18 @@ async def websocket(request):
         logger.debug('ws disconnection user=%s', session.user_id)
         background.remove_ws(session.user_id, ws)
     return ws
+
+
+class WebPushSubscribe(ExecView):
+    Model = SubscriptionModel
+
+    async def execute(self, m: Model):
+        await subscribe(self.conns, m, self.session.user_id)
+        await self.conns.redis.enqueue_job('web_push', self.session.user_id, 'check')
+
+
+class WebPushUnsubscribe(ExecView):
+    Model = SubscriptionModel
+
+    async def execute(self, m: Model):
+        await unsubscribe(self.conns, m, self.session.user_id)

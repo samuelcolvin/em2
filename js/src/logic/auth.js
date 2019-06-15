@@ -12,7 +12,7 @@ export default class Auth {
   }
 
   logout = async () => {
-    this._main.ws.close()
+    this._main.realtime.close()
     await this._main.requests.post('ui', `/${this._main.session.id}/auth/logout/`)
     await this._main.session.finish()
   }

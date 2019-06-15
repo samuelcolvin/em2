@@ -1,5 +1,6 @@
 self.addEventListener('install', e => {
-  console.log('push service worker installed', e)
+  console.log('new service worker installed', e)
+  self.skipWaiting()
 })
 
 function push_to_client (client, msg) {
@@ -11,10 +12,13 @@ function push_to_client (client, msg) {
 }
 
 async function on_push (event) {
-  console.log('Received a push message', event)
+  const data = event.data.json()
+  console.debug('Received a push message:', data)
+  if (data === 'check') {
+    return
+  }
   const notifications = await self.registration.getNotifications()
   notifications.forEach(n => n.close())
-  const data = event.data.text()
   await self.registration.showNotification('new message', {
     body: data,
     // badge: './image-in-notification-bar-on-android.png',

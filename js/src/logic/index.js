@@ -1,7 +1,7 @@
 import {sleep, Notify} from 'reactstrap-toolbox'
 import {make_url, statuses, Requests} from './network'
 import Session from './session'
-import Websocket from './ws'
+import RealTime from './realtime'
 import Conversations from './conversations'
 import Serach from './search'
 import Contacts from './contacts'
@@ -14,7 +14,7 @@ export default class LogicMain {
     this.listeners = {}
     this.notify = new Notify(history)
     this.requests = new Requests(this)
-    this.ws = new Websocket(this)
+    this.realtime = new RealTime(this)
     this.session = new Session(this)
     this.conversations = new Conversations(this)
     this.search = new Serach(this)
