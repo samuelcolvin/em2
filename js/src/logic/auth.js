@@ -4,9 +4,10 @@ export default class Auth {
   }
 
   auth_token = async data => {
-    await this._main.requests.post('ui', '/auth/token/', {auth_token: data.auth_token})
+    const r = await this._main.requests.post('ui', '/auth/token/', {auth_token: data.auth_token})
     delete data.session.ts
     data.session.cache = new Set()
+    data.session.user_id = r.data.user_id
     await this._main.session.new(data.session)
     return {email: data.session.email, name: data.session.name}
   }

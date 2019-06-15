@@ -66,28 +66,7 @@ export default class Websocket {
       this._first_msg = false
     }
     const data = JSON.parse(event.data)
-    console.debug('ws message:', data)
-
-    let clear_cache = false
-    if (data.actions) {
-      await this._realtime.apply_actions(data)
-      if (data.user_v - this._main.session.current.user_v !== 1) {
-        // user_v has increased by more than one, we must have missed actions, everything could have changed
-        clear_cache = true
-      }
-    } else if (data.user_v === this._main.session.current.user_v) {
-      // just connecting and nothing has changed
-      return
-    } else {
-      // just connecting but user_v has increased, everything could have changed
-      clear_cache = true
-    }
-
-    const session_update = {user_v: data.user_v}
-    if (clear_cache) {
-      session_update.cache = new Set()
-    }
-    await this._main.session.update(session_update)
+    await this._realtime.on_message(data)
   }
 
   _on_close = async e => {

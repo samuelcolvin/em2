@@ -5,6 +5,7 @@ session_db.version(1).stores({
   sessions: [
     '&session_id',
     'email',
+    'user_id',
   ].join(','),
 })
 

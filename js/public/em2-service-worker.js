@@ -1,5 +1,6 @@
 self.addEventListener('install', e => {
   console.log('new service worker installed', e)
+  // reload to use the new service worker:
   self.skipWaiting()
 })
 
@@ -17,20 +18,30 @@ async function on_push (event) {
   if (data === 'check') {
     return
   }
+  const clients = await self.clients.matchAll({type: 'window'})
+  const window_answers = await Promise.all(clients.map(client => push_to_client(client, data)))
+  if (window_answers.find(a => a)) {
+    // one of the windows liked this message and took over
+    return
+  }
   const notifications = await self.registration.getNotifications()
   notifications.forEach(n => n.close())
-  await self.registration.showNotification('new message', {
-    body: data,
-    // badge: './image-in-notification-bar-on-android.png',
-    // icon: './image-next-message-in-notification-on-android.png',
-  })
-  const clients = await self.clients.matchAll({type: 'window'})
-  await Promise.all(clients.map(client => push_to_client(client, data)))
+  for (let action of data.actions) {
+    // link: `/${action.conv.substr(0, 10)}/`,
+    await self.registration.showNotification(action.actor, {
+      body: data.conv_details.sub,
+      data: {
+        link: `/${action.conv.substr(0, 10)}/`
+      },
+      // badge: './image-in-notification-bar-on-android.png',
+      // icon: './image-next-message-in-notification-on-android.png',
+    })
+  }
 }
 self.addEventListener('push', event => event.waitUntil(on_push(event)))
 
 async function click (event) {
-  console.log('On notification click: ', event)
+  console.debug('sw notification clicked: ', event)
   event.notification.close()
 
   // await self.clients.openWindow('/')
@@ -45,6 +56,6 @@ async function click (event) {
       return
     }
   }
-  await self.clients.openWindow('/')
+  await self.clients.openWindow(event.notification.data.link)
 }
 self.addEventListener('notificationclick', event => event.waitUntil(click(event)))

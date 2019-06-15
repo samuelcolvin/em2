@@ -508,9 +508,9 @@ async def test_publish_remote(factory: Factory, redis, db_conn, worker: Worker, 
     await factory.create_conv(participants=[{'email': 'whatever@remote.com'}], publish=True)
     assert 4 == await db_conn.fetchval('select count(*) from actions')
     await worker.async_run()
-    assert (worker.jobs_complete, worker.jobs_failed, worker.jobs_retried) == (2, 0, 0)
+    assert (worker.jobs_complete, worker.jobs_failed, worker.jobs_retried) == (3, 0, 0)
     job_results = await redis.all_job_results()
-    assert len(job_results) == 2
+    assert len(job_results) == 3
     push_job = next(j for j in job_results if j.function == 'push_actions')
     assert push_job.result == 'retry=0 smtp=1 em2=0'
 

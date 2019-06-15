@@ -290,7 +290,7 @@ async def _fix_worker(redis, settings, db_conn):
         session=session,
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
-    ctx['smtp_handler'] = LogSmtpHandler(ctx)
+    ctx.update(smtp_handler=LogSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
     worker = Worker(functions=worker_settings['functions'], redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)
 
     yield worker
@@ -309,7 +309,7 @@ async def _fix_ses_worker(redis, settings, db_conn):
         session=session,
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
-    ctx['smtp_handler'] = SesSmtpHandler(ctx)
+    ctx.update(smtp_handler=SesSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
     worker = Worker(functions=worker_settings['functions'], redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)
 
     yield worker
@@ -326,7 +326,7 @@ async def _fix_send_to_remote(factory: Factory, worker: Worker, db_conn):
     await factory.create_conv(participants=[{'email': 'sender@remote.com'}], publish=True)
     assert 4 == await db_conn.fetchval('select count(*) from actions')
     await worker.async_run()
-    assert (worker.jobs_complete, worker.jobs_failed, worker.jobs_retried) == (2, 0, 0)
+    assert (worker.jobs_complete, worker.jobs_failed, worker.jobs_retried) == (3, 0, 0)
     assert 1 == await db_conn.fetchval('select count(*) from sends')
     return await db_conn.fetchrow('select id, ref from sends')
 

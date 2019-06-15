@@ -10,6 +10,7 @@ from aiohttp import ClientConnectionError, ClientError, ClientSession
 from arq import ArqRedis
 from async_timeout import timeout
 from asyncpg.pool import Pool
+from atoolbox import RequestError
 from atoolbox.json_tools import lenient_json
 from cryptography.fernet import Fernet
 from pydantic import BaseModel, UrlStr
@@ -90,8 +91,11 @@ class Pusher:
         if current_user_type == UserTypes.new:
             # only new users are checked to see if they're local
             h = internal_request_headers(self.settings)
-            async with self.session.get(self.local_check_url, data=email, raise_for_status=True, headers=h) as r:
+            async with self.session.get(self.local_check_url, data=email, headers=h) as r:
                 content = await r.read()
+
+            if r.status != 200:
+                raise RequestError(r.status, self.local_check_url, text=content.decode())
 
             if content == b'1':
                 # local user

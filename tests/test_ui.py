@@ -351,6 +351,7 @@ async def test_ws_create(cli, factory: Factory, db_conn):
     msg_data = json.loads(msg.data)
     assert msg_data == {
         'user_v': 3,
+        'user_id': user.id,
         'actions': [
             {
                 'id': 1,
@@ -410,6 +411,7 @@ async def test_ws_add_msg(cli, factory: Factory, db_conn):
     msg_data = json.loads(msg.data)
     assert msg_data == {
         'user_v': 3,
+        'user_id': user.id,
         'actions': [
             {
                 'id': 4,

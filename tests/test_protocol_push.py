@@ -11,7 +11,7 @@ async def test_publish_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
     conv = await factory.create_conv(participants=[{'email': 'whatever@remote.com'}], publish=True)
     assert 4 == await db_conn.fetchval('select count(*) from actions')
     await ses_worker.async_run()
-    assert await ses_worker.run_check() == 2
+    assert await ses_worker.run_check() == 3
 
     assert dummy_server.log == ['POST ses_endpoint_url subject="Test Subject" to="whatever@remote.com"']
     assert dummy_server.app['smtp'] == [
@@ -45,13 +45,13 @@ async def test_add_msg_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
     conv = await factory.create_conv(participants=[{'email': 'whatever@remote.com'}], publish=True)
     assert 4 == await db_conn.fetchval('select count(*) from actions')
     await ses_worker.async_run()
-    assert await ses_worker.run_check() == 2
+    assert await ses_worker.run_check() == 3
 
     action = ActionModel(act=ActionTypes.msg_add, body='This is **another** message')
     assert [5] == await factory.act(user.id, conv.id, action)
 
     await ses_worker.async_run()
-    assert await ses_worker.run_check() == 4
+    assert await ses_worker.run_check() == 6
 
     assert dummy_server.log == [
         'POST ses_endpoint_url subject="Test Subject" to="whatever@remote.com"',
@@ -67,17 +67,17 @@ async def test_ignore_seen(factory: Factory, db_conn, ses_worker: Worker, dummy_
     user = await factory.create_user()
     conv = await factory.create_conv(participants=[{'email': 'whatever@remote.com'}], publish=True)
     await ses_worker.async_run()
-    assert await ses_worker.run_check() == 2
+    assert await ses_worker.run_check() == 3
 
     await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant='another@remote.com'))
     user2_id = await db_conn.fetchval('select id from users where email=$1', 'another@remote.com')
 
     await ses_worker.async_run()
-    assert await ses_worker.run_check() == 4
+    assert await ses_worker.run_check() == 6
 
     await factory.act(user2_id, conv.id, ActionModel(act=ActionTypes.seen))
 
-    assert await ses_worker.run_check() == 5
+    assert await ses_worker.run_check() == 8
 
     assert dummy_server.log == [
         'POST ses_endpoint_url subject="Test Subject" to="whatever@remote.com"',

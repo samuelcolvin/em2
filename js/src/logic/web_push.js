@@ -1,9 +1,10 @@
-
+import {on_mobile} from 'reactstrap-toolbox'
 
 export default class WebPush {
   constructor (realtime) {
     this._realtime = realtime
     this._main = realtime._main
+    this._do_notifications = !on_mobile
   }
 
   close = () => {
@@ -32,8 +33,7 @@ export default class WebPush {
     navigator.serviceWorker.addEventListener('message', this.on_message)
     let sub = await sw_registration.pushManager.getSubscription()
     if (sub) {
-      // already subscribed, no need to do anything else
-      console.debug('already subscribed')
+      console.debug('found existing active web-push subscription')
       return sub
     }
 
@@ -47,7 +47,7 @@ export default class WebPush {
         throw e
       }
     }
-    console.debug('new subscription successful')
+    console.debug('new web-push subscription created')
     return sub
   }
 
@@ -62,8 +62,12 @@ export default class WebPush {
   }
 
   on_message = event => {
-    event.ports[0].postMessage(null)
-    console.log('got message: ', event)
+    if (event.data.user_id === this._main.session.current.user_id) {
+      event.ports[0].postMessage(this._do_notifications)
+      this._realtime.on_message(event.data)
+    } else {
+      event.ports[0].postMessage(false)
+    }
   }
 }
 

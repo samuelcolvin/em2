@@ -33,7 +33,31 @@ export default class RealTime {
     }
   }
 
-  apply_actions = async (data) => {
+  on_message = async data => {
+    console.debug('realtime message:', data)
+    let clear_cache = false
+    if (data.actions) {
+      await this._apply_actions(data)
+      if (data.user_v - this._main.session.current.user_v !== 1) {
+        // user_v has increased by more than one, we must have missed actions, everything could have changed
+        clear_cache = true
+      }
+    } else if (data.user_v === this._main.session.current.user_v) {
+      // just connecting and nothing has changed
+      return
+    } else {
+      // just connecting but user_v has increased, everything could have changed
+      clear_cache = true
+    }
+
+    const session_update = {user_v: data.user_v}
+    if (clear_cache) {
+      session_update.cache = new Set()
+    }
+    await this._main.session.update(session_update)
+  }
+
+  _apply_actions = async (data) => {
     // console.log('actions:', data)
     const actions = data.actions.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
 

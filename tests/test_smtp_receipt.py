@@ -169,15 +169,17 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
             'body': 'Test Subject',
         },
     ]
-    assert len(await redis.keys('arq:job:*')) == 0
+    assert len(await redis.keys('arq:job:*')) == 1
     await push_all(conns, conv_id, transmit=True)
     arq_keys = await redis.keys('arq:job:*')
-    assert len(arq_keys) == 1
-    key = arq_keys[0].replace('arq:job:', '')
-    job = Job(key, redis)
-    job_info = await job.info()
-    ws_data = json.loads(job_info.args[0])
-    assert ws_data['actions'] == data
+    assert len(arq_keys) == 3
+    for key in arq_keys:
+        key = key.replace('arq:job:', '')
+        job = Job(key, redis)
+        job_info = await job.info()
+        if job_info.function == 'push_actions':
+            ws_data = json.loads(job_info.args[0])
+            assert ws_data['actions'] == data
 
 
 async def test_get_file(conns, factory: Factory, db_conn, create_email, attachment, cli, dummy_server):

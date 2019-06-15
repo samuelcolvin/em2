@@ -18,11 +18,9 @@ class AuthExchangeToken(ExecView):
     async def execute(self, m: Model):
         d = decrypt_json(self.app, m.auth_token, ttl=30)
         session = await get_session(self.request)
-        session[d['session_id']] = {
-            'user_id': await get_create_user(conns_from_request(self.request), d['email'], UserTypes.local),
-            'email': d['email'],
-            'ts': d['ts'],
-        }
+        user_id = await get_create_user(conns_from_request(self.request), d['email'], UserTypes.local)
+        session[d['session_id']] = {'user_id': user_id, 'email': d['email'], 'ts': d['ts']}
+        return {'user_id': user_id}
 
 
 async def logout(request):

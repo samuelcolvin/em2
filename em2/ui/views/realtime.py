@@ -60,7 +60,6 @@ class WebPushSubscribe(ExecView):
 
     async def execute(self, m: Model):
         await subscribe(self.conns, m, self.session.user_id)
-        await self.conns.redis.enqueue_job('web_push', self.session.user_id, 'check')
 
 
 class WebPushUnsubscribe(ExecView):

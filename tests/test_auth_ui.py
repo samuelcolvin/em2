@@ -6,7 +6,7 @@ from pytest_toolbox.comparison import AnyInt, RegexStr
 from .conftest import Factory
 
 
-async def test_login(cli, url, factory: Factory):
+async def test_login(cli, url, factory: Factory, db_conn):
     user = await factory.create_user(login=False)
     r = await cli.post(
         url('auth:login'),
@@ -23,7 +23,7 @@ async def test_login(cli, url, factory: Factory):
 
     r = await cli.post_json(url('ui:auth-token'), data={'auth_token': obj['auth_token']})
     assert len(cli.session.cookie_jar) == 1
-    assert await r.json() == {'status': 'ok'}
+    assert await r.json() == {'user_id': await db_conn.fetchval('select id from users')}
 
     # check it all works
     obj = await cli.get_json(url('ui:list', session_id=session_id))

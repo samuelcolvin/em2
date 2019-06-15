@@ -1,11 +1,11 @@
 import asyncio
 import base64
-import json
 import time
-from typing import Any, Optional
+from typing import Optional
 from urllib.parse import urlparse
 
 import http_ece
+import ujson
 from aiohttp import ClientSession
 from atoolbox import RequestError
 from cryptography.hazmat.backends import default_backend
@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from py_vapid import Vapid02 as Vapid
 from pydantic import BaseModel, UrlStr
 
+from em2.core import get_flag_counts
 from em2.settings import Settings
 from em2.utils.db import Connections
 
@@ -57,22 +58,35 @@ async def unsubscribe(conns: Connections, m: SubscriptionModel, user_id):
     await conns.redis.srem(key, m.json())
 
 
-async def web_push(ctx, user_id: int, data: Any):
+async def web_push(ctx, actions_data: str):
     conns: Connections = ctx['conns']
     if not conns.settings.vapid_private_key or not conns.settings.vapid_sub_email:
-        return
+        return 'web push not configured'
+
     session: ClientSession = ctx['session']
+    data = ujson.loads(actions_data)
+    participants = data.pop('participants')
+    # hack to avoid building json for every user, remove the ending "}" so extra json can be appended
+    msg_json_chunk = ujson.dumps(data)[:-1]
+    coros = [_user_web_push(conns, session, p, msg_json_chunk) for p in participants]
+    await asyncio.gather(*coros)
+    return len(coros)
+
+
+async def _user_web_push(conns: Connections, session: ClientSession, participant: dict, msg_json_chunk: str):
+    user_id = participant['user_id']
     subs = await conns.redis.smembers(web_push_user_key(user_id))
     if subs:
-        await asyncio.gather(*[_sub_post(conns, session, s, user_id, data) for s in subs])
-    return len(subs)
+        participant['flags'] = await get_flag_counts(conns, user_id)
+        msg = msg_json_chunk + ',' + ujson.dumps(participant)[1:]
+        await asyncio.gather(*[_sub_post(conns, session, s, user_id, msg) for s in subs])
 
 
-async def _sub_post(conns: Connections, session: ClientSession, sub_str: str, user_id: int, data: Any):
-    sub = SubscriptionModel.parse_raw(sub_str, proto='json')
+async def _sub_post(conns: Connections, session: ClientSession, sub_str: str, user_id: int, msg: str):
+    sub = SubscriptionModel(**ujson.loads(sub_str))
     server_key = ec.generate_private_key(ec.SECP256R1, default_backend())
     body = http_ece.encrypt(
-        json.dumps(data).encode(),
+        msg.encode(),
         private_key=server_key,
         dh=_prepare_vapid_key(sub.keys.p256dh),
         auth_secret=_prepare_vapid_key(sub.keys.auth),
