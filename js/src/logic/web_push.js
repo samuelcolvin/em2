@@ -1,4 +1,4 @@
-function UrlBase64ToUint8Array(base64String) {
+function UrlBase64ToUint8Array (base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
   const rawData = window.atob(base64)
@@ -10,7 +10,7 @@ const applicationServerKey = UrlBase64ToUint8Array(process.env.REACT_APP_PUSH_AP
 function sw_ready () {
   return new Promise((resolve, reject) => {
     navigator.serviceWorker.ready.then(resolve).catch(reject)
-    setTimeout(() => reject('navigator.serviceWorker.ready timed out'), 100)
+    setTimeout(() => reject('navigator.serviceWorker.ready timed out'), 2000)
   })
 }
 
@@ -19,27 +19,10 @@ function on_sw_message (event) {
   console.log('got message: ', event)
 }
 
-export async function start_sw () {
-  const url = `${process.env.PUBLIC_URL}/push-service-worker.js`
-  const r = await navigator.serviceWorker.register(url, {scope: '/push/'})
-  r.onupdatefound = () => {
-    const installing_worker = r.installing
-    if (installing_worker !== null) {
-      installing_worker.onstatechange = () => {
-        if (installing_worker.state === 'installed' && navigator.serviceWorker.controller) {
-          console.log('PLEASE RELOAD!')
-          // TODO warn
-        }
-      }
-    }
-  }
-
-  if (!('showNotification' in ServiceWorkerRegistration.prototype)) {
-    console.warn("Notifications aren't supported.")
-    return
-  }
-  if (!('PushManager' in window)) {
-    console.warn("Notifications aren't supported.")
+export async function get_subscription () {
+  if (!('serviceWorker' in navigator) ||
+      !('showNotification' in ServiceWorkerRegistration.prototype) ||
+      !('PushManager' in window)) {
     return
   }
 
@@ -64,7 +47,7 @@ export async function start_sw () {
     sub = await sw_registration.pushManager.subscribe({applicationServerKey, userVisibleOnly: true})
   } catch (e) {
     if (Notification.permission === 'denied') {
-      console.warn('Permission for Notifications was denied')
+      console.log('Permission for Notifications was denied')
     } else {
       console.error('Unable to subscribe to push.', e)
     }

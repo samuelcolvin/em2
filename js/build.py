@@ -132,6 +132,15 @@ def mod():
     asset_manifest_data[iframe_msg_new_path.name] = f'/{iframe_msg_new_path}'
     asset_manifest_path.write_text(json.dumps(asset_manifest_data, indent=2))
 
+    # append service-worker.js to em2-service-worker.js to enable caching and delete service-worker.js
+    em2_sw_path = build_dir / 'em2-service-worker.js'
+    std_sw_path = build_dir / 'service-worker.js'
+    # change work box path https://github.com/cdnjs/cdnjs/issues/12041
+    with em2_sw_path.open('a') as f:
+        f.write('\n// Standard CRA service-worker.js:\n')
+        f.write(std_sw_path.read_text())
+    std_sw_path.unlink()
+
 
 if __name__ == '__main__':
     env = dict(os.environ)
