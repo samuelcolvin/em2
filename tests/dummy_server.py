@@ -1,12 +1,9 @@
 import base64
 from email import message_from_bytes
 
-import http_ece
 from aiohttp import web
 from aiohttp.hdrs import METH_GET, METH_HEAD
 from aiohttp.web_response import Response
-
-from em2.utils.web_push import _prepare_vapid_key
 
 
 async def ses_endpoint_url(request):
