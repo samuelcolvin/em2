@@ -127,10 +127,9 @@ def mod():
     man_data.append({'revision': iframe_msg_hash, 'url': f'/{iframe_msg_new_path}'})
 
     man_path.write_text(f'self.__precacheManifest = {json.dumps(man_data, indent=2)};')
-    asset_manifest_path = build_dir / 'asset-manifest.json'
-    asset_manifest_data = json.loads(asset_manifest_path.read_text())
-    asset_manifest_data[iframe_msg_new_path.name] = f'/{iframe_msg_new_path}'
-    asset_manifest_path.write_text(json.dumps(asset_manifest_data, indent=2))
+
+    # remove asset-manifest.json which doesn't seem to do anything for us
+    (build_dir / 'asset-manifest.json').unlink()
 
     # append service-worker.js to em2-service-worker.js to enable caching and delete service-worker.js
     em2_sw_path = build_dir / 'em2-service-worker.js'

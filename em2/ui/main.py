@@ -26,7 +26,7 @@ from .views.conversations import (
 )
 from .views.files import GetFile, UploadFile
 from .views.labels import AddRemoveLabel, LabelBread
-from .views.realtime import WebPushSubscribe, websocket
+from .views.realtime import WebPushSubscribe, WebPushUnsubscribe, websocket
 
 
 async def startup(app):
@@ -62,7 +62,7 @@ async def create_app_ui(settings=None):
         web.get(s + 'search/', Search.view(), name='search'),
         web.get(s + 'ws/', websocket, name='websocket'),
         web.post(s + 'webpush-subscribe/', WebPushSubscribe.view(), name='webpush-subscribe'),
-        web.post(s + 'webpush-unsubscribe/', WebPushSubscribe.view(), name='webpush-unsubscribe'),
+        web.post(s + 'webpush-unsubscribe/', WebPushUnsubscribe.view(), name='webpush-unsubscribe'),
         # ui auth views:
         web.route('*', '/auth/token/', AuthExchangeToken.view(), name='auth-token'),
         web.get(s + 'auth/check/', auth_check, name='auth-check'),

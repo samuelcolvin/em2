@@ -26,8 +26,6 @@ class SubscriptionModel(BaseModel):
     """
     Model as generated from PushSubscription.toJSON()
     https://developer.mozilla.org/en-US/docs/Web/API/PushSubscription/toJSON
-
-    This is not a strict check of the structure since if people want to mess it up, we can't stop them
     """
 
     endpoint: UrlStr
@@ -95,12 +93,10 @@ async def _sub_post(conns: Connections, session: ClientSession, sub_str: str, us
     headers = _vapid_headers(sub, conns.settings)
     async with session.post(sub.endpoint, data=body, headers=headers) as r:
         text = await r.text()
-    if r.status == 201:
-        return
-    elif r.status == 410:
+    if r.status == 410:
         await unsubscribe(conns, sub, user_id)
-    else:
-        RequestError(r.status, sub.endpoint, text=text)
+    elif r.status != 201:
+        raise RequestError(r.status, sub.endpoint, text=text)
 
 
 vapid_encoding = 'aes128gcm'

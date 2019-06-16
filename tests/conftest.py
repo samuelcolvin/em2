@@ -57,6 +57,12 @@ def _fix_settings_session():
         auth_key=Fernet.generate_key(),
         s3_temp_bucket='s3_temp_bucket.example.com',
         s3_file_bucket='s3_files_bucket.example.com',
+        vapid_private_key=(
+            'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgnC/ZHNj3GCEpQRnm'
+            'wSpxJvnLEGRex8ksHodJt6/MNpShRANCAARlKkq6aac9JMj1GaJbdQXWQX7ejehe'
+            'yP9hnk+DWszmt0LqyBJFONYAtw2s/bqpQwNJlTrBlcU1RG+rxDTRiVeQ'
+        ),
+        vapid_sub_email='vapid-reports@example.com',
     )
 
 
@@ -281,8 +287,8 @@ async def factory(redis, cli, url):
     return Factory(redis, cli, url)
 
 
-@pytest.yield_fixture(name='worker')
-async def _fix_worker(redis, settings, db_conn):
+@pytest.yield_fixture(name='worker_ctx')
+async def _fix_worker_ctx(redis, settings, db_conn):
     session = ClientSession(timeout=ClientTimeout(total=10))
     ctx = dict(
         settings=settings,
@@ -291,13 +297,22 @@ async def _fix_worker(redis, settings, db_conn):
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
     ctx.update(smtp_handler=LogSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
-    worker = Worker(functions=worker_settings['functions'], redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)
+
+    yield ctx
+
+    await session.close()
+
+
+@pytest.yield_fixture(name='worker')
+async def _fix_worker(redis, worker_ctx):
+    worker = Worker(
+        functions=worker_settings['functions'], redis_pool=redis, burst=True, poll_delay=0.01, ctx=worker_ctx
+    )
 
     yield worker
 
     worker.pool = None
     await worker.close()
-    await session.close()
 
 
 @pytest.yield_fixture(name='ses_worker')
