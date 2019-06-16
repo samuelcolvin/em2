@@ -15,6 +15,7 @@ import {
   Col,
 } from 'reactstrap'
 import {statuses} from './logic/network'
+import {TopMainMenu} from './WithMenu'
 import Search from './Search'
 
 const AccountSummary = ({conn_status, user}) => {
@@ -75,6 +76,7 @@ const NavbarUser = ({app_state}) => (
           <AccountSummary {...app_state}/>
         </DropdownToggle>
         <DropdownMenu right className="navbar-dropdown">
+          <TopMainMenu/>
           {app_state.other_sessions.map(s => (
             <DropdownItem key={s.session_id} href={`/switch/${s.session_id}/`}
                           target="_blank">
