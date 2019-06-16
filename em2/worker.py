@@ -37,6 +37,6 @@ functions = [smtp_send, push_actions, delete_stale_upload, web_push]
 worker_settings = dict(functions=functions, on_startup=startup, on_shutdown=shutdown)
 
 
-def run_worker(settings: Settings):
+def run_worker(settings: Settings):  # pragma: no cover
     worker = Worker(redis_settings=settings.redis_settings, **worker_settings)
     worker.run()
