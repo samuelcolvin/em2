@@ -33,8 +33,8 @@ async function on_push (event) {
       data: {
         link: `/${action.conv.substr(0, 10)}/`
       },
-      // badge: './image-in-notification-bar-on-android.png',
-      // icon: './image-next-message-in-notification-on-android.png',
+      badge: '/android-chrome-192x192.png',  // image in notification bar
+      icon: './android-chrome-192x192.png', // image next message in notification on android
     })
   }
 }
