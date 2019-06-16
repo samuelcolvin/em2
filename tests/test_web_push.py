@@ -7,64 +7,48 @@ from em2.utils.web_push import web_push
 
 from .conftest import Factory
 
-sub_info = {'endpoint': 'https://example.com/token', 'expirationTime': None, 'keys': {'p256dh': 'foo', 'auth': 'bar'}}
 
-
-async def test_subscribe(cli, factory: Factory, redis):
+async def test_subscribe(cli, factory: Factory, redis, web_push_sub):
     await factory.create_user()
     assert len(await redis.keys('web-push-subs:*')) == 0
-    await cli.post_json(factory.url('ui:webpush-subscribe'), sub_info)
+    await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub)
     assert len(await redis.keys('web-push-subs:*')) == 1
-    await cli.post_json(factory.url('ui:webpush-subscribe'), sub_info)
+    await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub)
     subs = await redis.keys('web-push-subs:*')
     assert len(subs) == 1
     assert subs[0] == f'web-push-subs:{factory.user.id}'
     members = await redis.smembers(subs[0])
     assert len(members) == 1
     m = json.loads(members[0])
-    assert m == sub_info
+    assert m == web_push_sub
 
 
-async def test_unsubscribe(cli, factory: Factory, redis):
+async def test_unsubscribe(cli, factory: Factory, redis, web_push_sub):
     await factory.create_user()
     assert len(await redis.keys('web-push-subs:*')) == 0
-    await cli.post_json(factory.url('ui:webpush-subscribe'), sub_info)
+    await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub)
     assert len(await redis.keys('web-push-subs:*')) == 1
-    await cli.post_json(factory.url('ui:webpush-unsubscribe'), sub_info)
+    await cli.post_json(factory.url('ui:webpush-unsubscribe'), web_push_sub)
     assert len(await redis.keys('web-push-subs:*')) == 0
 
 
-async def test_web_push(cli, factory: Factory, redis, worker_ctx, dummy_server):
-    sub_info = {
-        'endpoint': dummy_server.server_name.replace('localhost', '127.0.0.1') + '/status/201/',
-        'expirationTime': None,
-        'keys': {
-            'p256dh': 'BJpYv7NU1pjT3T-le_0Zv57LW9cAHRshK3NaMg6Kl412ngTcybNMQw9jvFHEpqq8Sc2oxN382vkSfZiV2ul_CLQ',
-            'auth': '9z4xquuNpVxHOdBnSGkvSw',
-        },
-    }
+async def test_web_push(cli, factory: Factory, redis, worker_ctx, dummy_server, web_push_sub):
     await factory.create_user()
-    await cli.post_json(factory.url('ui:webpush-subscribe'), sub_info)
+    await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub)
     assert len(await redis.keys('web-push-subs:*')) == 1
 
     data = {'participants': [{'user_id': factory.user.id, 'foo': 'bar'}], 'other': 42}
     assert 1 == await web_push(worker_ctx, json.dumps(data))
 
-    assert dummy_server.log == ['POST status/201']
+    assert dummy_server.log == ['POST vapid']
     assert len(await redis.keys('web-push-subs:*')) == 1
 
 
-async def test_web_push_unsubscribe(cli, factory: Factory, redis, worker_ctx, dummy_server):
-    sub_info = {
-        'endpoint': dummy_server.server_name.replace('localhost', '127.0.0.1') + '/status/410/',
-        'expirationTime': None,
-        'keys': {
-            'p256dh': 'BJpYv7NU1pjT3T-le_0Zv57LW9cAHRshK3NaMg6Kl412ngTcybNMQw9jvFHEpqq8Sc2oxN382vkSfZiV2ul_CLQ',
-            'auth': '9z4xquuNpVxHOdBnSGkvSw',
-        },
-    }
+async def test_web_push_unsubscribe(cli, factory: Factory, redis, worker_ctx, dummy_server, web_push_sub):
+    web_push_sub['endpoint'] = web_push_sub['endpoint'].replace('/vapid/', '/status/410/')
+
     await factory.create_user()
-    await cli.post_json(factory.url('ui:webpush-subscribe'), sub_info)
+    await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub)
     assert len(await redis.keys('web-push-subs:*')) == 1
 
     data = {'participants': [{'user_id': factory.user.id, 'foo': 'bar'}], 'other': 42}
@@ -74,17 +58,10 @@ async def test_web_push_unsubscribe(cli, factory: Factory, redis, worker_ctx, du
     assert len(await redis.keys('web-push-subs:*')) == 0
 
 
-async def test_web_push_bad(cli, factory: Factory, redis, worker_ctx, dummy_server):
-    sub_info = {
-        'endpoint': dummy_server.server_name.replace('localhost', '127.0.0.1') + '/status/500/',
-        'expirationTime': None,
-        'keys': {
-            'p256dh': 'BJpYv7NU1pjT3T-le_0Zv57LW9cAHRshK3NaMg6Kl412ngTcybNMQw9jvFHEpqq8Sc2oxN382vkSfZiV2ul_CLQ',
-            'auth': '9z4xquuNpVxHOdBnSGkvSw',
-        },
-    }
+async def test_web_push_bad(cli, factory: Factory, redis, worker_ctx, dummy_server, web_push_sub):
+    web_push_sub['endpoint'] = web_push_sub['endpoint'].replace('/vapid/', '/status/500/')
     await factory.create_user()
-    await cli.post_json(factory.url('ui:webpush-subscribe'), sub_info)
+    await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub)
     assert len(await redis.keys('web-push-subs:*')) == 1
 
     data = {'participants': [{'user_id': factory.user.id, 'foo': 'bar'}], 'other': 42}
@@ -95,17 +72,9 @@ async def test_web_push_bad(cli, factory: Factory, redis, worker_ctx, dummy_serv
     assert len(await redis.keys('web-push-subs:*')) == 1
 
 
-async def test_web_push_not_configured(cli, factory: Factory, redis, worker_ctx, dummy_server):
-    sub_info = {
-        'endpoint': dummy_server.server_name.replace('localhost', '127.0.0.1') + '/status/201/',
-        'expirationTime': None,
-        'keys': {
-            'p256dh': 'BJpYv7NU1pjT3T-le_0Zv57LW9cAHRshK3NaMg6Kl412ngTcybNMQw9jvFHEpqq8Sc2oxN382vkSfZiV2ul_CLQ',
-            'auth': '9z4xquuNpVxHOdBnSGkvSw',
-        },
-    }
+async def test_web_push_not_configured(cli, factory: Factory, redis, worker_ctx, dummy_server, web_push_sub):
     await factory.create_user()
-    await cli.post_json(factory.url('ui:webpush-subscribe'), sub_info)
+    await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub)
     assert len(await redis.keys('web-push-subs:*')) == 1
 
     data = {'participants': [{'user_id': factory.user.id, 'foo': 'bar'}], 'other': 42}
@@ -114,3 +83,20 @@ async def test_web_push_not_configured(cli, factory: Factory, redis, worker_ctx,
 
     assert dummy_server.log == []
     assert len(await redis.keys('web-push-subs:*')) == 1
+
+
+async def test_push_action(cli, factory: Factory, redis, worker, dummy_server, web_push_sub):
+    await factory.create_user()
+    conv = await factory.create_conv()
+    await worker.async_run()
+    assert await worker.run_check() == 1
+    assert len(await redis.keys('web-push-subs:*')) == 0
+    await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub)
+    assert len(await redis.keys('web-push-subs:*')) == 1
+
+    data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}]}
+    await cli.post_json(factory.url('ui:act', conv=conv.key), data)
+
+    await worker.async_run()
+    assert await worker.run_check() == 2
+    assert dummy_server.log == ['POST vapid']

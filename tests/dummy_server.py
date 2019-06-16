@@ -1,9 +1,12 @@
 import base64
 from email import message_from_bytes
 
+import http_ece
 from aiohttp import web
 from aiohttp.hdrs import METH_GET, METH_HEAD
 from aiohttp.web_response import Response
+
+from em2.utils.web_push import _prepare_vapid_key
 
 
 async def ses_endpoint_url(request):
@@ -78,8 +81,14 @@ async def s3_endpoint(request):
         return Response(text='')
 
 
+async def vapid_endpoint(request):
+    # body = await request.read()
+    return Response(status=201)
+
+
 routes = [
     web.post('/ses_endpoint_url/', ses_endpoint_url),
     web.get('/sns_signing_url.pem', sns_signing_endpoint),
     web.route('*', '/s3_endpoint_url/{bucket}/{key:.*}', s3_endpoint),
+    web.post('/vapid/', vapid_endpoint),
 ]

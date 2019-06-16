@@ -58,9 +58,9 @@ def _fix_settings_session():
         s3_temp_bucket='s3_temp_bucket.example.com',
         s3_file_bucket='s3_files_bucket.example.com',
         vapid_private_key=(
-            'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgnC/ZHNj3GCEpQRnm'
-            'wSpxJvnLEGRex8ksHodJt6/MNpShRANCAARlKkq6aac9JMj1GaJbdQXWQX7ejehe'
-            'yP9hnk+DWszmt0LqyBJFONYAtw2s/bqpQwNJlTrBlcU1RG+rxDTRiVeQ'
+            'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgvGPhHfTSfxCod+wT'
+            'zLuyK8KWjPGGvKJKJjzBGSF47YuhRANCAAQJNQfHBSOe5nI5fmUcwTFw3ckqXXvR'
+            'F632vcMyB9RxPMaxicdqPiLg45GIk9oeEtm1kQjHQe7ikWxPFAm7uxkB'
         ),
         vapid_sub_email='vapid-reports@example.com',
     )
@@ -468,3 +468,15 @@ def _fix_create_image():
         return stream.getvalue()
 
     return create_image
+
+
+@pytest.fixture(name='web_push_sub')
+def _fix_web_push_sub(dummy_server):
+    return {
+        'endpoint': dummy_server.server_name.replace('localhost', '127.0.0.1') + '/vapid/',
+        'expirationTime': None,
+        'keys': {
+            'p256dh': 'BJpYv7NU1pjT3T-le_0Zv57LW9cAHRshK3NaMg6Kl412ngTcybNMQw9jvFHEpqq8Sc2oxN382vkSfZiV2ul_CLQ',
+            'auth': '9z4xquuNpVxHOdBnSGkvSw',
+        },
+    }
