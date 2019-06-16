@@ -99,8 +99,8 @@ export default withRouter(({history, conv_state, publish, lock_subject, set_subj
     }
   }
   return (
-    <div>
-      <div className="box d-flex justify-content-between">
+    <div className="conv-subject">
+      <div className="box d-flex justify-content-between flex-wrap">
         <div className="align-self-center">
           <h2 className="conv-title">{conv_state.conv.subject}</h2>
         </div>
@@ -108,31 +108,31 @@ export default withRouter(({history, conv_state, publish, lock_subject, set_subj
           <ButtonGroup>
             {conv_state.conv.draft ? (
               <Button color="primary" disabled={btns_disabled} onClick={publish}>
-                <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-2"/> Publish
+                <FontAwesomeIcon icon={fas.faPaperPlane} className="icon"/> Publish
               </Button>
             ) : null}
             {conv_state.conv.inbox ? (
               <Button color="primary" disabled={btns_disabled} onClick={() => set_flag('archive')}>
-                <FontAwesomeIcon icon={fas.faArchive} className="mr-2"/> Archive
+                <FontAwesomeIcon icon={fas.faArchive} className="icon"/> Archive
               </Button>
             ) : null}
             {conv_state.conv.deleted ? (
               <Button color="success" disabled={btns_disabled} onClick={() => set_flag('restore', false)}>
-                <FontAwesomeIcon icon={fas.faTrash} className="mr-2"/>  Restore
+                <FontAwesomeIcon icon={fas.faTrash} className="icon"/>  Restore
               </Button>
             ) : (
               <Button color="warning" disabled={btns_disabled} onClick={() => set_flag('delete')}>
-                <FontAwesomeIcon icon={fas.faTrash} className="mr-2"/>  Delete
+                <FontAwesomeIcon icon={fas.faTrash} className="icon"/>  Delete
               </Button>
             )}
             {!(conv_state.conv.sent || conv_state.conv.draft || conv_state.conv.spam) ? (
               <Button color="danger" disabled={btns_disabled} onClick={() => set_flag('spam')}>
-                <FontAwesomeIcon icon={fas.faRadiation} className="mr-2"/> Spam
+                <FontAwesomeIcon icon={fas.faRadiation} className="icon"/> Spam
               </Button>
             ) : null}
             {conv_state.conv.spam ? (
               <Button color="success" disabled={btns_disabled} onClick={() => set_flag('ham', false)}>
-                <FontAwesomeIcon icon={fas.faRadiation} className="mr-2"/> Not Spam
+                <FontAwesomeIcon icon={fas.faRadiation} className="icon"/> Not Spam
               </Button>
             ) : null}
 

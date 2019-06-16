@@ -16,11 +16,13 @@ export const ConvList = ({conversations, user_email}) => conversations.map((conv
     </div>
 
     <div className="details">
-      <span className="icon">
-        <FontAwesomeIcon icon={fas.faComment}/> {conv.details.msgs}
-      </span>
-      <span className="icon">
-        <FontAwesomeIcon icon={fas.faUsers}/> {conv.details.prts}
+      <span className="d-none d-lg-inline-block">
+        <span className="icon">
+          <FontAwesomeIcon icon={fas.faComment}/> {conv.details.msgs}
+        </span>
+        <span className="icon">
+          <FontAwesomeIcon icon={fas.faUsers}/> {conv.details.prts}
+        </span>
       </span>
       <span>
         {format_ts(conv.updated_ts)}
