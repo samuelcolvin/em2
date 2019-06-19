@@ -2,6 +2,7 @@ import json
 
 import pytest
 from atoolbox import RequestError
+from pytest_toolbox.comparison import AnyInt, CloseToNow
 
 from em2.utils.web_push import web_push
 
@@ -86,7 +87,7 @@ async def test_web_push_not_configured(cli, factory: Factory, redis, worker_ctx,
 
 
 async def test_push_action(cli, factory: Factory, redis, worker, dummy_server, web_push_sub):
-    await factory.create_user()
+    user = await factory.create_user()
     conv = await factory.create_conv()
     await worker.async_run()
     assert await worker.run_check() == 1
@@ -100,3 +101,30 @@ async def test_push_action(cli, factory: Factory, redis, worker, dummy_server, w
     await worker.async_run()
     assert await worker.run_check() == 2
     assert dummy_server.log == ['POST vapid']
+    assert len(dummy_server.app['webpush']) == 1
+    assert dummy_server.app['webpush'][0] == {
+        'actions': [
+            {
+                'id': AnyInt(),
+                'act': 'message:add',
+                'ts': CloseToNow(),
+                'actor': 'testing-1@example.com',
+                'body': 'this is another message',
+                'msg_format': 'markdown',
+                'conv': conv.key,
+            }
+        ],
+        'conv_details': {
+            'act': 'message:add',
+            'sub': 'Test Subject',
+            'email': 'testing-1@example.com',
+            'creator': 'testing-1@example.com',
+            'prev': 'this is another message',
+            'prts': 1,
+            'msgs': 2,
+        },
+        'user_id': user.id,
+        'user_v': 3,
+        'user_email': 'testing-1@example.com',
+        'flags': {'inbox': 0, 'unseen': 0, 'draft': 1, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0},
+    }

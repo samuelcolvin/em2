@@ -88,7 +88,7 @@ select json_build_object(
 from (
   select array_to_json(array_agg(json_strip_nulls(row_to_json(t)))) as participants
   from (
-    select p.user_id, p.spam, p.label_ids as labels, u.v user_v
+    select p.user_id, p.spam, p.label_ids as labels, u.v user_v, u.email user_email
     from participants as p
     join conversations as c on p.conv = c.id
     join users as u on p.user_id = u.id

@@ -1,9 +1,13 @@
 import base64
+import json
 from email import message_from_bytes
 
+import http_ece
 from aiohttp import web
 from aiohttp.hdrs import METH_GET, METH_HEAD
 from aiohttp.web_response import Response
+from cryptography.hazmat.backends import default_backend as cryptography_default_backend
+from cryptography.hazmat.primitives.asymmetric import ec
 
 
 async def ses_endpoint_url(request):
@@ -78,8 +82,23 @@ async def s3_endpoint(request):
         return Response(text='')
 
 
+vapid_receive_key = cryptography_default_backend().derive_elliptic_curve_private_key(1, ec.SECP256R1)
+# from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+# p256dh = vapid_receive_key.public_key().public_bytes(encoding=Encoding.X962, format=PublicFormat.UncompressedPoint)
+# debug(base64.urlsafe_b64encode(p256dh).strip(b'=').decode())
+
+
 async def vapid_endpoint(request):
-    # body = await request.read()
+    body = await request.read()
+    auth = b'x' * 32
+    decoded = http_ece.decrypt(
+        body,
+        private_key=vapid_receive_key,
+        auth_secret=base64.urlsafe_b64decode(auth + b'===='[: len(auth) % 4]),
+        version='aes128gcm',
+    )
+    data = json.loads(decoded.decode())
+    request.app['webpush'].append(data)
     return Response(status=201)
 
 
