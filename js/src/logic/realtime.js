@@ -1,62 +1,11 @@
-import {message_toast} from 'reactstrap-toolbox'
 import {unix_ms, bool_int} from './utils'
 import Websocket, {meta_action_types} from './ws'
 import WebPush from './web_push'
 
-const browser_inactive_time = 5000
-const now = () => new Date()
-
 export default class RealTime {
-  constructor (main, history) {
+  constructor (main) {
     this._main = main
-    this._history = history
     this._conn = null
-
-    this._last_event = now()
-    document.addEventListener('keydown', this._on_browser_event)
-    document.addEventListener('mousemove', this._on_browser_event)
-  }
-
-  _on_browser_event = () => {
-    this._last_event = now()
-  }
-
-  window_active = () => !document.hidden && now() - this._last_event < browser_inactive_time
-
-  notify = msg => {
-    if (!('Notification' in window)) {
-      console.warn('This browser does not support desktop notification')
-    } else if (Notification.permission === 'granted') {
-      this._show_notification(msg)
-      return
-    } else {
-      console.warn('notifications not permitted')
-    }
-    this._toast(msg)
-  }
-
-  _show_notification = msg => {
-    if (!document.hidden && now() - this.last_event < this.browser_inactive_time) {
-      this._toast(msg)
-    } else {
-      const n = new Notification(msg.title, {
-        body: msg.message,
-        icon: this.icon,
-      })
-      n.onclick = () => {
-        n.close()
-        window.focus()
-        this.history.push(msg.link)
-      }
-    }
-  }
-
-  _toast = msg => {
-    const onClick = e => {
-      e.close()
-      this._history.push(msg.link)
-    }
-    message_toast(Object.assign({onClick, progress: false}, msg))
   }
 
   close = () => {

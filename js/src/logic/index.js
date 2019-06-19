@@ -12,6 +12,7 @@ const random = () => Math.floor(Math.random() * 1e6)
 export default class LogicMain {
   constructor (history) {
     this.listeners = {}
+    this.history = history
     this.notify = new Notify(history)
     this.requests = new Requests(this)
     this.realtime = new RealTime(this)

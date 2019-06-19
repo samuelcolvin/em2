@@ -45,14 +45,16 @@ async function on_push (event) {
       title: data.conv_details.sub,
       body: `${data.actions[0].actor}: ${data.conv_details.prev}`,
       data: {
-        link: `/${data.actions[0].conv.substr(0, 10)}/`
+        user_id: data.user_id,
+        link: `/${data.actions[0].conv.substr(0, 10)}/`,
       },
       badge: '/android-chrome-192x192.png',  // image in notification bar
       icon: './android-chrome-512x512.png', // image next message in notification on android
     }
   }
   const clients = await self.clients.matchAll({type: 'window'})
-  const window_answers = await Promise.all(clients.map(client => push_to_client(client, {data, notification})))
+  const client_data = Object.assign({}, data, notification)
+  const window_answers = await Promise.all(clients.map(client => push_to_client(client, client_data)))
   if (notification && !window_answers.find(a => a)) {
     (await self.registration.getNotifications()).forEach(n => n.close())
     await self.registration.showNotification(notification.title, notification)
@@ -68,14 +70,16 @@ async function click (event) {
   // This looks to see if the current is already open and
   // focuses if it is
   const clients = await self.clients.matchAll({type: 'window'})
+  let found_client = false
   for (let client of clients) {
-    console.log('client', client)
-    // TODO check url
+    await push_to_client(client, event.notification.data)
     if ('focus' in client) {
       await client.focus()
-      return
     }
+    found_client = true
   }
-  await self.clients.openWindow(event.notification.data.link)
+  if (!found_client) {
+    await self.clients.openWindow(event.notification.data.link)
+  }
 }
 self.addEventListener('notificationclick', event => event.waitUntil(click(event)))

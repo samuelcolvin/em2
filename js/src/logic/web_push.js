@@ -70,18 +70,25 @@ export default class WebPush {
   }
 
   on_message = event => {
-    if (event.data.data.user_id === this._main.session.current.user_id) {
-      if (this._do_notifications && this._main.notify.window_active()) {
-        event.ports[0].postMessage(true)
-        const notification = Object.assign({}, event.data.notification, {toast_icon: fas.faEnvelope})
-        this._main.notify.notify(notification)
-      } else {
-        event.ports[0].postMessage(false)
-      }
-      this._realtime.on_message(event.data.data)
+    if (event.data.user_id !== this._main.session.current.user_id) {
+      event.ports[0].postMessage(false)
+      return
+    }
+
+    if (event.data.link) {
+      event.ports[0].postMessage(null)
+      this._main.history.push(event.data.link)
+      return
+    }
+
+    if (this._do_notifications && event.data.notification && this._main.notify.window_active()) {
+      event.ports[0].postMessage(true)
+      const notification = Object.assign({}, event.data.notification, {toast_icon: fas.faEnvelope})
+      this._main.notify.notify(notification)
     } else {
       event.ports[0].postMessage(false)
     }
+    this._realtime.on_message(event.data)
   }
 }
 
