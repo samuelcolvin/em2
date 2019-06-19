@@ -38,17 +38,20 @@ class SubscriptionModel(BaseModel):
     keys: SubKeys
 
 
-async def subscribe(conns: Connections, m: SubscriptionModel, user_id):
+async def subscribe(conns: Connections, client_session: ClientSession, m: SubscriptionModel, user_id):
+    sub_str = m.json()
     key = web_push_user_key(user_id)
     with await conns.redis as conn:
         await conn.unwatch()
         tr = conn.multi_exec()
         # might need a better unique and consistent way of referencing a subscription, then a hash
         # but try this first
-        tr.sadd(key, m.json())
+        tr.sadd(key, sub_str)
         # we could use expirationTime here, but it seems to generally be null
         tr.expire(key, 86400)
         await tr.execute()
+    msg = await conns.main.fetchval("select json_build_object('user_v', v) from users where id=$1", user_id)
+    await _sub_post(conns, client_session, sub_str, user_id, msg)
 
 
 async def unsubscribe(conns: Connections, m: SubscriptionModel, user_id):

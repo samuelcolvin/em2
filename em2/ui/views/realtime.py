@@ -2,6 +2,7 @@ import logging
 from asyncio import CancelledError
 
 from aiohttp import WSMsgType
+from aiohttp.web_exceptions import HTTPNotImplemented
 from aiohttp.web_ws import WebSocketResponse
 from atoolbox import JsonErrors
 
@@ -59,7 +60,9 @@ class WebPushSubscribe(ExecView):
     Model = SubscriptionModel
 
     async def execute(self, m: Model):
-        await subscribe(self.conns, m, self.session.user_id)
+        if not self.settings.vapid_private_key or not self.settings.vapid_sub_email:
+            raise HTTPNotImplemented(text="vapid_private_key and vapid_sub_email must be set")
+        await subscribe(self.conns, self.app['http_client'], m, self.session.user_id)
 
 
 class WebPushUnsubscribe(ExecView):

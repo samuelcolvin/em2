@@ -1,6 +1,5 @@
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {on_mobile} from 'reactstrap-toolbox'
-import {now_ms} from './utils'
 import {statuses} from './network'
 
 export default class WebPush {
@@ -57,13 +56,7 @@ export default class WebPush {
   }
 
   _record_sub = async sub_info => {
-    const now = now_ms()
-    const j = btoa(JSON.stringify(sub_info))
-    const t_before = parseInt(localStorage[j])
-    if (!Number.isFinite(t_before) || now - t_before > 20 * 3600 * 1000) {
-      await this._main.requests.post('ui', `/${this._main.session.id}/webpush-subscribe/`, sub_info)
-      localStorage[j] = now
-    }
+    await this._main.requests.post('ui', `/${this._main.session.id}/webpush-subscribe/`, sub_info)
   }
 
   _unsubscribe = async () => {

@@ -80,7 +80,7 @@ export default class Websocket {
         title: data.conv_details.sub,
         body: `${data.actions[0].actor}: ${data.conv_details.prev}`,
         data: {
-          link: `/${data.actions[0].conv.substr(0, 10)}/`
+          link: `/${data.actions[0].conv.substr(0, 10)}/`,
         },
         badge: '/android-chrome-192x192.png',  // image in notification bar
         icon: './android-chrome-512x512.png', // image next message in notification on android
