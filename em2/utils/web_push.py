@@ -50,7 +50,13 @@ async def subscribe(conns: Connections, client_session: ClientSession, m: Subscr
         # we could use expirationTime here, but it seems to generally be null
         tr.expire(key, 86400)
         await tr.execute()
-    msg = await conns.main.fetchval("select json_build_object('user_v', v) from users where id=$1", user_id)
+    msg = await conns.main.fetchval(
+        """
+        select json_build_object('user_v', v, 'user_id', id)
+        from users where id=$1
+        """,
+        user_id,
+    )
     await _sub_post(conns, client_session, sub_str, user_id, msg)
 
 

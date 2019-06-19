@@ -92,7 +92,7 @@ async def test_push_action(cli, factory: Factory, redis, worker, dummy_server, w
     assert await worker.run_check() == 2
     assert dummy_server.log == ['POST vapid', 'POST vapid']
     assert len(dummy_server.app['webpush']) == 2
-    assert dummy_server.app['webpush'][0] == {'user_v': 2}
+    assert dummy_server.app['webpush'][0] == {'user_id': user.id, 'user_v': 2}
     assert dummy_server.app['webpush'][1] == {
         'actions': [
             {
