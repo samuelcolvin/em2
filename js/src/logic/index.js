@@ -1,5 +1,5 @@
 import {sleep, Notify} from 'reactstrap-toolbox'
-import {make_url, statuses, Requests} from './network'
+import {statuses, Requests, online} from './network'
 import Session from './session'
 import RealTime from './realtime'
 import Conversations from './conversations'
@@ -31,17 +31,13 @@ export default class LogicMain {
       return
     }
     // no session, check the internet connection
-    const url = make_url('ui', '/online/')
-    try {
-      await fetch(url, {method: 'HEAD'})
-    } catch (error) {
-      // generally TypeError: failed to fetch, also CSP if rules are messed up
+    if (await online()) {
+      console.debug(`checking connection status: online`)
+      this.set_conn_status(statuses.online)
+    } else {
       this.set_conn_status(statuses.offline)
-      console.debug(`checking connection status at ${url}: offline`)
-      return
+      console.debug(`checking connection status: offline`)
     }
-    console.debug(`checking connection status at ${url}: online`)
-    this.set_conn_status(statuses.online)
   }
 
   set_conn_status = conn_status => {

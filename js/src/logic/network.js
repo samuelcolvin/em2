@@ -51,3 +51,18 @@ export class Requests {
     return r
   }
 }
+
+async function _online () {
+  try {
+    await fetch(`/online.json?v=${new Date().getTime()}`, {method: 'HEAD'})
+  } catch (error) {
+    // generally TypeError: failed to fetch, also CSP if rules are messed up
+    return false
+  }
+  return true
+}
+
+export function online () {
+  const timeout = new Promise(resolve => setTimeout(() => resolve(false), 1000))
+  return Promise.race([_online(), timeout])
+}

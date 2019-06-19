@@ -14,8 +14,8 @@ async def test_ui_index(cli, url):
 
 def test_make_url_localhost(cli):
     mu = MakeUrl(cli.server.app)
-    assert str(mu.get_path('ui:online')) == '/ui/online/'
-    assert mu.get_url('ui:online') == 'http://localhost:8000/ui/online/'
+    assert str(mu.get_path('ui:index')) == '/ui/'
+    assert mu.get_url('ui:index') == 'http://localhost:8000/ui/'
     assert str(mu.get_path('auth:update-session')) == '/auth/session/update/'
     assert mu.get_url('auth:update-session') == 'http://localhost:8000/auth/session/update/'
 
@@ -26,8 +26,8 @@ async def test_make_url_other(settings):
     app = await create_app(settings=settings)
 
     mu = MakeUrl(app)
-    assert str(mu.get_path('ui:online')) == '/online/'
-    assert mu.get_url('ui:online') == 'https://ui.example.com/online/'
+    assert str(mu.get_path('ui:index')) == '/'
+    assert mu.get_url('ui:index') == 'https://ui.example.com/'
     assert str(mu.get_path('auth:update-session')) == '/session/update/'
     assert mu.get_url('auth:update-session') == 'https://auth.example.com/session/update/'
 
