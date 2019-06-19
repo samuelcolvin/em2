@@ -82,7 +82,7 @@ async def s3_endpoint(request):
         return Response(text='')
 
 
-vapid_receive_key = cryptography_default_backend().derive_elliptic_curve_private_key(1, ec.SECP256R1)
+vapid_receive_key = ec.derive_private_key(1, ec.SECP256R1(), cryptography_default_backend())
 # from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 # p256dh = vapid_receive_key.public_key().public_bytes(encoding=Encoding.X962, format=PublicFormat.UncompressedPoint)
 # debug(base64.urlsafe_b64encode(p256dh).strip(b'=').decode())

@@ -1,5 +1,13 @@
 import {make_url, statuses} from './network'
 
+export const meta_action_types = new Set([
+  'seen',
+  'subject:release',
+  'subject:lock',
+  'message:lock',
+  'message:release',
+])
+
 // reconnect after 50 seconds to avoid lots of 503 in heroku and also so we always have an active connection
 const ws_ttl = 49900
 
@@ -67,6 +75,17 @@ export default class Websocket {
     }
     const data = JSON.parse(event.data)
     await this._realtime.on_message(data)
+    if (should_notify(data)) {
+      this._main.notify.notify({
+        title: data.conv_details.sub,
+        body: `${data.actions[0].actor}: ${data.conv_details.prev}`,
+        data: {
+          link: `/${data.actions[0].conv.substr(0, 10)}/`
+        },
+        badge: '/android-chrome-192x192.png',  // image in notification bar
+        icon: './android-chrome-512x512.png', // image next message in notification on android
+      })
+    }
   }
 
   _on_close = async e => {
@@ -99,5 +118,20 @@ export default class Websocket {
     // console.debug('websocket error:', e)
     this._main.set_conn_status(statuses.offline)
     this._socket = null
+  }
+}
+
+
+function should_notify (data) {
+  // duplicated from em2-service-worker.js
+  if (!data.actions || !data.actions.find(a => a.actor !== data.user_email)) {
+    // actions are all by "you"
+    return false
+  } else if (data.spam) {
+    // conversation is spam
+    return false
+  } else {
+    // otherwise check if there are any non-meta actions
+    return Boolean(data.actions.find(a => !meta_action_types.has(a.act)))
   }
 }

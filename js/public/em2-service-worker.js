@@ -1,15 +1,36 @@
 self.addEventListener('install', e => {
-  console.log('new service worker installed', e)
+  console.debug('new service worker installed', e)
   // reload to use the new service worker:
   self.skipWaiting()
 })
 
-function push_to_client (client, msg) {
+function push_to_client (client, data) {
   return new Promise(resolve=> {
     const msg_chan = new MessageChannel()
     msg_chan.port1.onmessage = event => resolve(event.data)
-    client.postMessage(msg, [msg_chan.port2])
+    client.postMessage(data, [msg_chan.port2])
   })
+}
+
+const meta_action_types = new Set([
+  'seen',
+  'subject:release',
+  'subject:lock',
+  'message:lock',
+  'message:release',
+])
+
+function should_notify (data) {
+  if (!data.actions || !data.actions.find(a => a.actor !== data.user_email)) {
+    // actions are all by "you"
+    return false
+  } else if (data.spam) {
+    // conversation is spam
+    return false
+  } else {
+    // otherwise check if there are any non-meta actions
+    return Boolean(data.actions.find(a => !meta_action_types.has(a.act)))
+  }
 }
 
 async function on_push (event) {
@@ -18,24 +39,23 @@ async function on_push (event) {
   if (data === 'check') {
     return
   }
-  const clients = await self.clients.matchAll({type: 'window'})
-  const window_answers = await Promise.all(clients.map(client => push_to_client(client, data)))
-  if (window_answers.find(a => a)) {
-    // one of the windows liked this message and took over
-    return
-  }
-  const notifications = await self.registration.getNotifications()
-  notifications.forEach(n => n.close())
-  for (let action of data.actions) {
-    // link: `/${action.conv.substr(0, 10)}/`,
-    await self.registration.showNotification(action.actor, {
-      body: data.conv_details.sub,
+  let notification = null
+  if (should_notify(data)) {
+    notification = {
+      title: data.conv_details.sub,
+      body: `${data.actions[0].actor}: ${data.conv_details.prev}`,
       data: {
-        link: `/${action.conv.substr(0, 10)}/`
+        link: `/${data.actions[0].conv.substr(0, 10)}/`
       },
       badge: '/android-chrome-192x192.png',  // image in notification bar
-      icon: './android-chrome-192x192.png', // image next message in notification on android
-    })
+      icon: './android-chrome-512x512.png', // image next message in notification on android
+    }
+  }
+  const clients = await self.clients.matchAll({type: 'window'})
+  const window_answers = await Promise.all(clients.map(client => push_to_client(client, {data, notification})))
+  if (notification && !window_answers.find(a => a)) {
+    (await self.registration.getNotifications()).forEach(n => n.close())
+    await self.registration.showNotification(notification.title, notification)
   }
 }
 self.addEventListener('push', event => event.waitUntil(on_push(event)))
@@ -49,7 +69,7 @@ async function click (event) {
   // focuses if it is
   const clients = await self.clients.matchAll({type: 'window'})
   for (let client of clients) {
-    // console.log('client', client)
+    console.log('client', client)
     // TODO check url
     if ('focus' in client) {
       await client.focus()

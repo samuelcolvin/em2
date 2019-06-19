@@ -1,3 +1,4 @@
+import * as fas from '@fortawesome/free-solid-svg-icons'
 import {on_mobile} from 'reactstrap-toolbox'
 import {now_ms} from './utils'
 import {statuses} from './network'
@@ -76,9 +77,15 @@ export default class WebPush {
   }
 
   on_message = event => {
-    if (event.data.user_id === this._main.session.current.user_id) {
-      event.ports[0].postMessage(this._do_notifications)
-      this._realtime.on_message(event.data)
+    if (event.data.data.user_id === this._main.session.current.user_id) {
+      if (this._do_notifications && this._main.notify.window_active()) {
+        event.ports[0].postMessage(true)
+        const notification = Object.assign({}, event.data.notification, {toast_icon: fas.faEnvelope})
+        this._main.notify.notify(notification)
+      } else {
+        event.ports[0].postMessage(false)
+      }
+      this._realtime.on_message(event.data.data)
     } else {
       event.ports[0].postMessage(false)
     }

@@ -43,6 +43,7 @@ yarn-error.log*
 # favicons
 /js/favicon_package.zip
 /js/public/favicon.ico
+/js/public/manifest.json
 /js/public/*.png
 /js/public/safari-pinned-tab.svg
 /js/public/site.webmanifest

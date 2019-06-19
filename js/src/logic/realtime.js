@@ -1,19 +1,62 @@
+import {message_toast} from 'reactstrap-toolbox'
 import {unix_ms, bool_int} from './utils'
-import Websocket from './ws'
+import Websocket, {meta_action_types} from './ws'
 import WebPush from './web_push'
 
-const meta_action_types = new Set([
-  'seen',
-  'subject:release',
-  'subject:lock',
-  'message:lock',
-  'message:release',
-])
+const browser_inactive_time = 5000
+const now = () => new Date()
 
 export default class RealTime {
-  constructor (main) {
+  constructor (main, history) {
     this._main = main
+    this._history = history
     this._conn = null
+
+    this._last_event = now()
+    document.addEventListener('keydown', this._on_browser_event)
+    document.addEventListener('mousemove', this._on_browser_event)
+  }
+
+  _on_browser_event = () => {
+    this._last_event = now()
+  }
+
+  window_active = () => !document.hidden && now() - this._last_event < browser_inactive_time
+
+  notify = msg => {
+    if (!('Notification' in window)) {
+      console.warn('This browser does not support desktop notification')
+    } else if (Notification.permission === 'granted') {
+      this._show_notification(msg)
+      return
+    } else {
+      console.warn('notifications not permitted')
+    }
+    this._toast(msg)
+  }
+
+  _show_notification = msg => {
+    if (!document.hidden && now() - this.last_event < this.browser_inactive_time) {
+      this._toast(msg)
+    } else {
+      const n = new Notification(msg.title, {
+        body: msg.message,
+        icon: this.icon,
+      })
+      n.onclick = () => {
+        n.close()
+        window.focus()
+        this.history.push(msg.link)
+      }
+    }
+  }
+
+  _toast = msg => {
+    const onClick = e => {
+      e.close()
+      this._history.push(msg.link)
+    }
+    message_toast(Object.assign({onClick, progress: false}, msg))
   }
 
   close = () => {
@@ -69,7 +112,6 @@ export default class RealTime {
     const other_actor = Boolean(actions.find(a => a.actor !== this._main.session.current.email))
     const self_creator = data.conv_details.creator === this._main.session.current.email
     const real_act = Boolean(actions.find(a => !meta_action_types.has(a.act)))
-    let notify_details = null
 
     if (conv) {
       const update = {
@@ -80,9 +122,6 @@ export default class RealTime {
       }
       if (other_actor && real_act) {
         update.seen = 0
-        if (!update.spam) {
-          notify_details = conv.details
-        }
       } else if (!other_actor && action.act === 'seen') {
         update.seen = 1
       }
@@ -117,9 +156,6 @@ export default class RealTime {
       }
       await this._main.session.db.conversations.add(conv_data)
 
-      if (!conv_data.seen && !data.spam) {
-        notify_details = data.conv_details
-      }
       const old_conv = await this._main.session.db.conversations.get({new_key: action.conv})
       if (old_conv) {
         await this._main.session.db.conversations.delete(old_conv.key)
@@ -132,15 +168,6 @@ export default class RealTime {
     if (this._main.session.current.flags !== data.flags) {
       await this._main.session.update({flags: data.flags})
       this._main.fire('flag-change', this._main.conversations.counts())
-    }
-
-    if (notify_details) {
-      // TODO better summary of action
-      this._main.notify.notify({
-        title: action.actor,
-        message: notify_details.sub,
-        link: `/${action.conv.substr(0, 10)}/`,
-      })
     }
   }
 }
