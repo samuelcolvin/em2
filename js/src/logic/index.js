@@ -3,7 +3,7 @@ import {statuses, Requests, get_version} from './network'
 import Session from './session'
 import RealTime from './realtime'
 import Conversations from './conversations'
-import Serach from './search'
+import Search from './search'
 import Contacts from './contacts'
 import Auth from './auth'
 
@@ -18,7 +18,7 @@ export default class LogicMain {
     this.realtime = new RealTime(this)
     this.session = new Session(this)
     this.conversations = new Conversations(this)
-    this.search = new Serach(this)
+    this.search = new Search(this)
     this.contacts = new Contacts(this)
     this.auth = new Auth(this)
     this._conn_status = null
@@ -37,7 +37,7 @@ export default class LogicMain {
       this.set_conn_status(statuses.online)
       if (v !== process.env.REACT_APP_VERSION) {
         console.warn(`code outdated, latest: ${v}, running: ${process.env.REACT_APP_VERSION}`)
-        // TODO inform user
+        this.fire('setState', {outdated: true})
       }
     } else {
       this.set_conn_status(statuses.offline)

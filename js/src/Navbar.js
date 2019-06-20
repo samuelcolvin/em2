@@ -97,7 +97,7 @@ const NavbarUser = ({app_state}) => (
   </div>
 )
 
-const StatusBar = ({conn_status, conv_title}) => {
+const StatusBar = ({conn_status, outdated, conv_title}) => {
   const scroll_threshold = 50
   const [down_page, set_down_page] = React.useState(false)
 
@@ -116,10 +116,10 @@ const StatusBar = ({conn_status, conv_title}) => {
     return () => window.removeEventListener('scroll', on_scroll)
   })
 
-  const error_msg = {
+  let error_msg = {
     [statuses.problem]: 'Connection Problems',
     [statuses.offline]: 'Offline',
-  }[conn_status] || null
+  }[conn_status] || (outdated ? 'New version available, please reload' : null)
   const show = (down_page && conv_title) || error_msg
 
   return (

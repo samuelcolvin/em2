@@ -45,6 +45,7 @@ class App extends React.Component {
     conn_status: null,
     menu_item: null,
     conv_title: null,
+    outdated: false,
   }
 
   componentDidMount () {
