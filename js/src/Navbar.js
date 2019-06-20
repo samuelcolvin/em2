@@ -7,16 +7,29 @@ import {
   NavbarBrand,
   Nav,
   Tooltip,
-  UncontrolledDropdown,
+  Dropdown,
   DropdownToggle,
   DropdownMenu,
   DropdownItem,
   Row,
   Col,
 } from 'reactstrap'
+import {on_mobile, sleep} from 'reactstrap-toolbox'
 import {statuses} from './logic/network'
 import {TopMainMenu} from './WithMenu'
 import Search from './Search'
+
+const OtherAccounts = ({other_sessions}) => [
+  ...other_sessions.map(s => (
+    <DropdownItem key={s.session_id} href={`/switch/${s.session_id}/`} target="_blank">
+      Switch to <b>{s.name}</b>
+    </DropdownItem>
+  )),
+  other_sessions.length ? <DropdownItem key="div" divider/> : null,
+  <DropdownItem key="login" href="/login/" target="_blank">
+    Login to another account
+  </DropdownItem>
+]
 
 const AccountSummary = ({conn_status, user}) => {
   const [show_tooltip, set_tooltip] = React.useState(false)
@@ -62,7 +75,15 @@ const AccountSummary = ({conn_status, user}) => {
   )
 }
 
-const NavbarUser = ({app_state}) => (
+function get_toggle (setAppState) {
+  return async () => {
+    setAppState(s => ({menu_open: !s.menu_open}))
+    await sleep(200)
+    setAppState(s => ({disable_nav: s.menu_open && on_mobile}))
+  }
+}
+
+const NavbarUser = ({app_state, setAppState}) => (
   <div className="d-flex w-100">
     <NavbarBrand tag={Link} to="/" className="custom-nav-item d-none d-sm-block">
       {process.env.REACT_APP_NAME}
@@ -71,28 +92,23 @@ const NavbarUser = ({app_state}) => (
       <Search/>
     </form>
     <Nav navbar className="custom-nav-item ml-2">
-      <UncontrolledDropdown nav inNavbar className="ml-auto">
+      <Dropdown isOpen={app_state.menu_open} toggle={get_toggle(setAppState)} nav inNavbar className="ml-auto">
         <DropdownToggle nav>
           <AccountSummary {...app_state}/>
         </DropdownToggle>
         <DropdownMenu right className="navbar-dropdown">
+
           <TopMainMenu/>
-          {app_state.other_sessions.map(s => (
-            <DropdownItem key={s.session_id} href={`/switch/${s.session_id}/`}
-                          target="_blank">
-              Switch to <b>{s.name}</b>
-            </DropdownItem>
-          ))}
-          {app_state.other_sessions.length ? <DropdownItem divider/> : null}
-          <DropdownItem href="/login/" target="_blank">
-            Login to another account
-          </DropdownItem>
+
+          <OtherAccounts other_sessions={app_state.other_sessions}/>
+
           <DropdownItem divider/>
+
           <DropdownItem tag={Link} to="/logout/">
             Logout
           </DropdownItem>
         </DropdownMenu>
-      </UncontrolledDropdown>
+      </Dropdown>
     </Nav>
   </div>
 )
@@ -139,11 +155,11 @@ const StatusBar = ({conn_status, outdated, conv_title}) => {
   )
 }
 
-export default ({app_state}) => ([
+export default ({app_state, setAppState}) => ([
   <NavbarBootstrap key="nb" color="dark" dark fixed="top" expand="md">
     <div className="container">
       {app_state.user ?
-        <NavbarUser app_state={app_state}/> :
+        <NavbarUser app_state={app_state} setAppState={setAppState}/> :
         <NavbarBrand tag={Link} to="/">{process.env.REACT_APP_NAME}</NavbarBrand>
       }
     </div>

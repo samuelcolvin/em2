@@ -6,8 +6,9 @@ import {withRouter} from 'react-router-dom'
 import {WithContext, Loading} from 'reactstrap-toolbox'
 import {format_ts} from '../utils/dt'
 
-export const ConvList = ({conversations, user_email}) => conversations.map((conv, i) => (
-  <Link key={i} to={`/${conv.key.substr(0, 10)}/`} className={conv.seen ? 'seen' : ''}>
+export const ConvList = ({conversations, user_email, ctx}) => conversations.map((conv, i) => (
+  <Link key={i} to={`/${conv.key.substr(0, 10)}/`} className={conv.seen ? 'seen' : ''}
+        onClick={e => ctx.disable_nav && e.preventDefault()}>
     <div className="subject">{conv.details.sub}</div>
     <div className="summary">
       <span className="body">
@@ -122,7 +123,7 @@ class ConvListView extends React.Component {
     return (
       <div>
         <div className="box conv-list">
-          <ConvList conversations={this.state.conversations} user_email={user_email}/>
+          <ConvList conversations={this.state.conversations} user_email={user_email} ctx={this.props.ctx}/>
         </div>
         <div className="d-flex justify-content-center">
           <Paginate current={this.get_page()} onClick={this.on_pagination_click} pages={this.state.pages}/>

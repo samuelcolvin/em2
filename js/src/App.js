@@ -44,6 +44,8 @@ class App extends React.Component {
     other_sessions: [],
     conn_status: null,
     menu_item: null,
+    menu_open: false,
+    disable_nav: false,
     conv_title: null,
     outdated: false,
   }
@@ -86,12 +88,13 @@ class App extends React.Component {
       setConvTitle: conv_title => this.setState({conv_title}),
       setMenuItem: menu_item => this.setState({menu_item}),
       menu_item: this.state.menu_item,
+      disable_nav: this.state.disable_nav,
       user: this.state.user,
       other_sessions: this.state.other_sessions,
     }
     return (
       <GlobalContext.Provider value={ctx}>
-        <Navbar app_state={this.state} location={this.props.location}/>
+        <Navbar app_state={this.state} setAppState={s => this.setState(s)} location={this.props.location}/>
         <main className="container" id="main">
           <Main app_state={this.state}/>
         </main>

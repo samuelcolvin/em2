@@ -1,8 +1,7 @@
 import React from 'react'
 import {Row, Col, Button, FormFeedback} from 'reactstrap'
 import {Link} from 'react-router-dom'
-import * as fas from '@fortawesome/free-solid-svg-icons'
-import {WithContext, DetailedError, message_toast} from 'reactstrap-toolbox'
+import {WithContext, DetailedError} from 'reactstrap-toolbox'
 import {make_url} from '../logic/network'
 import IFrame from './IFrame'
 import Recaptcha from './Recaptcha'
@@ -19,14 +18,7 @@ class Login extends React.Component {
   iframe_ref = React.createRef()
 
   authenticate = async data => {
-    const user = await window.logic.auth.auth_token(data)
-    message_toast({
-      icon: fas.faUser,
-      title: 'Logged in',
-      message: `Logged in successfully as ${user.name}`,
-      progress: false,
-      time: 2000,
-    })
+    await window.logic.auth.auth_token(data)
     this.props.history.replace(next_url(this.props.location) || '/')
   }
 
