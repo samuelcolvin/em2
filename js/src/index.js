@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom'
 import {BrowserRouter as Router} from 'react-router-dom'
 import './styles/main.scss'
 import App from './App'
-import {register_service_worker} from './service_worker'
+import register_service_worker from './service_worker'
 
 ReactDOM.render(<Router><App/></Router>, document.getElementById('root'))
 register_service_worker()

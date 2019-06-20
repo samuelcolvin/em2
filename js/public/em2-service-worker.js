@@ -66,9 +66,6 @@ async function click (event) {
   console.debug('sw notification clicked: ', event)
   event.notification.close()
 
-  // await self.clients.openWindow('/')
-  // This looks to see if the current is already open and
-  // focuses if it is
   const clients = await self.clients.matchAll({type: 'window'})
   let found_client = false
   for (let client of clients) {

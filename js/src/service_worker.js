@@ -1,4 +1,4 @@
-export function register_service_worker () {
+export default function () {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register(process.env.PUBLIC_URL + '/em2-service-worker.js')

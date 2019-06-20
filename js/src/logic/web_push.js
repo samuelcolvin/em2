@@ -24,16 +24,17 @@ export default class WebPush {
       !('PushManager' in window)) {
       return false
     }
+    this._clear_inverval = setTimeout(this._check_online, online_interval)
     this._main.set_conn_status(statuses.connecting)
     const sub = await this._subscribe()
     if (!sub) {
       // unable to subscribe return and fallback to websockets
+      clearTimeout(this._clear_inverval)
       return false
     }
     navigator.serviceWorker.addEventListener('message', this.on_message)
     await this._record_sub(sub.toJSON())
     this._main.set_conn_status(statuses.online)
-    this._clear_inverval = setTimeout(this._check_online, online_interval)
     return true
   }
 

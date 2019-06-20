@@ -33,13 +33,13 @@ class SubscriptionModel(BaseModel):
     expirationTime: Optional[int]
 
     class SubKeys(BaseModel):
-        p256dh: str
-        auth: str
+        p256dh: bytes
+        auth: bytes
 
     keys: SubKeys
 
     def hash(self):
-        return hashlib.md5(f'{self.endpoint}|{self.keys.p256dh}|{self.keys.auth}'.encode()).hexdigest()
+        return hashlib.md5(b'|'.join([self.endpoint.encode(), self.keys.p256dh, self.keys.auth])).hexdigest()
 
 
 async def subscribe(conns: Connections, client_session: ClientSession, sub: SubscriptionModel, user_id):
@@ -99,16 +99,14 @@ async def _user_web_push(conns: Connections, session: ClientSession, participant
 
 
 async def _sub_post(conns: Connections, session: ClientSession, sub: SubscriptionModel, user_id: int, msg: str):
-    server_key = ec.generate_private_key(ec.SECP256R1, default_backend())
     body = http_ece.encrypt(
         msg.encode(),
-        private_key=server_key,
+        private_key=ec.generate_private_key(ec.SECP256R1, default_backend()),
         dh=_prepare_vapid_key(sub.keys.p256dh),
         auth_secret=_prepare_vapid_key(sub.keys.auth),
         version=vapid_encoding,
     )
-    headers = _vapid_headers(sub, conns.settings)
-    async with session.post(sub.endpoint, data=body, headers=headers) as r:
+    async with session.post(sub.endpoint, data=body, headers=_vapid_headers(sub, conns.settings)) as r:
         text = await r.text()
     if r.status == 410:
         await unsubscribe(conns, sub, user_id)
@@ -133,9 +131,5 @@ def _vapid_headers(sub: SubscriptionModel, settings: Settings):
     }
 
 
-def _prepare_vapid_key(data: str) -> bytes:
-    """
-    Add base64 padding to the end of a string, if required
-    """
-    data = data.encode() + b'===='[: len(data) % 4]
-    return base64.urlsafe_b64decode(data)
+def _prepare_vapid_key(data: bytes) -> bytes:
+    return base64.urlsafe_b64decode(data + b'===='[: len(data) % 4])

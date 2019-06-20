@@ -61,7 +61,7 @@ class WebPushSubscribe(ExecView):
 
     async def execute(self, m: Model):
         if not self.settings.vapid_private_key or not self.settings.vapid_sub_email:
-            raise HTTPNotImplemented(text="vapid_private_key and vapid_sub_email must be set")
+            raise HTTPNotImplemented(text='vapid_private_key and vapid_sub_email must be set')
         await subscribe(self.conns, self.app['http_client'], m, self.session.user_id)
 
 
