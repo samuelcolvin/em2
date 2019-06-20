@@ -197,19 +197,13 @@ const WithMenu = ({children}) => {
 
   React.useEffect(() => {
     window.addEventListener('resize', set_width)
-    setTimeout(() => {
-      if (ref_menu.current) {
-        ref_menu.current.style.position = 'fixed'
-        ref_menu.current.style.top = '91px'
-        set_width()
-      }
-    }, 50)
+    setTimeout(() => ref_menu.current && set_width(), 0)
     return () => window.removeEventListener('resize', set_width)
   })
   return (
     <div className="with-menu">
-      <div ref={ref_left} className="left-menu">
-        <div ref={ref_menu}>
+      <div ref={ref_left} className="left-menu" style={{display: 'none'}}>
+        <div ref={ref_menu} style={{position: 'fixed', top: '91px'}}>
           <LeftMenu/>
         </div>
       </div>
@@ -224,7 +218,7 @@ const WithMenu = ({children}) => {
 const render_conv_details = ({location}) => <ConversationDetails key={location.key}/>
 
 export const RoutesWithMenu = () => (
-  <WithMenu>
+  <WithMenu key="with-menu">
     <Switch>
       <Route exact path="/" component={ListConversations}/>
       <Route exact path="/:flag(draft|sent|archive|all|spam|deleted)/" component={ListConversations}/>
@@ -238,7 +232,7 @@ export const RoutesWithMenu = () => (
 )
 
 export const ErrorWithMenu = ({error}) => (
-  <WithMenu>
+  <WithMenu key="with-menu">
     <Error className="box" error={error}/>
   </WithMenu>
 )
