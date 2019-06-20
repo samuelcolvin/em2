@@ -1,16 +1,21 @@
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {on_mobile} from 'reactstrap-toolbox'
-import {statuses} from './network'
+import {statuses, get_version} from './network'
+
+const online_interval = 200e3
+const offline_interval = 10e3
 
 export default class WebPush {
   constructor (realtime) {
     this._realtime = realtime
     this._main = realtime._main
     this._do_notifications = !on_mobile
+    this._clear_inverval = 0
   }
 
   close = () => {
     this._unsubscribe()
+    clearTimeout(this._clear_inverval)
   }
 
   connect = async () => {
@@ -28,6 +33,7 @@ export default class WebPush {
     navigator.serviceWorker.addEventListener('message', this.on_message)
     await this._record_sub(sub.toJSON())
     this._main.set_conn_status(statuses.online)
+    this._clear_inverval = setTimeout(this._check_online, online_interval)
     return true
   }
 
@@ -89,6 +95,18 @@ export default class WebPush {
       event.ports[0].postMessage(false)
     }
     this._realtime.on_message(event.data)
+  }
+
+  _check_online = async () => {
+    let interval
+    if (await get_version()) {
+      interval = online_interval
+      this._main.set_conn_status(statuses.online)
+    } else {
+      interval = offline_interval
+      this._main.set_conn_status(statuses.offline)
+    }
+    this._clear_inverval = setTimeout(() => this._check_online(), interval)
   }
 }
 

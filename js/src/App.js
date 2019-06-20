@@ -56,7 +56,7 @@ class App extends React.Component {
   }
 
   componentDidUpdate (prevProps) {
-    document.title = this.state.title ? this.state.title : 'em2'
+    document.title = this.state.title || process.env.REACT_APP_NAME
     if (this.props.location !== prevProps.location) {
       this.state.error && this.setState({error: null})
       this.state.conv_title && this.setState({conv_title: null})

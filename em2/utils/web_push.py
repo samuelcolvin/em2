@@ -94,7 +94,8 @@ async def _user_web_push(conns: Connections, session: ClientSession, participant
         subs = [SubscriptionModel(**ujson.loads(s)) for s in subs]
         await asyncio.gather(*[_sub_post(conns, session, s, user_id, msg) for s in subs])
         return len(subs)
-    return 0
+    else:
+        return 0
 
 
 async def _sub_post(conns: Connections, session: ClientSession, sub: SubscriptionModel, user_id: int, msg: str):

@@ -1,5 +1,5 @@
 import {sleep, Notify} from 'reactstrap-toolbox'
-import {statuses, Requests, online} from './network'
+import {statuses, Requests, get_version} from './network'
 import Session from './session'
 import RealTime from './realtime'
 import Conversations from './conversations'
@@ -27,16 +27,20 @@ export default class LogicMain {
 
   _start = async () => {
     await this.session.init()
-    if (this.session.id) {
-      return
-    }
+    await this._check_version()
+  }
+
+  _check_version = async () => {
+    const v = await get_version()
     // no session, check the internet connection
-    if (await online()) {
-      console.debug(`checking connection status: online`)
+    if (v) {
       this.set_conn_status(statuses.online)
+      if (v !== process.env.REACT_APP_VERSION) {
+        console.warn(`code outdated, latest: ${v}, running: ${process.env.REACT_APP_VERSION}`)
+        // TODO inform user
+      }
     } else {
       this.set_conn_status(statuses.offline)
-      console.debug(`checking connection status: offline`)
     }
   }
 

@@ -79,7 +79,7 @@ def get_script(path: Path):
     return f"'sha256-{base64.b64encode(hashlib.sha256(js.encode()).digest()).decode()}'"
 
 
-def mod():
+def mod(version):
     # replace bootstrap import with the real thing
     # (this could be replaced by using the main css bundles)
     path = build_dir / 'iframes' / 'auth' / 'styles.css'
@@ -117,8 +117,9 @@ def mod():
 
     # create build_details.txt with details about the build
     build_details = {k: os.getenv(k) for k in details_env}
-    build_details['time'] = str(datetime.utcnow())
+    build_details.update(version=version, time=str(datetime.utcnow()))
     (build_dir / 'build_details.txt').write_text(json.dumps(build_details, indent=2))
+    (build_dir / 'version.txt').write_text(version)
 
     # rename iframes/message/message.html and add to precache-manifest.js
     (build_dir / iframe_msg_old_path).rename(build_dir / iframe_msg_new_path)
@@ -143,7 +144,11 @@ def mod():
 
 if __name__ == '__main__':
     env = dict(os.environ)
-    env['REACT_APP_IFRAME_MESSAGE'] = f'/{iframe_msg_new_path}'
+    version = os.getenv('COMMIT_REF')
+    if not version:
+        p = subprocess.run(['git', 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, check=True, universal_newlines=True)
+        version = p.stdout.strip('\n')
+    env.update(REACT_APP_IFRAME_MESSAGE=f'/{iframe_msg_new_path}', REACT_APP_VERSION=version)
 
     subprocess.run(['yarn', 'build'], cwd=str(this_dir), env=env, check=True)
-    mod()
+    mod(version)

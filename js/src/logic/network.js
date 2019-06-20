@@ -52,17 +52,19 @@ export class Requests {
   }
 }
 
-async function _online () {
+async function request_version () {
   try {
-    await fetch(`/online.json?v=${new Date().getTime()}`, {method: 'HEAD'})
+    const r = await fetch(`/version.txt?v=${new Date().getTime()}`)
+    const text = await r.text()
+    return text.replace('\n', '')
   } catch (error) {
     // generally TypeError: failed to fetch, also CSP if rules are messed up
-    return false
+    console.debug('offline, error:', error)
+    return null
   }
-  return true
 }
 
-export function online () {
-  const timeout = new Promise(resolve => setTimeout(() => resolve(false), 1000))
-  return Promise.race([_online(), timeout])
+export function get_version () {
+  const timeout = new Promise(resolve => setTimeout(() => resolve(null), 1000))
+  return Promise.race([request_version(), timeout])
 }

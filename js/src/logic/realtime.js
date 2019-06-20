@@ -26,7 +26,7 @@ export default class RealTime {
   }
 
   on_message = async data => {
-    console.debug('realtime message:', data)
+    // console.debug('realtime message:', data)
     let clear_cache = false
     if (data.actions) {
       await this._apply_actions(data)
