@@ -142,7 +142,10 @@ const StatusBar = ({conn_status, outdated, conv_title}) => {
 export default ({app_state}) => ([
   <NavbarBootstrap key="nb" color="dark" dark fixed="top" expand="md">
     <div className="container">
-      {app_state.user ? <NavbarUser app_state={app_state}/> : <NavbarBrand tag={Link} to="/">em2</NavbarBrand>}
+      {app_state.user ?
+        <NavbarUser app_state={app_state}/> :
+        <NavbarBrand tag={Link} to="/">{process.env.REACT_APP_NAME}</NavbarBrand>
+      }
     </div>
   </NavbarBootstrap>,
   <StatusBar key="status" {...app_state}/>,

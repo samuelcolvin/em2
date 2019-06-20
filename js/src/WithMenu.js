@@ -160,6 +160,14 @@ class TopMainMenu_ extends React.Component {
   render () {
     if (this.state.visible) {
       return [
+        <TopMenuItem
+          key="create"
+          to="/create/"
+          active={this.props.ctx.menu_item === 'create'}
+          icon={fas.faKeyboard}
+          title="Compose"
+        />,
+        <DropdownItem key="divider1" divider/>,
         ...main_menu_items.map(m => (
           <TopMenuItem
             key={m.to}
@@ -171,7 +179,7 @@ class TopMainMenu_ extends React.Component {
             count_unseen={m.unseen && this.state.flags['unseen']}
           />
         )),
-        <DropdownItem key="divider" divider/>,
+        <DropdownItem key="divider2" divider/>,
       ]
     } else {
       return null
