@@ -59,7 +59,7 @@ iframe_msg_csp = {
     'font-src': ["'unsafe-inline'"],
     'img-src': ["'unsafe-inline'", f'https://ui.{main_domain}', f'https://temp.{main_domain}'],
 }
-details_env = 'BRANCH', 'PULL_REQUEST', 'HEAD', 'COMMIT_REF', 'CONTEXT', 'REVIEW_ID'
+details_env = 'BRANCH', 'PULL_REQUEST', 'HEAD', 'CONTEXT', 'REVIEW_ID'
 
 
 def replace_css(m):
@@ -79,7 +79,7 @@ def get_script(path: Path):
     return f"'sha256-{base64.b64encode(hashlib.sha256(js.encode()).digest()).decode()}'"
 
 
-def mod():
+def mod(version):
     # replace bootstrap import with the real thing
     # (this could be replaced by using the main css bundles)
     path = build_dir / 'iframes' / 'auth' / 'styles.css'
@@ -117,8 +117,9 @@ def mod():
 
     # create build_details.txt with details about the build
     build_details = {k: os.getenv(k) for k in details_env}
-    build_details['time'] = str(datetime.utcnow())
+    build_details.update(version=version, time=str(datetime.utcnow()))
     (build_dir / 'build_details.txt').write_text(json.dumps(build_details, indent=2))
+    (build_dir / 'version.txt').write_text(version)
 
     # rename iframes/message/message.html and add to precache-manifest.js
     (build_dir / iframe_msg_old_path).rename(build_dir / iframe_msg_new_path)
@@ -127,15 +128,27 @@ def mod():
     man_data.append({'revision': iframe_msg_hash, 'url': f'/{iframe_msg_new_path}'})
 
     man_path.write_text(f'self.__precacheManifest = {json.dumps(man_data, indent=2)};')
-    asset_manifest_path = build_dir / 'asset-manifest.json'
-    asset_manifest_data = json.loads(asset_manifest_path.read_text())
-    asset_manifest_data[iframe_msg_new_path.name] = f'/{iframe_msg_new_path}'
-    asset_manifest_path.write_text(json.dumps(asset_manifest_data, indent=2))
+
+    # remove asset-manifest.json which doesn't seem to do anything for us
+    (build_dir / 'asset-manifest.json').unlink()
+
+    # append service-worker.js to em2-service-worker.js to enable caching and delete service-worker.js
+    em2_sw_path = build_dir / 'em2-service-worker.js'
+    std_sw_path = build_dir / 'service-worker.js'
+    # change work box path https://github.com/cdnjs/cdnjs/issues/12041
+    with em2_sw_path.open('a') as f:
+        f.write('\n// Standard CRA service-worker.js:\n')
+        f.write(std_sw_path.read_text())
+    std_sw_path.unlink()
 
 
 if __name__ == '__main__':
     env = dict(os.environ)
-    env['REACT_APP_IFRAME_MESSAGE'] = f'/{iframe_msg_new_path}'
+    version = os.getenv('COMMIT_REF')
+    if not version:
+        p = subprocess.run(['git', 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, check=True, universal_newlines=True)
+        version = p.stdout.strip('\n')
+    env.update(REACT_APP_IFRAME_MESSAGE=f'/{iframe_msg_new_path}', REACT_APP_VERSION=version)
 
     subprocess.run(['yarn', 'build'], cwd=str(this_dir), env=env, check=True)
-    mod()
+    mod(version)

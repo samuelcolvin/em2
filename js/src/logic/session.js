@@ -5,6 +5,7 @@ session_db.version(1).stores({
   sessions: [
     '&session_id',
     'email',
+    'user_id',
   ].join(','),
 })
 
@@ -137,6 +138,6 @@ export default class Session {
     sessionStorage['session_id'] = JSON.stringify(this.id)
 
     this._main.fire('setState', {other_sessions: await this._other_sessions(), user: this.current})
-    await this._main.ws.connect()
+    await this._main.realtime.connect()
   }
 }

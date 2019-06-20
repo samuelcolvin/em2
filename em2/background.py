@@ -58,7 +58,7 @@ class Background:
             # hack to avoid building json for every user, remove the ending "}" so extra json can be appended
             msg_json_chunk = ujson.dumps(data)[:-1]
             for p in participants:
-                user_id = p.pop('user_id')
+                user_id = p['user_id']
                 wss = self.connections.get(user_id)
                 if wss is not None:
                     coros.append(self.send(user_id, p, wss, msg_json_chunk))
@@ -88,7 +88,7 @@ select json_build_object(
 from (
   select array_to_json(array_agg(json_strip_nulls(row_to_json(t)))) as participants
   from (
-    select p.user_id, p.spam, p.label_ids as labels, u.v user_v
+    select p.user_id, p.spam, p.label_ids as labels, u.v user_v, u.email user_email
     from participants as p
     join conversations as c on p.conv = c.id
     join users as u on p.user_id = u.id
@@ -105,7 +105,9 @@ from (
 
 async def _push_local(conns: Connections, conv_id: int, actions_data: str):
     extra = await conns.main.fetchval(local_users_sql, conv_id)
-    await conns.redis.publish(channel_name(conns.redis), actions_data[:-1] + ',' + extra[1:])
+    actions_data_extra = actions_data[:-1] + ',' + extra[1:]
+    await conns.redis.publish(channel_name(conns.redis), actions_data_extra)
+    await conns.redis.enqueue_job('web_push', actions_data_extra)
 
 
 remote_users_sql = """

@@ -51,3 +51,20 @@ export class Requests {
     return r
   }
 }
+
+async function request_version () {
+  try {
+    const r = await fetch(`/version.txt?v=${new Date().getTime()}`)
+    const text = await r.text()
+    return text.replace('\n', '')
+  } catch (error) {
+    // generally TypeError: failed to fetch, also CSP if rules are messed up
+    console.debug('offline, error:', error)
+    return null
+  }
+}
+
+export function get_version () {
+  const timeout = new Promise(resolve => setTimeout(() => resolve(null), 1000))
+  return Promise.race([request_version(), timeout])
+}

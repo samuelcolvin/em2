@@ -1,7 +1,7 @@
 import {sleep, Notify} from 'reactstrap-toolbox'
-import {make_url, statuses, Requests} from './network'
+import {statuses, Requests, get_version} from './network'
 import Session from './session'
-import Websocket from './ws'
+import RealTime from './realtime'
 import Conversations from './conversations'
 import Serach from './search'
 import Contacts from './contacts'
@@ -12,9 +12,10 @@ const random = () => Math.floor(Math.random() * 1e6)
 export default class LogicMain {
   constructor (history) {
     this.listeners = {}
+    this.history = history
     this.notify = new Notify(history)
     this.requests = new Requests(this)
-    this.ws = new Websocket(this)
+    this.realtime = new RealTime(this)
     this.session = new Session(this)
     this.conversations = new Conversations(this)
     this.search = new Serach(this)
@@ -26,21 +27,21 @@ export default class LogicMain {
 
   _start = async () => {
     await this.session.init()
-    if (this.session.id) {
-      return
-    }
+    await this._check_version()
+  }
+
+  _check_version = async () => {
+    const v = await get_version()
     // no session, check the internet connection
-    const url = make_url('ui', '/online/')
-    try {
-      await fetch(url, {method: 'HEAD'})
-    } catch (error) {
-      // generally TypeError: failed to fetch, also CSP if rules are messed up
+    if (v) {
+      this.set_conn_status(statuses.online)
+      if (v !== process.env.REACT_APP_VERSION) {
+        console.warn(`code outdated, latest: ${v}, running: ${process.env.REACT_APP_VERSION}`)
+        // TODO inform user
+      }
+    } else {
       this.set_conn_status(statuses.offline)
-      console.debug(`checking connection status at ${url}: offline`)
-      return
     }
-    console.debug(`checking connection status at ${url}: online`)
-    this.set_conn_status(statuses.online)
   }
 
   set_conn_status = conn_status => {

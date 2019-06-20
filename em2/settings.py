@@ -5,7 +5,7 @@ from secrets import token_urlsafe
 from typing import Optional
 
 from atoolbox import BaseSettings
-from pydantic import constr
+from pydantic import EmailStr, constr
 
 SRC_DIR = Path(__file__).parent
 
@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     ses_url_token: str = token_urlsafe()
     aws_sns_signing_host = '.amazonaws.com'
     aws_sns_signing_schema = 'https'
+
+    vapid_private_key: str = None
+    vapid_sub_email: EmailStr = None
 
     class Config:
         env_prefix = 'em2_'

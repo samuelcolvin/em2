@@ -1,4 +1,5 @@
 import debounce from 'debounce-async'
+import {now_ms} from './utils'
 
 export default class Contacts {
   constructor (main) {
@@ -50,7 +51,7 @@ export default class Contacts {
       query,
       visible: 0,
       live: 1,
-      ts: (new Date()).getTime(),
+      ts: now_ms(),
       convs,
     })
     const search_count = await this._search_table().count()

@@ -10,7 +10,6 @@ from em2.utils.middleware import csrf_middleware
 from em2.utils.web import add_access_control, build_index
 
 from .middleware import user_middleware
-from .views import online
 from .views.auth import AuthExchangeToken, auth_check, logout
 from .views.contacts import ContactSearch
 from .views.conversations import (
@@ -26,14 +25,14 @@ from .views.conversations import (
 )
 from .views.files import GetFile, UploadFile
 from .views.labels import AddRemoveLabel, LabelBread
-from .views.ws import websocket
+from .views.realtime import WebPushSubscribe, WebPushUnsubscribe, websocket
 
 
 async def startup(app):
     app.update(background=Background(app))
 
 
-no_pg_conn = {'ui.index', 'ui.online', 'ui.websocket'}
+no_pg_conn = {'ui.index', 'ui.websocket'}
 
 
 def pg_middleware_check(request):
@@ -45,7 +44,6 @@ async def create_app_ui(settings=None):
     conv_match = r'{conv:[a-f0-9]{10,64}}'
     s = r'/{session_id:\d+}/'
     routes = [
-        web.get('/online/', online, name='online'),
         web.get(s + 'conv/list/', ConvList.view(), name='list'),
         web.route('*', s + 'conv/create/', ConvCreate.view(), name='create'),
         web.get(s + 'conv/counts/', GetConvCounts.view(), name='conv-counts'),
@@ -61,6 +59,8 @@ async def create_app_ui(settings=None):
         web.get(s + fr'conv/{conv_match}/upload-file/', UploadFile.view(), name='upload-file'),
         web.get(s + 'search/', Search.view(), name='search'),
         web.get(s + 'ws/', websocket, name='websocket'),
+        web.post(s + 'webpush-subscribe/', WebPushSubscribe.view(), name='webpush-subscribe'),
+        web.post(s + 'webpush-unsubscribe/', WebPushUnsubscribe.view(), name='webpush-unsubscribe'),
         # ui auth views:
         web.route('*', '/auth/token/', AuthExchangeToken.view(), name='auth-token'),
         web.get(s + 'auth/check/', auth_check, name='auth-check'),

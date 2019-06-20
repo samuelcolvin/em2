@@ -24,7 +24,9 @@ async def startup_populate_subapps(app: Application):
 
 
 async def restart_react_dev_server(app: Application):
-    # prompts create react app's "yarn start" dev server to reload
+    """
+    For development only. Prompts CRA's "yarn start" dev server to reload.
+    """
     settings: Settings = app['settings']
     if settings.domain == 'localhost' and 'runserver' in sys.argv:  # basic proxy for "development mode"
         path = SRC_DIR / '../js/src/.update.js'

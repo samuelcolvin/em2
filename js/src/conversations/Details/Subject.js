@@ -85,7 +85,6 @@ export default withRouter(({history, conv_state, publish, lock_subject, set_subj
   const btns_disabled = Boolean(conv_state.locked || conv_state.comment_parent || conv_state.new_message)
   const set_flag = (flag, leave=true) => {
     window.logic.conversations.set_flag(conv_state.conv.key, flag)
-
     message_toast({
       icon: fas.faEnvelope,
       title: msg_lookup[flag],

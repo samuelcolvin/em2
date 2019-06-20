@@ -43,7 +43,7 @@ const main_menu_items = [
 ]
 
 class LeftMenu_ extends React.Component {
-  state = {flags: {}, labels:[]}
+  state = {flags: {}}
 
   async componentDidMount () {
     this.mounted = true
@@ -133,7 +133,7 @@ const TopMenuItem = ({to, active, icon, title, count, count_unseen}) => (
 )
 
 class TopMainMenu_ extends React.Component {
-  state = {flags: {}, labels:[], visible: false}
+  state = {flags: {}, visible: false}
 
   async componentDidMount () {
     this.mounted = true

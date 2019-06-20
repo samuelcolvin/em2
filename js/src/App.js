@@ -9,6 +9,7 @@ import Logout from './auth/Logout'
 import SwitchSession from './auth/SwitchSession'
 import Navbar from './Navbar'
 import {RoutesWithMenu, ErrorWithMenu} from './WithMenu'
+import warnings from './warnings'
 
 
 const Main = ({app_state}) => {
@@ -47,13 +48,15 @@ class App extends React.Component {
   }
 
   componentDidMount () {
+    warnings()
+    // show this warnings to the user
     window.logic = new Logic(this.props.history)
     window.logic.add_listener('setState', s => this.setState(s))
     window.logic.add_listener('setError', e => this.setError(e))
   }
 
   componentDidUpdate (prevProps) {
-    document.title = this.state.title ? this.state.title : 'em2'
+    document.title = this.state.title || process.env.REACT_APP_NAME
     if (this.props.location !== prevProps.location) {
       this.state.error && this.setState({error: null})
       this.state.conv_title && this.setState({conv_title: null})

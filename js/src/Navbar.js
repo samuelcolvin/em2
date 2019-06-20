@@ -65,7 +65,7 @@ const AccountSummary = ({conn_status, user}) => {
 const NavbarUser = ({app_state}) => (
   <div className="d-flex w-100">
     <NavbarBrand tag={Link} to="/" className="custom-nav-item d-none d-sm-block">
-      em2
+      {process.env.REACT_APP_NAME}
     </NavbarBrand>
     <form className="form-inline custom-nav-item flex-grow-1">
       <Search/>

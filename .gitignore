@@ -39,3 +39,12 @@ yarn-error.log*
 /js/src/.update.js
 /tests/email.html
 /.auto-format
+
+# favicons
+/js/favicon_package.zip
+/js/public/favicon.ico
+/js/public/manifest.json
+/js/public/*.png
+/js/public/safari-pinned-tab.svg
+/js/public/site.webmanifest
+/js/public/browserconfig.xml
