@@ -15,11 +15,9 @@ async def test_subscribe(cli, factory: Factory, redis, web_push_sub):
     await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub)
     subs = await redis.keys('web-push-subs:*')
     assert len(subs) == 1
-    assert subs[0] == f'web-push-subs:{factory.user.id}'
-    members = await redis.smembers(subs[0])
-    assert len(members) == 1
-    m = json.loads(members[0])
-    assert m == web_push_sub
+    assert subs[0].startswith(f'web-push-subs:{factory.user.id}:')
+    s = await redis.get(subs[0])
+    assert json.loads(s) == web_push_sub
 
 
 async def test_unsubscribe(cli, factory: Factory, redis, web_push_sub):
@@ -41,6 +39,22 @@ async def test_web_push(cli, factory: Factory, redis, worker_ctx, dummy_server, 
 
     assert dummy_server.log == ['POST vapid', 'POST vapid']
     assert len(await redis.keys('web-push-subs:*')) == 1
+
+
+async def test_web_push_multiple(cli, factory: Factory, redis, worker_ctx, dummy_server, web_push_sub):
+    await factory.create_user()
+    await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub)
+    assert len(await redis.keys('web-push-subs:*')) == 1
+
+    web_push_sub2 = {**web_push_sub, 'endpoint': web_push_sub['endpoint'] + '?v=1'}
+    await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub2)
+    assert len(await redis.keys('web-push-subs:*')) == 2
+
+    data = {'participants': [{'user_id': factory.user.id, 'foo': 'bar'}], 'other': 42}
+    assert 2 == await web_push(worker_ctx, json.dumps(data))
+
+    assert dummy_server.log == ['POST vapid', 'POST vapid', 'POST vapid', 'POST vapid']
+    assert len(await redis.keys('web-push-subs:*')) == 2
 
 
 async def test_web_push_unsubscribe(cli, factory: Factory, redis, dummy_server, web_push_sub):

@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import hashlib
 import time
 from typing import Optional
 from urllib.parse import urlparse
@@ -18,8 +19,8 @@ from em2.settings import Settings
 from em2.utils.db import Connections
 
 
-def web_push_user_key(user_id):
-    return f'web-push-subs:{user_id}'
+def web_push_user_key_prefix(user_id):
+    return f'web-push-subs:{user_id}:'
 
 
 class SubscriptionModel(BaseModel):
@@ -37,19 +38,14 @@ class SubscriptionModel(BaseModel):
 
     keys: SubKeys
 
+    def hash(self):
+        return hashlib.md5(f'{self.endpoint}|{self.keys.p256dh}|{self.keys.auth}'.encode()).hexdigest()
 
-async def subscribe(conns: Connections, client_session: ClientSession, m: SubscriptionModel, user_id):
-    sub_str = m.json()
-    key = web_push_user_key(user_id)
-    with await conns.redis as conn:
-        await conn.unwatch()
-        tr = conn.multi_exec()
-        # might need a better unique and consistent way of referencing a subscription, then a hash
-        # but try this first
-        tr.sadd(key, sub_str)
-        # we could use expirationTime here, but it seems to generally be null
-        tr.expire(key, 86400)
-        await tr.execute()
+
+async def subscribe(conns: Connections, client_session: ClientSession, sub: SubscriptionModel, user_id):
+    key = web_push_user_key_prefix(user_id) + sub.hash()
+    # we could use expirationTime here, but it seems to generally be null
+    await conns.redis.setex(key, 86400, sub.json())
     msg = await conns.main.fetchval(
         """
         select json_build_object('user_v', v, 'user_id', id)
@@ -57,12 +53,12 @@ async def subscribe(conns: Connections, client_session: ClientSession, m: Subscr
         """,
         user_id,
     )
-    await _sub_post(conns, client_session, sub_str, user_id, msg)
+    await _sub_post(conns, client_session, sub, user_id, msg)
 
 
-async def unsubscribe(conns: Connections, m: SubscriptionModel, user_id):
-    key = web_push_user_key(user_id)
-    await conns.redis.srem(key, m.json())
+async def unsubscribe(conns: Connections, sub: SubscriptionModel, user_id):
+    key = web_push_user_key_prefix(user_id) + sub.hash()
+    await conns.redis.delete(key)
 
 
 async def web_push(ctx, actions_data: str):
@@ -76,21 +72,32 @@ async def web_push(ctx, actions_data: str):
     # hack to avoid building json for every user, remove the ending "}" so extra json can be appended
     msg_json_chunk = ujson.dumps(data)[:-1]
     coros = [_user_web_push(conns, session, p, msg_json_chunk) for p in participants]
-    await asyncio.gather(*coros)
-    return len(coros)
+    pushes = await asyncio.gather(*coros)
+    return sum(pushes)
 
 
 async def _user_web_push(conns: Connections, session: ClientSession, participant: dict, msg_json_chunk: str):
     user_id = participant['user_id']
-    subs = await conns.redis.smembers(web_push_user_key(user_id))
+
+    match = web_push_user_key_prefix(user_id) + '*'
+    subs = []
+    with await conns.redis as conn:
+        cur = b'0'
+        while cur:
+            cur, keys = await conn.scan(cur, match=match)
+            for key in keys:
+                subs.append(await conn.get(key))
+
     if subs:
         participant['flags'] = await get_flag_counts(conns, user_id)
         msg = msg_json_chunk + ',' + ujson.dumps(participant)[1:]
+        subs = [SubscriptionModel(**ujson.loads(s)) for s in subs]
         await asyncio.gather(*[_sub_post(conns, session, s, user_id, msg) for s in subs])
+        return len(subs)
+    return 0
 
 
-async def _sub_post(conns: Connections, session: ClientSession, sub_str: str, user_id: int, msg: str):
-    sub = SubscriptionModel(**ujson.loads(sub_str))
+async def _sub_post(conns: Connections, session: ClientSession, sub: SubscriptionModel, user_id: int, msg: str):
     server_key = ec.generate_private_key(ec.SECP256R1, default_backend())
     body = http_ece.encrypt(
         msg.encode(),
