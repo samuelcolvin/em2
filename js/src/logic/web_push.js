@@ -83,15 +83,17 @@ export default class WebPush {
     }
 
     if (event.data.link) {
+      // message after clicking on notification, follow link
       event.ports[0].postMessage(null)
-      this._main.history.push(event.data.link)
+      if (event.data.link !== window.location.pathname) {
+        this._main.history.push(event.data.link)
+      }
       return
     }
 
     if (this._do_notifications && event.data.notification && this._main.notify.window_active()) {
       event.ports[0].postMessage(true)
-      const notification = Object.assign({}, event.data.notification, {toast_icon: fas.faEnvelope})
-      this._main.notify.notify(notification)
+      this._main.notify.notify(Object.assign({}, event.data.notification, {toast_icon: fas.faEnvelope}))
     } else {
       event.ports[0].postMessage(false)
     }

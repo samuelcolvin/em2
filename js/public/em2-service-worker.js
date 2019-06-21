@@ -53,14 +53,14 @@ async function on_push (event) {
     }
   }
   const clients = await self.clients.matchAll({type: 'window'})
-  const client_data = Object.assign({}, data, notification)
+  const client_data = Object.assign({}, data, {notification})
   const window_answers = await Promise.all(clients.map(client => push_to_client(client, client_data)))
   if (notification && !window_answers.find(a => a)) {
-    console.debug('Received a push message, showing notification:', data, notification, clients)
-    (await self.registration.getNotifications()).forEach(n => n.close())
+    console.debug('Received a push message, showing notification:', data)
+    // (await self.registration.getNotifications()).forEach(n => n.close())
     await self.registration.showNotification(notification.title, notification)
   } else {
-    console.debug('Received a push message, not showing notification:', data, notification, clients)
+    console.debug('Received a push message, not showing notification:', data)
   }
 }
 self.addEventListener('push', event => event.waitUntil(on_push(event)))
