@@ -35,8 +35,8 @@ function should_notify (data) {
 
 async function on_push (event) {
   const data = event.data.json()
-  console.debug('Received a push message:', data)
   if (data === 'check') {
+    console.debug('Received a push check:', data)
     return
   }
   let notification = null
@@ -56,8 +56,11 @@ async function on_push (event) {
   const client_data = Object.assign({}, data, notification)
   const window_answers = await Promise.all(clients.map(client => push_to_client(client, client_data)))
   if (notification && !window_answers.find(a => a)) {
+    console.debug('Received a push message, showing notification:', data, notification, clients)
     (await self.registration.getNotifications()).forEach(n => n.close())
     await self.registration.showNotification(notification.title, notification)
+  } else {
+    console.debug('Received a push message, not showing notification:', data, notification, clients)
   }
 }
 self.addEventListener('push', event => event.waitUntil(on_push(event)))

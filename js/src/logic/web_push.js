@@ -2,7 +2,7 @@ import * as fas from '@fortawesome/free-solid-svg-icons'
 import {on_mobile} from 'reactstrap-toolbox'
 import {statuses, get_version} from './network'
 
-const online_interval = 200e3
+const online_interval = 30e3
 const offline_interval = 10e3
 
 export default class WebPush {
