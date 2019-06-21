@@ -14,7 +14,7 @@ import {
 } from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
-import {WithContext, AsModal, message_toast, on_mobile} from 'reactstrap-toolbox'
+import {WithContext, AsModal, on_mobile} from 'reactstrap-toolbox'
 
 
 class EditSubject_ extends React.Component {
@@ -72,14 +72,6 @@ class EditSubject_ extends React.Component {
 }
 
 const EditSubject = AsModal(WithContext(EditSubject_))
-
-const msg_lookup = {
-  archive: 'Archived',
-  delete: 'Deleted',
-  restore: 'Restored',
-  spam: 'Spam',
-  ham: 'Not Spam',
-}
 
 const Buttons = ({conv_state, btns_disabled, publish, set_flag}) => (
   <div>
@@ -155,13 +147,6 @@ export default withRouter(({history, conv_state, publish, lock_subject, set_subj
   const btns_disabled = Boolean(conv_state.locked || conv_state.comment_parent || conv_state.new_message)
   const set_flag = (flag, leave=true) => {
     window.logic.conversations.set_flag(conv_state.conv.key, flag)
-    message_toast({
-      icon: fas.faEnvelope,
-      title: msg_lookup[flag],
-      message: conv_state.conv.subject,
-      progress: false,
-      time: 3000,
-    })
     if (leave) {
       const f = conv_state.conv.primary_flag
       history.push(f === 'inbox' ? '/' : `/${f}/`)
