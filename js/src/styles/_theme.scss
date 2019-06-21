@@ -1,7 +1,7 @@
 @import 'variables';
 
 body {
-  padding-top: 92px;
+  padding-top: 80px;
   background-color: $body-back;
   padding-bottom: 3rem;
   overflow-y: scroll;
@@ -32,7 +32,7 @@ body {
 }
 
 $status-top: 56px;
-$status-height: 28px;
+$status-height: 20px;
 .status-bar {
   position: fixed;
   top: $status-top - $status-height;
@@ -44,6 +44,13 @@ $status-height: 28px;
   transition: top 500ms ease;
   &.show {
     top: $status-top;
+  }
+  .text {
+    //height: $status-height;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+    line-height: $status-height - 1;
   }
 }
 
@@ -116,7 +123,7 @@ $status-height: 28px;
   //display: none;
   flex: 0 0 25%;
   $menu-transition-time: 300ms;
-  .list-group-item ,.badge {
+  .list-group-item, .badge {
     transition: background-color $menu-transition-time ease, color $menu-transition-time ease;
   }
 }

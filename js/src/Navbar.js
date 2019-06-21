@@ -28,7 +28,7 @@ const OtherAccounts = ({other_sessions}) => [
   other_sessions.length ? <DropdownItem key="div" divider/> : null,
   <DropdownItem key="login" href="/login/" target="_blank">
     Login to another account
-  </DropdownItem>
+  </DropdownItem>,
 ]
 
 const AccountSummary = ({conn_status, user}) => {
@@ -132,7 +132,7 @@ const StatusBar = ({conn_status, outdated, conv_title}) => {
     return () => window.removeEventListener('scroll', on_scroll)
   })
 
-  let error_msg = {
+  const error_msg = {
     [statuses.problem]: 'Connection Problems',
     [statuses.offline]: 'Offline',
   }[conn_status] || (outdated ? 'New version available, please reload' : null)
@@ -143,11 +143,8 @@ const StatusBar = ({conn_status, outdated, conv_title}) => {
       <div className="container h-100">
         <Row className="align-items-center h-100">
           <Col md="3"/>
-          <Col md="6">
-            {conv_title}
-          </Col>
-          <Col md="3" className="text-right">
-            {error_msg || (conv_title ? null : 'Online')}
+          <Col md="6" className="text">
+            {error_msg || conv_title}
           </Col>
         </Row>
       </div>

@@ -14,7 +14,7 @@ import {
 } from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
-import {WithContext, AsModal, message_toast} from 'reactstrap-toolbox'
+import {WithContext, AsModal, message_toast, on_mobile} from 'reactstrap-toolbox'
 
 
 class EditSubject_ extends React.Component {
@@ -81,6 +81,76 @@ const msg_lookup = {
   ham: 'Not Spam',
 }
 
+const Buttons = ({conv_state, btns_disabled, publish, set_flag}) => (
+  <div>
+    <ButtonGroup>
+      {conv_state.conv.draft ? (
+        <Button color="primary" disabled={btns_disabled} onClick={publish}>
+          <FontAwesomeIcon icon={fas.faPaperPlane} className="icon"/> Publish
+        </Button>
+      ) : null}
+      {conv_state.conv.inbox ? (
+        <Button color="primary" disabled={btns_disabled} onClick={() => set_flag('archive')}>
+          <FontAwesomeIcon icon={fas.faArchive} className="icon"/> Archive
+        </Button>
+      ) : null}
+      {conv_state.conv.deleted ? (
+        <Button color="success" disabled={btns_disabled} onClick={() => set_flag('restore', false)}>
+          <FontAwesomeIcon icon={fas.faTrash} className="icon"/>  Restore
+        </Button>
+      ) : (
+        <Button color="warning" disabled={btns_disabled} onClick={() => set_flag('delete')}>
+          <FontAwesomeIcon icon={fas.faTrash} className="icon"/>  Delete
+        </Button>
+      )}
+      {!(conv_state.conv.sent || conv_state.conv.draft || conv_state.conv.spam) ? (
+        <Button color="danger" disabled={btns_disabled} onClick={() => set_flag('spam')}>
+          <FontAwesomeIcon icon={fas.faRadiation} className="icon"/> Spam
+        </Button>
+      ) : null}
+      {conv_state.conv.spam ? (
+        <Button color="success" disabled={btns_disabled} onClick={() => set_flag('ham', false)}>
+          <FontAwesomeIcon icon={fas.faRadiation} className="icon"/> Not Spam
+        </Button>
+      ) : null}
+
+      <UncontrolledButtonDropdown>
+        <DropdownToggle caret>
+          More
+        </DropdownToggle>
+        <DropdownMenu right>
+          <DropdownItem  tag={Link} to="./edit-subject/" disabled={btns_disabled}>
+            Edit Subject
+          </DropdownItem>
+        </DropdownMenu>
+      </UncontrolledButtonDropdown>
+    </ButtonGroup>
+  </div>
+)
+
+const SubjectButtons = ({history, conv_state, btns_disabled, publish, set_flag}) => on_mobile ? (
+  <div>
+    <div className="d-flex justify-content-between mb-2">
+      <div>
+        <Button disabled={btns_disabled} onClick={() => history.goBack()}>
+          <FontAwesomeIcon icon={fas.faArrowLeft}/>
+        </Button>
+      </div>
+      <Buttons conv_state={conv_state} btns_disabled={btns_disabled} publish={publish} set_flag={set_flag}/>
+    </div>
+    <div className="box align-self-center mt-">
+      <h2 className="conv-title">{conv_state.conv.subject}</h2>
+    </div>
+  </div>
+) : (
+  <div className="box d-flex justify-content-between flex-wrap">
+    <div className="align-self-center">
+      <h2 className="conv-title">{conv_state.conv.subject}</h2>
+    </div>
+    <Buttons conv_state={conv_state} btns_disabled={btns_disabled} publish={publish} set_flag={set_flag}/>
+  </div>
+)
+
 export default withRouter(({history, conv_state, publish, lock_subject, set_subject, release_subject}) => {
   const btns_disabled = Boolean(conv_state.locked || conv_state.comment_parent || conv_state.new_message)
   const set_flag = (flag, leave=true) => {
@@ -99,65 +169,23 @@ export default withRouter(({history, conv_state, publish, lock_subject, set_subj
   }
   return (
     <div className="conv-subject">
-      <div className="box d-flex justify-content-between flex-wrap">
-        <div className="align-self-center">
-          <h2 className="conv-title">{conv_state.conv.subject}</h2>
-        </div>
-        <div>
-          <ButtonGroup>
-            {conv_state.conv.draft ? (
-              <Button color="primary" disabled={btns_disabled} onClick={publish}>
-                <FontAwesomeIcon icon={fas.faPaperPlane} className="icon"/> Publish
-              </Button>
-            ) : null}
-            {conv_state.conv.inbox ? (
-              <Button color="primary" disabled={btns_disabled} onClick={() => set_flag('archive')}>
-                <FontAwesomeIcon icon={fas.faArchive} className="icon"/> Archive
-              </Button>
-            ) : null}
-            {conv_state.conv.deleted ? (
-              <Button color="success" disabled={btns_disabled} onClick={() => set_flag('restore', false)}>
-                <FontAwesomeIcon icon={fas.faTrash} className="icon"/>  Restore
-              </Button>
-            ) : (
-              <Button color="warning" disabled={btns_disabled} onClick={() => set_flag('delete')}>
-                <FontAwesomeIcon icon={fas.faTrash} className="icon"/>  Delete
-              </Button>
-            )}
-            {!(conv_state.conv.sent || conv_state.conv.draft || conv_state.conv.spam) ? (
-              <Button color="danger" disabled={btns_disabled} onClick={() => set_flag('spam')}>
-                <FontAwesomeIcon icon={fas.faRadiation} className="icon"/> Spam
-              </Button>
-            ) : null}
-            {conv_state.conv.spam ? (
-              <Button color="success" disabled={btns_disabled} onClick={() => set_flag('ham', false)}>
-                <FontAwesomeIcon icon={fas.faRadiation} className="icon"/> Not Spam
-              </Button>
-            ) : null}
+      <SubjectButtons
+        history={history}
+        conv_state={conv_state}
+        btns_disabled={btns_disabled}
+        publish={publish}
+        set_flag={set_flag}
+      />
 
-            <UncontrolledButtonDropdown>
-              <DropdownToggle caret>
-                More
-              </DropdownToggle>
-              <DropdownMenu right>
-                <DropdownItem  tag={Link} to="./edit-subject/" disabled={btns_disabled}>
-                  Edit Subject
-                </DropdownItem>
-              </DropdownMenu>
-            </UncontrolledButtonDropdown>
-          </ButtonGroup>
-        </div>
-    </div>
-
-    <EditSubject
-      subject={conv_state.conv.subject}
-      set_subject={set_subject}
-      lock_subject={lock_subject}
-      release_subject={release_subject}
-      title="Edit Subject"
-      regex={/edit-subject\/$/}
-      className="simplified-modal"
-    />
+      <EditSubject
+        subject={conv_state.conv.subject}
+        set_subject={set_subject}
+        lock_subject={lock_subject}
+        release_subject={release_subject}
+        title="Edit Subject"
+        regex={/edit-subject\/$/}
+        className="simplified-modal"
+      />
     </div>
   )
 })

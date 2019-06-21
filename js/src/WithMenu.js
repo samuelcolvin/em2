@@ -10,8 +10,8 @@ import ConversationDetails from './conversations/Details'
 import CreateConversation from './conversations/Create'
 import Wait from './conversations/Wait'
 
-const ListGroupItem = ({to, active, icon, title, count, count_unseen}) => (
-  <BsListGroupItem tag={Link} to={to} action active={active}>
+const ListGroupItem = ({className, to, active, icon, title, count, count_unseen}) => (
+  <BsListGroupItem tag={Link} to={to} action active={active} className={className}>
     <div className="d-flex justify-content-between">
       <div>
         <FontAwesomeIcon icon={icon} className="w-20 mr-1"/> {title}
@@ -66,6 +66,7 @@ class LeftMenu_ extends React.Component {
         <div className="box no-pad">
           <ListGroup>
             <ListGroupItem
+              className="border-0"
               to="/create/"
               active={s === 'create'}
               icon={fas.faKeyboard}
@@ -211,7 +212,7 @@ const WithMenu = ({children}) => {
   return (
     <div className="with-menu">
       <div ref={ref_left} className="left-menu" style={{display: 'none'}}>
-        <div ref={ref_menu} style={{position: 'fixed', top: '91px'}}>
+        <div ref={ref_menu} style={{position: 'fixed', top: '80px'}}>
           <LeftMenu/>
         </div>
       </div>
