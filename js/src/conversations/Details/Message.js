@@ -162,7 +162,7 @@ export default ({msg, ...props}) => (
           </Button>
         ) : null}
         <UncontrolledButtonDropdown>
-          <DropdownToggle color="link" className="p-0 ml-2 text-muted text-decoration-none">
+          <DropdownToggle color="link" className="p-0 ml-2 text-decoration-none">
             Options
             <FontAwesomeIcon icon={fas.faCaretDown} className="ml-1"/>
           </DropdownToggle>

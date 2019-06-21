@@ -2,7 +2,7 @@ import React from 'react'
 import {Button, UncontrolledDropdown, DropdownToggle, DropdownMenu, DropdownItem} from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
-import {WithContext} from 'reactstrap-toolbox'
+import {on_mobile, WithContext} from 'reactstrap-toolbox'
 import ParticipantsInput from '../ParticipantsInput'
 
 const scroll_threshold = 108
@@ -46,7 +46,24 @@ const RightPanel = ({state, edit_locked, set_participants, add_participants, rem
   const disabled = !!(edit_locked || state.comment_parent || state.new_message)
   return (
     <ScrollSpy>
-      <div className="box">
+      <div className="box no-pad pb-3">
+        <div className="border-bottom py-2 d-flex justify-content-between">
+          <div>
+            <b className="mr-1">Participants</b>
+          </div>
+
+          <div>
+            {on_mobile &&
+              <Button color="link"
+                      disabled={disabled}
+                      size="sm"
+                      className="p-0 ml-2 text-decoration-none"
+                      onClick={() => set_participants([])}>
+                Add
+              </Button>
+            }
+          </div>
+        </div>
         {Object.values(state.conv.participants).map(p => (
           <div key={p.id} className="d-flex">
             <div className="py-1">{p.email}</div>
@@ -83,7 +100,7 @@ const RightPanel = ({state, edit_locked, set_participants, add_participants, rem
               </Button>
             </div>
           </div>
-        ) : (
+        ) : !on_mobile && (
           <div className="text-right mt-2">
             <Button color="primary"
                     disabled={disabled}
