@@ -224,7 +224,7 @@ const WithMenu = ({children}) => {
 }
 
 // prompt new component construction when the key conv key changes
-const render_conv_details = ({location}) => <ConversationDetails key={location.key}/>
+const render_conv_details = ({match}) => <ConversationDetails key={match.params.key}/>
 
 export const RoutesWithMenu = () => (
   <WithMenu key="with-menu">

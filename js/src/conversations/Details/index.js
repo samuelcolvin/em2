@@ -62,6 +62,9 @@ class ConvDetailsView extends React.Component {
         this.setState({not_found: true})
         return
       }
+      if (!this.mounted) {
+        return
+      }
       this.props.ctx.setMenuItem(conv.primary_flag)
       this.props.ctx.setTitle(conv.subject)
       this.props.ctx.setConvTitle(conv.subject)
@@ -70,7 +73,7 @@ class ConvDetailsView extends React.Component {
         this.action_ids = null
         this.setState({locked: false})
       }
-      if (!this.marked_seen && this.mounted) {
+      if (!this.marked_seen) {
         this.marked_seen = true
         await window.logic.conversations.seen(this.state.conv.key)
       }
@@ -152,6 +155,14 @@ class ConvDetailsView extends React.Component {
     }
   }
 
+  lock_view = () => {
+    if (this.state.locked) {
+      throw Error('conversation already locked')
+    }
+    this.setState({locked: true})
+    return () => this.setState({locked: false})
+  }
+
   lock_subject = async () => {
     const follows = await window.logic.conversations.last_subject_action(this.state.conv.key)
     const action_ids = await this.act([{act: 'subject:lock', follows}])
@@ -174,11 +185,14 @@ class ConvDetailsView extends React.Component {
     const edit_locked = this.state.locked || this.state.conv.removed
     return (
       <div>
-        <Subject conv_state={this.state}
-                 publish={this.publish}
-                 lock_subject={this.lock_subject}
-                 set_subject={this.set_subject}
-                 release_subject={this.release_subject}/>
+        <Subject
+          conv_state={this.state}
+          publish={this.publish}
+          lock_subject={this.lock_subject}
+          lock_view={this.lock_view}
+          set_subject={this.set_subject}
+          release_subject={this.release_subject}
+        />
         <div className="h5 mb-3">
           {this.state.conv.removed ? (
             <div>

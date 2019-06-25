@@ -18,7 +18,7 @@
   <body id="body">
     <script>
       const iframe_id = parseInt(window.location.hash.replace('#', ''))
-      const msg = data => window.parent.postMessage(Object.assign(data, {iframe_id: iframe_id}), '*')
+      const msg = data => window.parent.postMessage(Object.assign(data, {iframe_id}), '*')
       setTimeout(() => msg({loaded: true}), 50)
 
       const observer = new MutationObserver(() => {

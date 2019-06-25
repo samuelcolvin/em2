@@ -36,7 +36,8 @@ class Html extends React.Component {
     window.removeEventListener('message', this.on_message)
   }
 
-  build_body = () => this.props.msg.body.replace(/src="cid:(.+?)"/g, this.replace_id)
+  // TODO, how can body be empty?
+  build_body = () => (this.props.msg.body || '').replace(/src="cid:(.+?)"/g, this.replace_id)
 
   replace_id = (m, cid) => {
     const url = make_url('ui', `/${this.props.session_id}/conv/${this.props.conv}/get-image/${cid}`)
