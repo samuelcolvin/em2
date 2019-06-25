@@ -2,9 +2,13 @@ import React from 'react'
 import {Loading} from 'reactstrap-toolbox'
 
 
-export default () => {
-  React.useEffect(() => window.logic.auth.logout(), [])  // eslint-disable-line react-hooks/exhaustive-deps
+export default class Logout extends React.Component {
+  componentDidMount() {
+    window.logic.auth.logout()
+  }
 
-  // redirect will be performed App when the user is set to none
-  return <Loading/>
+  render() {
+    // redirect will be performed App when the user is set to none
+    return <Loading/>
+  }
 }

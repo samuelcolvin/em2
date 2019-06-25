@@ -33,7 +33,8 @@ export default class WebPush {
       return false
     }
     navigator.serviceWorker.addEventListener('message', this.on_message)
-    await this._record_sub(sub.toJSON())
+    // TODO, might need to catch errors or at least report on this?
+    this._main.requests.post('ui', `/${this._main.session.id}/webpush-subscribe/`, sub.toJSON())
     this._main.set_conn_status(statuses.online)
     return true
   }
@@ -60,10 +61,6 @@ export default class WebPush {
     }
     console.debug('new web-push subscription created')
     return sub
-  }
-
-  _record_sub = async sub_info => {
-    await this._main.requests.post('ui', `/${this._main.session.id}/webpush-subscribe/`, sub_info)
   }
 
   _unsubscribe = async () => {

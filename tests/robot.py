@@ -32,7 +32,7 @@ class Client:
         self._make_path = MakeUrl(main_app)
         self.convs = []
         self.em2_session_id = em2_session_id
-        self.origin = main_app['expected_origin'] + '/testing.js'
+        self.origin = main_app['expected_origin']
 
     async def run(self):
         while True:
@@ -40,7 +40,7 @@ class Client:
                 await self.create()
             else:
                 await self.act()
-            await asyncio.sleep(random() * 3 + 2)
+            await asyncio.sleep(random() + 1)
 
     async def login(self):
         print('logging in...')

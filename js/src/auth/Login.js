@@ -1,7 +1,7 @@
 import React from 'react'
 import {Row, Col, Button, FormFeedback} from 'reactstrap'
 import {Link} from 'react-router-dom'
-import {WithContext, DetailedError} from 'reactstrap-toolbox'
+import {WithContext, DetailedError, Loading} from 'reactstrap-toolbox'
 import {make_url} from '../logic/network'
 import IFrame from './IFrame'
 import Recaptcha from './Recaptcha'
@@ -14,10 +14,11 @@ function next_url (location) {
 
 
 class Login extends React.Component {
-  state = {error: null, recaptcha_shown: false}
+  state = {error: null, recaptcha_shown: false, loading: false}
   iframe_ref = React.createRef()
 
   authenticate = async data => {
+    this.setState({loading: true})
     await window.logic.auth.auth_token(data)
     this.props.history.replace(next_url(this.props.location) || '/')
   }
@@ -70,6 +71,9 @@ class Login extends React.Component {
   }
 
   render () {
+    if (this.state.loading) {
+       return <Loading/>
+    }
     let head = (
       <div>
         Not yet a user? Go to <Link to="/signup/">Sign up</Link> to create an account.

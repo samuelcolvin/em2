@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     micro_session_duration = 60 * 15
     # how many seconds until an idle session expires
     session_expiry = 86400 * 4
+    # used for testing only to slow down the UI app
+    slow_ui: int = None
 
     internal_auth_key: constr(min_length=40, max_length=100) = secrets.token_urlsafe()
 

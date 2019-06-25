@@ -88,8 +88,10 @@ class ConvListView extends React.Component {
       this.props.ctx.setTitle(this.props.ctx.user.name) // TODO add the number of unseen messages
       const flag = this.conv_flag()
       this.props.ctx.setMenuItem(flag)
+      this.setState({conversations: null})
+      const conversations = await window.logic.conversations.list({page: this.get_page(), flag})
       this.setState({
-        conversations: await window.logic.conversations.list({page: this.get_page(), flag}),
+        conversations,
         pages: window.logic.conversations.pages(flag),
       })
     }
@@ -104,6 +106,7 @@ class ConvListView extends React.Component {
       return
     }
     e.preventDefault()
+    this.setState({conversations: null})
     const conversations = await window.logic.conversations.list({page, flag: this.conv_flag()})
     this.setState({conversations})
     this.props.history.push(link)

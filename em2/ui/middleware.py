@@ -1,3 +1,4 @@
+import asyncio
 from time import time
 
 from aiohttp.web_middlewares import middleware
@@ -83,6 +84,9 @@ async def load_session(request) -> Session:
 
 @middleware
 async def user_middleware(request, handler):
+    slow_ui = request.app['settings'].slow_ui
+    if slow_ui:
+        await asyncio.sleep(slow_ui)
     if request['view_name'] not in AUTH_WHITELIST and not isinstance(request.match_info, MatchInfoError):
         request['session'] = await load_session(request)
     return await handler(request)
