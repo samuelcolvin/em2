@@ -115,6 +115,7 @@ async def test_push_action(cli, factory: Factory, redis, worker, dummy_server, w
                 'ts': CloseToNow(),
                 'actor': 'testing-1@example.com',
                 'body': 'this is another message',
+                'extra_body': False,
                 'msg_format': 'markdown',
                 'conv': conv.key,
             }

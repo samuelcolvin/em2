@@ -169,6 +169,9 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
             'body': 'Test Subject',
         },
     ]
+    push_data = list(data)
+    push_data[-1]['extra_body'] = False
+    push_data[-2]['extra_body'] = False
     assert len(await redis.keys('arq:job:*')) == 1
     await push_all(conns, conv_id, transmit=True)
     arq_keys = await redis.keys('arq:job:*')
@@ -179,7 +182,7 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
         job_info = await job.info()
         if job_info.function == 'push_actions':
             ws_data = json.loads(job_info.args[0])
-            assert ws_data['actions'] == data
+            assert ws_data['actions'] == push_data
 
 
 async def test_get_file(conns, factory: Factory, db_conn, create_email, attachment, cli, dummy_server):

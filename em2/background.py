@@ -133,7 +133,9 @@ from (
   select array_to_json(array_agg(json_strip_nulls(row_to_json(t)))) as actions
   from (
     select a.id, a.act, a.ts, actor_user.email actor,
-    a.body, a.msg_format, a.warnings,
+    left(a.body, 1024) body,
+    case when a.body is null then null else length(a.body) > 1024 end extra_body,
+    a.msg_format, a.warnings,
     prt_user.email participant, follows_action.id follows, parent_action.id parent,
     c.key as conv,
     (select array_agg(row_to_json(f))

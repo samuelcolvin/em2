@@ -368,6 +368,7 @@ async def test_ws_create(cli, factory: Factory, db_conn):
                 'ts': CloseToNow(),
                 'actor': 'testing-1@example.com',
                 'body': 'Test Message',
+                'extra_body': False,
                 'msg_format': 'markdown',
                 'conv': conv.key,
             },
@@ -377,6 +378,7 @@ async def test_ws_create(cli, factory: Factory, db_conn):
                 'ts': CloseToNow(),
                 'actor': 'testing-1@example.com',
                 'body': 'Test Subject',
+                'extra_body': False,
                 'conv': conv.key,
             },
         ],
@@ -421,6 +423,7 @@ async def test_ws_add_msg(cli, factory: Factory, db_conn):
                 'ts': CloseToNow(),
                 'actor': 'testing-1@example.com',
                 'body': 'this is another message',
+                'extra_body': False,
                 'msg_format': 'markdown',
                 'conv': conv.key,
             }
