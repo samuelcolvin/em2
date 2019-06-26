@@ -28,8 +28,9 @@ export default class RealTime {
   on_message = async data => {
     // console.log('realtime message:', data)
     let clear_cache = false
+    let events = []
     if (data.actions) {
-      await this._apply_actions(data)
+      events = await this._apply_actions(data)
       if (data.user_v - this._main.session.current.user_v !== 1) {
         // user_v has increased by more than one, we must have missed actions, everything could have changed
         clear_cache = true
@@ -45,12 +46,19 @@ export default class RealTime {
     const session_update = {user_v: data.user_v}
     if (clear_cache) {
       session_update.cache = new Set()
+      if (!events.length) {
+        events = [{channel: 'change'}]
+      }
     }
     await this._main.session.update(session_update)
+    for (let event of events) {
+      this._main.fire(event.channel, event.details)
+    }
   }
 
   _apply_actions = async (data) => {
     // console.log('actions:', data)
+    const events = []
     const actions = data.actions.map(c =>
       Object.assign(c, {ts: unix_ms(c.ts), extra_body: bool_int(c.extra_body)})
     )
@@ -110,15 +118,16 @@ export default class RealTime {
       const old_conv = await this._main.session.db.conversations.get({new_key: action.conv})
       if (old_conv) {
         await this._main.session.db.conversations.delete(old_conv.key)
-        this._main.fire('change', {conv: old_conv.key, new_key: action.conv})
+        events.push({channel: 'change', details: {conv: old_conv.key, new_key: action.conv}})
       }
     }
-    this._main.fire('change', {conv: action.conv})
+    events.push({channel: 'change', details: {conv: action.conv}})
     await this._main.session.update_cache(`conv-${action.conv}`)
 
     if (this._main.session.current.flags !== data.flags) {
       await this._main.session.update({flags: data.flags})
-      this._main.fire('flag-change', this._main.conversations.counts())
+      events.push({channel: 'flag-change', details: this._main.conversations.counts()})
     }
+    return events
   }
 }

@@ -243,7 +243,7 @@ export default class Conversations {
           const r = await this._requests.get('ui', `/${this._main.session.id}/conv/list/`, {page, flag})
           await this._conv_table().bulkPut(r.data.conversations.map(db_conv))
           await this._main.session.update_cache(cache_key)
-      }
+        }
       }
     }
     const qs = this._conv_table().where({[flag]: 1})
