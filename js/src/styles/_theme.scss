@@ -109,7 +109,6 @@ $status-height: 20px;
 
 .with-menu {
   display: flex;
-  //flex-wrap: wrap;
   margin-right: -$grid-gutter-width / 2;
   margin-left: -$grid-gutter-width / 2;
   > div {
@@ -120,12 +119,17 @@ $status-height: 20px;
 }
 
 .left-menu {
-  //display: none;
   flex: 0 0 25%;
+  max-width: 25%;
   $menu-transition-time: 300ms;
   .list-group-item, .badge {
     transition: background-color $menu-transition-time ease, color $menu-transition-time ease;
   }
+}
+
+.beside-menu {
+  flex: 0 0 75%;
+  max-width: 75%;
 }
 
 .participants-input {
@@ -268,6 +272,34 @@ textarea.msg {
   height: 0;
   border: none;
   overflow: hidden;
+}
+
+.msg-md {
+  overflow: hidden;
+  word-break: break-word;
+  code {
+    color: $body-color;
+    background: #f3f3f3;
+    border-radius: 3px;
+    padding: .2em .4em;
+  }
+  pre {
+    background-color: #f6f8fa;
+    border-radius: 3px;
+    font-size: 85%;
+    line-height: 1.45;
+    padding: 12px;
+    code {
+      background: none;
+      border-radius: 0;
+      padding: 0;
+    }
+  }
+
+  table {
+    @extend .table;
+    @extend .table-striped;
+  }
 }
 
 .pagination {

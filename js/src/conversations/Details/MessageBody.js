@@ -65,6 +65,7 @@ class Html extends React.Component {
 
 // TODO following local links, eg. to conversations, block links to settings, perhaps move this to an iframe
 const markdown_props = {
+  className: 'msg-md',
   renderers: {
     link: props => <a href={props.href} target="_blank" rel="noopener noreferrer">{props.children}</a>,
   },

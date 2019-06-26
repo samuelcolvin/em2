@@ -216,7 +216,7 @@ const WithMenu = ({children}) => {
           <LeftMenu/>
         </div>
       </div>
-      <div>
+      <div className="beside-menu">
         {children}
       </div>
     </div>
