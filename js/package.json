@@ -7,6 +7,7 @@
     "pnp": true
   },
   "dependencies": {
+    "@edithq/slate-md-serializer": "^1.1.1",
     "@fortawesome/fontawesome-svg-core": "^1.2.17",
     "@fortawesome/free-brands-svg-icons": "^5.8.1",
     "@fortawesome/free-regular-svg-icons": "^5.8.1",
@@ -17,6 +18,8 @@
     "dexie": "^2.0.4",
     "eslint": "^5.16.0",
     "eslint-plugin-react-hooks": "^1.6.0",
+    "immutable": "^4.0.0-rc.12",
+    "is-hotkey": "^0.1.4",
     "moment": "^2.24.0",
     "node-sass": "^4.11.0",
     "react": "^16.8.6",
@@ -29,6 +32,8 @@
     "react-scripts": "3.0.0",
     "reactstrap": "^8.0.0",
     "reactstrap-toolbox": "0.0.19",
+    "slate": "^0.47.4",
+    "slate-react": "^0.22.4",
     "validator": "^10.11.0",
     "webpack-bundle-analyzer": "^3.3.2"
   },

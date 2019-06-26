@@ -4,6 +4,7 @@ import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, Loading, confirm_modal} from 'reactstrap-toolbox'
+import MarkdownEditor from '../MarkdownEditor'
 import Message from './Message'
 import RightPanel from './RightPanel'
 import Subject from './Subject'
@@ -239,10 +240,12 @@ class ConvDetailsView extends React.Component {
                       add_file={this.add_file}
                       remove_file={this.remove_file}
                       update_file={this.update_file}>
-                  <textarea placeholder="reply to all..." className="msg"
-                            disabled={!!(edit_locked || this.state.comment_parent || this.state.extra_prts)}
-                            value={this.state.new_message || ''}
-                            onChange={e => this.setState({new_message: e.target.value})}/>
+                  <MarkdownEditor
+                    placeholder="reply to all..."
+                    disabled={!!(edit_locked || this.state.comment_parent || this.state.extra_prts)}
+                    value={this.state.new_message || ''}
+                    onChange={e => this.setState({new_message: e.target.value})}
+                  />
                 </Drop>
                 <div className="text-right">
                   <Button color="primary"
