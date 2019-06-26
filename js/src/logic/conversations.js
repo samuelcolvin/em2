@@ -53,7 +53,7 @@ function warning_msgs (w) {
   if (!w) {
     return null
   }
-  let warnings = Object.assign({}, w)
+  let warnings = {...w}
   const msgs = []
   if (warnings.spam) {
     msgs.push({
@@ -413,7 +413,7 @@ export default class Conversations {
       url += `?since=${last_action}`
     }
     const r = await this._requests.get('ui', url)
-    const new_actions = r.data.map(c => Object.assign(c, {ts: unix_ms(c.ts), extra_body: 0}))
+    const new_actions = r.data.map(c => ({...c, ts: unix_ms(c.ts), extra_body: 0}))
     await this._main.session.db.actions.bulkPut(new_actions)
     return await this._get_db_actions(conv.key)
   }

@@ -90,7 +90,7 @@ export default class WebPush {
 
     if (this._do_notifications && event.data.notification && this._main.notify.window_active()) {
       event.ports[0].postMessage(true)
-      this._main.notify.notify(Object.assign({}, event.data.notification, {toast_icon: fas.faEnvelope}))
+      this._main.notify.notify({...event.data.notification, toast_icon: fas.faEnvelope})
     } else {
       event.ports[0].postMessage(false)
     }

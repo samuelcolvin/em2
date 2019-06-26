@@ -103,7 +103,7 @@ class ConvDetailsView extends React.Component {
   remove_file = key => this.setState(s => ({files: s.files.filter(f => f.key !== key)}))
 
   update_file = (key, update) => (
-    this.setState(s => ({files: s.files.map(f => f.key === key ? Object.assign({}, f, update) : f)}))
+    this.setState(s => ({files: s.files.map(f => f.key === key ? {...f, ...update} : f)}))
   )
   upload_ongoing = () => !!this.state.files.filter(f => f.progress).length
 

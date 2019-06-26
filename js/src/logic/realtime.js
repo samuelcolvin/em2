@@ -59,9 +59,7 @@ export default class RealTime {
   _apply_actions = async (data) => {
     // console.log('actions:', data)
     const events = []
-    const actions = data.actions.map(c =>
-      Object.assign(c, {ts: unix_ms(c.ts), extra_body: bool_int(c.extra_body)})
-    )
+    const actions = data.actions.map(c => ({...c, ts: unix_ms(c.ts), extra_body: bool_int(c.extra_body)}))
 
     await this._main.session.db.actions.bulkPut(actions)
     const action = actions[actions.length - 1]

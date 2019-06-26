@@ -25,11 +25,11 @@ export class Requests {
   }
 
   get = async (app_name, path, args, config={}) => (
-    await this._request('GET', app_name, path, Object.assign({}, config, {args}))
+    await this._request('GET', app_name, path, {...config, args})
   )
 
   post = async (app_name, path, send_data, config={}) => (
-    await this._request('POST', app_name, path, Object.assign({}, config, {send_data}))
+    await this._request('POST', app_name, path, {...config, send_data})
   )
 
   _request = async (method, app_name, path, config) => {
