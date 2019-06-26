@@ -66,9 +66,9 @@ export default class RealTime {
     const conv = await this._main.session.db.conversations.get(action.conv)
     const publish_action = actions.find(a => a.act === 'conv:publish')
 
-    const other_actor = Boolean(actions.find(a => a.actor !== this._main.session.current.email))
+    const other_actor = actions.some(a => a.actor !== this._main.session.current.email)
     const self_creator = data.conv_details.creator === this._main.session.current.email
-    const real_act = Boolean(actions.find(a => !meta_action_types.has(a.act)))
+    const real_act = actions.some(a => !meta_action_types.has(a.act))
 
     if (conv) {
       const update = {

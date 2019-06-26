@@ -198,7 +198,7 @@ function construct_conv (conv, actions) {
     seen: Boolean(conv.seen),
     removed: Boolean(conv.removed),
     primary_flag: primary_flag(conv),
-    published: Boolean(actions.find(a => a.act === 'conv:publish')),
+    published: actions.some(a => a.act === 'conv:publish'),
     subject: subject,
     created: created,
     messages: msg_list,

@@ -124,7 +124,7 @@ export default class Websocket {
 
 function should_notify (data) {
   // duplicated from em2-service-worker.js
-  if (!data.actions || !data.actions.find(a => a.actor !== data.user_email)) {
+  if (!data.actions || !data.actions.some(a => a.actor !== data.user_email)) {
     // actions are all by "you"
     return false
   } else if (data.spam) {
@@ -132,6 +132,6 @@ function should_notify (data) {
     return false
   } else {
     // otherwise check if there are any non-meta actions
-    return Boolean(data.actions.find(a => !meta_action_types.has(a.act)))
+    return data.actions.some(a => !meta_action_types.has(a.act))
   }
 }
