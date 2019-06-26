@@ -26,7 +26,7 @@ export default class RealTime {
   }
 
   on_message = async data => {
-    // console.debug('realtime message:', data)
+    // console.log('realtime message:', data)
     let clear_cache = false
     if (data.actions) {
       await this._apply_actions(data)
@@ -51,7 +51,9 @@ export default class RealTime {
 
   _apply_actions = async (data) => {
     // console.log('actions:', data)
-    const actions = data.actions.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
+    const actions = data.actions.map(c =>
+      Object.assign(c, {ts: unix_ms(c.ts), extra_body: bool_int(c.extra_body)})
+    )
 
     await this._main.session.db.actions.bulkPut(actions)
     const action = actions[actions.length - 1]

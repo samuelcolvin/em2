@@ -70,7 +70,7 @@ class Client:
             print(f'marking {conv_key:.10} as seen...')
             response = await self._post_json(self._make_url('ui:act', conv=conv_key), actions=[dict(act='seen')])
         else:
-            msg_format, msg_body = self._msg_body()
+            msg_format, msg_body, _ = self._msg_body()
             print(f'adding message to {conv_key:.10}, format: {msg_format}...')
             actions = [dict(act='message:add', msg_format=msg_format, body=msg_body)]
             response = await self._post_json(self._make_url('ui:act', conv=conv_key), actions=actions)
@@ -80,10 +80,10 @@ class Client:
     async def create(self, *, publish=True):
         print('creating a conv...')
         publish = choice([True, False]) if publish is None else publish
-        msg_format, msg_body = self._msg_body()
+        msg_format, msg_body, subject = self._msg_body()
         data = await self._post_json(
             self._make_url('ui:create'),
-            subject=lorem.sentence(),
+            subject=subject,
             message=msg_body,
             msg_format=msg_format,
             participants=other_users,
@@ -97,7 +97,11 @@ class Client:
         html_path = THIS_DIR / 'email.html'
         msg_format = 'markdown'
         msg_body = f'New message at {datetime.now():%H:%M:%S}.\n\n{lorem.paragraph()}'
-        if html_path.exists():
+        subject = lorem.sentence()
+        if 'long' in sys.argv:
+            msg_body = '\n\n'.join(f'{i}: this is a very long message' for i in range(100))
+            subject = 'LONG ' + subject
+        elif html_path.exists():
             if 'html' in sys.argv:
                 msg_format = 'html'
             elif 'markdown' not in sys.argv and random() > 0.5:
@@ -107,7 +111,7 @@ class Client:
                 msg_body = html_path.read_text()
         else:
             print(f'email html not found at "{html_path}", forced to use markdown message')
-        return msg_format, msg_body
+        return msg_format, msg_body, subject
 
     async def get_convs(self):
         print('getting convs...')

@@ -15,10 +15,10 @@ def query_display(v):
 @pytest.mark.parametrize(
     'query, expected',
     [
-        ({}, ['anne', 'ben', 'charlie', 'dave']),
-        ({'labels_all': 'label1'}, ['ben', 'dave']),
+        ({}, ['dave', 'charlie', 'ben', 'anne']),
+        ({'labels_all': 'label1'}, ['dave', 'ben']),
         ([('labels_all', 'label1'), ('labels_all', 'label2')], ['dave']),
-        ([('labels_any', 'label1'), ('labels_any', 'label2')], ['ben', 'charlie', 'dave']),
+        ([('labels_any', 'label1'), ('labels_any', 'label2')], ['dave', 'charlie', 'ben']),
     ],
     ids=query_display,
 )

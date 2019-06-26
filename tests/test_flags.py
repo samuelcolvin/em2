@@ -345,8 +345,8 @@ def query_display(v):
 @pytest.mark.parametrize(
     'query, expected',
     [
-        ({}, ['anne', 'ben', 'charlie', 'dave', 'ed', 'fred', 'george']),
-        ({'flag': 'inbox'}, ['charlie', 'george']),
+        ({}, ['george', 'fred', 'ed', 'dave', 'charlie', 'ben', 'anne']),
+        ({'flag': 'inbox'}, ['george', 'charlie']),
         ({'flag': 'spam'}, ['anne']),
         ({'flag': 'archive'}, ['ben']),
         ({'flag': 'unseen'}, ['charlie']),

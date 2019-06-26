@@ -5,7 +5,7 @@ function actions_incomplete (actions) {
   // check we have all actions for a conversation, eg. ids are exactly incrementing
   let last_id = 0
   for (let a of actions) {
-    if (a.id !== last_id + 1) {
+    if (a.extra_body || a.id !== last_id + 1) {
       return last_id
     }
     last_id = a.id
@@ -413,7 +413,7 @@ export default class Conversations {
       url += `?since=${last_action}`
     }
     const r = await this._requests.get('ui', url)
-    const new_actions = r.data.map(c => Object.assign(c, {ts: unix_ms(c.ts)}))
+    const new_actions = r.data.map(c => Object.assign(c, {ts: unix_ms(c.ts), extra_body: 0}))
     await this._main.session.db.actions.bulkPut(new_actions)
     return await this._get_db_actions(conv.key)
   }
