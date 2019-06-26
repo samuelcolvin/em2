@@ -244,7 +244,6 @@ $status-height: 20px;
 .editor {
   padding: 0.5rem 0.3rem;
   width: 100%;
-  min-height: 120px;
 
   border: 1px solid #d1d5da;
   border-radius: 3px;
@@ -252,9 +251,12 @@ $status-height: 20px;
   &:disabled {
     background: #f8f8f8;
   }
-  &.comment {
-    min-height: auto;
+  > div {
+    min-height: 120px;
   }
+  //&.comment {
+  //  min-height: auto;
+  //}
 }
 
 .btn-comment {

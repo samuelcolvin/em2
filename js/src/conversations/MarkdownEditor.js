@@ -154,7 +154,13 @@ const BlockButton = ({main, type, title, icon = null}) => (
 const onKeyDown = (e, editor, next) => {
   let mark
 
-  if (isBoldHotkey(e)) {
+  if (e.key === ' ') {
+    return on_space(e, editor, next)
+  } else if (e.key === 'Backspace') {
+    return on_backspace(e, editor, next)
+  } else if (e.key === 'Enter') {
+    return on_enter(e, editor, next)
+  } else if (isBoldHotkey(e)) {
     mark = 'bold'
   } else if (isItalicHotkey(e)) {
     mark = 'italic'
@@ -237,5 +243,100 @@ const renderMark = (props, editor, next) => {
       return <mark {...attributes}>{children}</mark>
     default:
       return next()
+  }
+}
+
+const on_enter = (e, editor, next) => {
+  const {value} = editor
+  const {selection} = value
+  const {start, end, isExpanded} = selection
+  if (isExpanded) {
+    return next()
+  }
+
+  const {startBlock} = value
+  if (start.offset === 0 && startBlock.text.length === 0)
+    return on_backspace(e, editor, next)
+  if (end.offset !== startBlock.text.length) return next()
+
+  if (!/(heading\d|block-quote)/.test(startBlock.type)) {
+    return next()
+  }
+
+  e.preventDefault()
+  editor.splitBlock().setBlocks('paragraph')
+}
+
+const on_backspace = (e, editor, next) => {
+  const {value} = editor
+  const {selection} = value
+  if (selection.isExpanded) {
+    return next()
+  }
+  if (selection.start.offset !== 0) {
+    return next()
+  }
+
+  const {startBlock} = value
+  if (startBlock.type === 'paragraph') {
+    return next()
+  }
+
+  e.preventDefault()
+  editor.setBlocks('paragraph')
+
+  if (startBlock.type === 'list-item') {
+    editor.unwrapBlock('bulleted-list')
+  }
+}
+
+const on_space = (e, editor, next) => {
+  const {value} = editor
+  const {selection} = value
+  if (selection.isExpanded) {
+    return next()
+  }
+
+  const {startBlock} = value
+  const {start} = selection
+  const chars = startBlock.text.slice(0, start.offset).replace(/\s*/g, '')
+  const type = get_shortcut(chars)
+  if (!type) {
+    return next()
+  }
+  if (type === 'list-item' && startBlock.type === 'list-item') return next()
+  e.preventDefault()
+
+  editor.setBlocks(type)
+
+  if (type === 'list-item') {
+    editor.wrapBlock('bulleted-list')
+  }
+
+  editor.moveFocusToStartOfNode(startBlock).delete()
+}
+
+const get_shortcut = chars => {
+  switch (chars) {
+    case '*':
+    case '-':
+    case '+':
+      return 'list-item'
+    case '>':
+      return 'block-quote'
+    case '#':
+      return 'heading1'
+    case '##':
+      return 'heading2'
+    case '###':
+      return 'heading3'
+    case '####':
+      return 'heading4'
+    case '#####':
+      return 'heading5'
+    case '######':
+      return 'heading6'
+    default:
+      return null
   }
 }
