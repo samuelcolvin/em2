@@ -4,7 +4,7 @@ import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, Loading, confirm_modal} from 'reactstrap-toolbox'
-import MarkdownEditor from '../MarkdownEditor'
+import Editor from '../Editor'
 import Message from './Message'
 import RightPanel from './RightPanel'
 import Subject from './Subject'
@@ -74,7 +74,7 @@ class ConvDetailsView extends React.Component {
         this.action_ids = null
         this.setState({locked: false})
       }
-      if (!this.marked_seen) {
+      if (!this.marked_seen && this.state.conv) {
         this.marked_seen = true
         await window.logic.conversations.seen(this.state.conv.key)
       }
@@ -240,7 +240,7 @@ class ConvDetailsView extends React.Component {
                       add_file={this.add_file}
                       remove_file={this.remove_file}
                       update_file={this.update_file}>
-                  <MarkdownEditor
+                  <Editor
                     placeholder="reply to all..."
                     disabled={!!(edit_locked || this.state.comment_parent || this.state.extra_prts)}
                     value={this.state.new_message || ''}

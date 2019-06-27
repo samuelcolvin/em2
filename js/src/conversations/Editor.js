@@ -14,82 +14,73 @@ import {
 
 const Serializer = new MarkdownSerializer()
 
-const isBoldHotkey = isKeyHotkey('mod+b')
-const isItalicHotkey = isKeyHotkey('mod+i')
-const isUnderlinedHotkey = isKeyHotkey('mod+u')
-const isCodeHotkey = isKeyHotkey('mod+`')
+const bold_key = isKeyHotkey('mod+b')
+const italic_key = isKeyHotkey('mod+i')
+const underline_key = isKeyHotkey('mod+u')
+const code_key = isKeyHotkey('mod+`')
 
+const types = {
+  para: 'paragraph',
+  bullets: 'bulleted-list',
+  numbers: 'numbered-list',
+  list_item: 'list-item',
+  block_quote: 'block-quote',
+}
+const is_list_type = t => [types.numbers, types.bullets].includes(t)
 
-const DEFAULT_NODE = 'paragraph'
-
-export default class MarkdownEditor extends React.Component {
+export default class MessageEditor extends React.Component {
   state = {
     value: Serializer.deserialize(''), // TODO
   }
 
-  has_block = type => {
-    const {value} = this.state
-    return value.blocks.some(node => node.type === type)
-  }
+  has_block = type => this.state.value.blocks.some(node => node.type === type)
 
   block_active = type => {
     let is_active = this.has_block(type)
 
-    if (['numbered-list', 'bulleted-list'].includes(type)) {
+    if (is_list_type(type)) {
       const {value: {document, blocks}} = this.state
 
       if (blocks.size > 0) {
         const parent = document.getParent(blocks.first().key)
-        is_active = this.has_block('list-item') && parent && parent.type === type
+        is_active = this.has_block(types.list_item) && parent && parent.type === type
       }
     }
     return is_active
   }
 
-  on_click_mark = (e, type) => {
+  toggle_mark = (e, type) => {
     e.preventDefault()
     this.editor.toggleMark(type)
   }
 
-  on_click_block = (e, type) => {
+  toggle_block = (e, type) => {
     e.preventDefault()
     const {editor} = this
     const {value} = editor
     const {document} = value
 
-    // Handle everything but list buttons.
-    if (type !== 'bulleted-list' && type !== 'numbered-list') {
-      const isActive = this.has_block(type)
-      const isList = this.has_block('list-item')
-
-      if (isList) {
-        editor
-          .setBlocks(isActive ? DEFAULT_NODE : type)
-          .unwrapBlock('bulleted-list')
-          .unwrapBlock('numbered-list')
-      } else {
-        editor.setBlocks(isActive ? DEFAULT_NODE : type)
-      }
-    } else {
+    if (is_list_type(type)) {
       // Handle the extra wrapping required for list buttons.
-      const isList = this.has_block('list-item')
-      const isType = value.blocks.some(block => {
-        return !!document.getClosest(block.key, parent => parent.type === type)
-      })
+      const isList = this.has_block(types.list_item)
+      const isType = value.blocks.some(block => !!document.getClosest(block.key, parent => parent.type === type))
 
       if (isList && isType) {
-        editor
-          .setBlocks(DEFAULT_NODE)
-          .unwrapBlock('bulleted-list')
-          .unwrapBlock('numbered-list')
+        editor.setBlocks(types.para).unwrapBlock(types.bullets).unwrapBlock(types.numbers)
       } else if (isList) {
-        editor
-          .unwrapBlock(
-            type === 'bulleted-list' ? 'numbered-list' : 'bulleted-list'
-          )
-          .wrapBlock(type)
+        editor.unwrapBlock(type === types.bullets ? types.numbers : types.bullets).wrapBlock(type)
       } else {
-        editor.setBlocks('list-item').wrapBlock(type)
+        editor.setBlocks(types.list_item).wrapBlock(type)
+      }
+    } else {
+      // Handle everything else
+      const isActive = this.has_block(type)
+      const isList = this.has_block(types.list_item)
+
+      if (isList) {
+        editor.setBlocks(isActive ? types.para : type).unwrapBlock(types.bullets).unwrapBlock(types.numbers)
+      } else {
+        editor.setBlocks(isActive ? types.para : type)
       }
     }
   }
@@ -98,8 +89,9 @@ export default class MarkdownEditor extends React.Component {
     this.editor = editor
   }
 
-  onChange = ({value}) => {
+  on_change = ({value}) => {
     this.setState({value})
+    // console.log(JSON.stringify(value.toJSON(), null, 2))
     // console.log(Serializer.serialize(value))
   }
 
@@ -111,7 +103,9 @@ export default class MarkdownEditor extends React.Component {
             <MarkButton main={this} type="bold" title="Bold Ctrl+B"/>
             <MarkButton main={this} type="italic" title="Italic Ctrl+I"/>
             <MarkButton main={this} type="underlined" title="Underline Ctrl+U" icon={fas.faUnderline}/>
+            {/*<BlockButton main={this} type="bulleted-list" title="Bullet Points" icon={fas.fa}/>*/}
             <BlockButton main={this} type="bulleted-list" title="Bullet Points" icon={fas.faList}/>
+            <BlockButton main={this} type="numbered-list" title="Numbered List" icon={fas.faListOl}/>
           </ButtonGroup>
         </div>
         <div className="editor">
@@ -121,10 +115,10 @@ export default class MarkdownEditor extends React.Component {
             disabled={this.props.disabled}
             value={this.state.value}
             ref={this.ref}
-            onChange={this.onChange}
-            onKeyDown={onKeyDown}
-            renderBlock={renderBlock}
-            renderMark={renderMark}
+            onChange={this.on_change}
+            onKeyDown={on_key_down}
+            renderBlock={render_block}
+            renderMark={render_mark}
           />
         </div>
       </div>
@@ -138,20 +132,20 @@ const _fa_name = s => 'fa' + s.charAt(0).toUpperCase() + s.slice(1)
 const mark_active = (main, type) => main.state.value.activeMarks.some(mark => mark.type === type)
 
 const MarkButton = ({main, type, title, icon = null}) => (
-  <Button title={title} onMouseDown={e => main.on_click_mark(e, type)} active={mark_active(main, type)}
+  <Button title={title} onMouseDown={e => main.toggle_mark(e, type)} active={mark_active(main, type)}
           disabled={main.props.disabled}>
     <FontAwesomeIcon icon={icon || fas[ _fa_name(type)]}/>
   </Button>
 )
 
 const BlockButton = ({main, type, title, icon = null}) => (
-  <Button title={title} onMouseDown={e => main.on_click_block(e, type)} active={main.block_active(type)}
+  <Button title={title} onMouseDown={e => main.toggle_block(e, type)} active={main.block_active(type)}
           disabled={main.props.disabled}>
     <FontAwesomeIcon icon={icon || fas[_fa_name(type)]}/>
   </Button>
 )
 
-const onKeyDown = (e, editor, next) => {
+const on_key_down = (e, editor, next) => {
   let mark
 
   if (e.key === ' ') {
@@ -160,13 +154,13 @@ const onKeyDown = (e, editor, next) => {
     return on_backspace(e, editor, next)
   } else if (e.key === 'Enter') {
     return on_enter(e, editor, next)
-  } else if (isBoldHotkey(e)) {
+  } else if (bold_key(e)) {
     mark = 'bold'
-  } else if (isItalicHotkey(e)) {
+  } else if (italic_key(e)) {
     mark = 'italic'
-  } else if (isUnderlinedHotkey(e)) {
+  } else if (underline_key(e)) {
     mark = 'underlined'
-  } else if (isCodeHotkey(e)) {
+  } else if (code_key(e)) {
     mark = 'code'
   } else {
     return next()
@@ -176,16 +170,17 @@ const onKeyDown = (e, editor, next) => {
   editor.toggleMark(mark)
 }
 
-const renderBlock = (props, editor, next) => {
+const render_block = (props, editor, next) => {
   const {attributes, children, node} = props
 
   switch (node.type) {
-    case 'paragraph':
+    case types.para:
       return <p {...attributes}>{children}</p>
-    case 'block-quote':
+    case types.block_quote:
       return <blockquote {...attributes}>{children}</blockquote>
-    case 'bulleted-list':
+    case types.bullets:
       return <ul {...attributes}>{children}</ul>
+    case types.numbers:
     case 'ordered-list':
       return <ol {...attributes}>{children}</ol>
     case 'todo-list':
@@ -198,7 +193,7 @@ const renderBlock = (props, editor, next) => {
       return <th {...attributes}>{children}</th>
     case 'table-cell':
       return <td {...attributes}>{children}</td>
-    case 'list-item':
+    case types.list_item:
       return <li {...attributes}>{children}</li>
     case 'horizontal-rule':
       return <hr />
@@ -225,7 +220,7 @@ const renderBlock = (props, editor, next) => {
   }
 }
 
-const renderMark = (props, editor, next) => {
+const render_mark = (props, editor, next) => {
   const {children, mark, attributes} = props
 
   switch (mark.type) {
@@ -255,16 +250,18 @@ const on_enter = (e, editor, next) => {
   }
 
   const {startBlock} = value
-  if (start.offset === 0 && startBlock.text.length === 0)
+  if (start.offset === 0 && startBlock.text.length === 0) {
     return on_backspace(e, editor, next)
-  if (end.offset !== startBlock.text.length) return next()
+  } else if (end.offset !== startBlock.text.length) {
+    return next()
+  }
 
   if (!/(heading\d|block-quote)/.test(startBlock.type)) {
     return next()
   }
 
   e.preventDefault()
-  editor.splitBlock().setBlocks('paragraph')
+  editor.splitBlock().setBlocks(types.para)
 }
 
 const on_backspace = (e, editor, next) => {
@@ -278,15 +275,15 @@ const on_backspace = (e, editor, next) => {
   }
 
   const {startBlock} = value
-  if (startBlock.type === 'paragraph') {
+  if (startBlock.type === types.para) {
     return next()
   }
 
   e.preventDefault()
-  editor.setBlocks('paragraph')
 
-  if (startBlock.type === 'list-item') {
-    editor.unwrapBlock('bulleted-list')
+  console.log('type', startBlock.type)
+  if (startBlock.type === types.list_item) {
+    editor.setBlocks(types.para).unwrapBlock(types.bullets).unwrapBlock(types.numbers)
   }
 }
 
@@ -300,43 +297,26 @@ const on_space = (e, editor, next) => {
   const {startBlock} = value
   const {start} = selection
   const chars = startBlock.text.slice(0, start.offset).replace(/\s*/g, '')
-  const type = get_shortcut(chars)
-  if (!type) {
+  let type
+  if (['*', '-', '+'].includes(chars)) {
+    if (startBlock.type === types.list_item) {
+      return next()
+    }
+    type = types.list_item
+  } else if ('>' === chars) {
+    type = types.block_quote
+  } else if (/^#{1,6}$/.test(chars)) {
+    type = `heading${chars.length}`
+  } else {
     return next()
   }
-  if (type === 'list-item' && startBlock.type === 'list-item') return next()
   e.preventDefault()
 
   editor.setBlocks(type)
 
-  if (type === 'list-item') {
-    editor.wrapBlock('bulleted-list')
+  if (type === types.list_item) {
+    editor.wrapBlock(types.bullets)
   }
 
   editor.moveFocusToStartOfNode(startBlock).delete()
-}
-
-const get_shortcut = chars => {
-  switch (chars) {
-    case '*':
-    case '-':
-    case '+':
-      return 'list-item'
-    case '>':
-      return 'block-quote'
-    case '#':
-      return 'heading1'
-    case '##':
-      return 'heading2'
-    case '###':
-      return 'heading3'
-    case '####':
-      return 'heading4'
-    case '#####':
-      return 'heading5'
-    case '######':
-      return 'heading6'
-    default:
-      return null
-  }
 }
