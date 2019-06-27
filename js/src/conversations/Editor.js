@@ -17,16 +17,20 @@ const Serializer = new MarkdownSerializer()
 const bold_key = isKeyHotkey('mod+b')
 const italic_key = isKeyHotkey('mod+i')
 const underline_key = isKeyHotkey('mod+u')
+const quote_key = isKeyHotkey('mod+q')
 const code_key = isKeyHotkey('mod+`')
 
-const types = {
+const T = {
   para: 'paragraph',
+  bold: 'bold',
+  italic: 'italic',
+  underlined: 'underlined',
   bullets: 'bulleted-list',
   numbers: 'numbered-list',
   list_item: 'list-item',
   block_quote: 'block-quote',
 }
-const is_list_type = t => [types.numbers, types.bullets].includes(t)
+const is_list_type = t => t === T.numbers || t=== T.bullets
 
 export default class MessageEditor extends React.Component {
   state = {
@@ -43,8 +47,10 @@ export default class MessageEditor extends React.Component {
 
       if (blocks.size > 0) {
         const parent = document.getParent(blocks.first().key)
-        is_active = this.has_block(types.list_item) && parent && parent.type === type
+        is_active = this.has_block(T.list_item) && parent && parent.type === type
       }
+    } else if (type === 'heading') {
+      is_active = this.state.value.blocks.some(node => node.type.startsWith('heading'))
     }
     return is_active
   }
@@ -62,27 +68,61 @@ export default class MessageEditor extends React.Component {
 
     if (is_list_type(type)) {
       // Handle the extra wrapping required for list buttons.
-      const isList = this.has_block(types.list_item)
-      const isType = value.blocks.some(block => !!document.getClosest(block.key, parent => parent.type === type))
+      const is_list = this.has_block(T.list_item)
+      const is_type = value.blocks.some(block => !!document.getClosest(block.key, parent => parent.type === type))
 
-      if (isList && isType) {
-        editor.setBlocks(types.para).unwrapBlock(types.bullets).unwrapBlock(types.numbers)
-      } else if (isList) {
-        editor.unwrapBlock(type === types.bullets ? types.numbers : types.bullets).wrapBlock(type)
+      if (is_list && is_type) {
+        editor.setBlocks(T.para).unwrapBlock(T.bullets).unwrapBlock(T.numbers)
+      } else if (is_list) {
+        editor.unwrapBlock(type === T.bullets ? T.numbers : T.bullets).wrapBlock(type)
       } else {
-        editor.setBlocks(types.list_item).wrapBlock(type)
+        editor.setBlocks(T.list_item).wrapBlock(type)
       }
+    } else if (this.has_block(T.list_item)) {
+      editor.setBlocks(this.has_block(type) ? T.para : type).unwrapBlock(T.bullets).unwrapBlock(T.numbers)
     } else {
-      // Handle everything else
-      const isActive = this.has_block(type)
-      const isList = this.has_block(types.list_item)
-
-      if (isList) {
-        editor.setBlocks(isActive ? types.para : type).unwrapBlock(types.bullets).unwrapBlock(types.numbers)
-      } else {
-        editor.setBlocks(isActive ? types.para : type)
-      }
+      editor.setBlocks(this.has_block(type) ? T.para : type)
     }
+  }
+
+  change_heading = e => {
+    e.preventDefault()
+    const {type} = this.editor.value.startBlock
+    let new_type = 'heading3'
+    const h_match = type.match(/heading([1-3])/)
+    if (h_match) {
+      const level = parseInt(h_match[1])
+      new_type = level === 1 ? T.para : `heading${level - 1}`
+    }
+    this.editor.setBlocks(new_type)
+  }
+
+  on_key_down = (e, editor, next) => {
+    let mark
+
+    if (e.key === ' ') {
+      return on_space(e, editor, next)
+    } else if (e.key === 'Backspace') {
+      return on_backspace(e, editor, next)
+    } else if (e.key === 'Enter') {
+      return on_enter(e, editor, next)
+    } else if (bold_key(e)) {
+      mark = T.bold
+    } else if (italic_key(e)) {
+      mark = T.italic
+    } else if (underline_key(e)) {
+      mark = T.underlined
+    } else if (quote_key(e)) {
+      const type = T.block_quote
+      return editor.setBlocks(this.has_block(type) ? T.para : type)
+    } else if (code_key(e)) {
+      mark = 'code'
+    } else {
+      return next()
+    }
+
+    e.preventDefault()
+    editor.toggleMark(mark)
   }
 
   ref = editor => {
@@ -100,12 +140,13 @@ export default class MessageEditor extends React.Component {
       <div>
         <div className="d-flex justify-content-end mb-1">
           <ButtonGroup>
-            <MarkButton main={this} type="bold" title="Bold Ctrl+B"/>
-            <MarkButton main={this} type="italic" title="Italic Ctrl+I"/>
-            <MarkButton main={this} type="underlined" title="Underline Ctrl+U" icon={fas.faUnderline}/>
-            {/*<BlockButton main={this} type="bulleted-list" title="Bullet Points" icon={fas.fa}/>*/}
-            <BlockButton main={this} type="bulleted-list" title="Bullet Points" icon={fas.faList}/>
-            <BlockButton main={this} type="numbered-list" title="Numbered List" icon={fas.faListOl}/>
+            <MarkButton main={this} type={T.bold} title="Bold Ctrl+b"/>
+            <MarkButton main={this} type={T.italic} title="Italic Ctrl+i"/>
+            <MarkButton main={this} type={T.underlined} title="Underline Ctrl+u" icon={fas.faUnderline}/>
+            <BlockButton main={this} type="heading" title="Heading" onMouseDown={this.change_heading}/>
+            <BlockButton main={this} type={T.block_quote} title="Quote Ctrl+q" icon={fas.faQuoteLeft}/>
+            <BlockButton main={this} type={T.bullets} title="Bullet Points" icon={fas.faList}/>
+            <BlockButton main={this} type={T.numbers} title="Numbered List" icon={fas.faListOl}/>
           </ButtonGroup>
         </div>
         <div className="editor">
@@ -116,7 +157,7 @@ export default class MessageEditor extends React.Component {
             value={this.state.value}
             ref={this.ref}
             onChange={this.on_change}
-            onKeyDown={on_key_down}
+            onKeyDown={this.on_key_down}
             renderBlock={render_block}
             renderMark={render_mark}
           />
@@ -138,49 +179,26 @@ const MarkButton = ({main, type, title, icon = null}) => (
   </Button>
 )
 
-const BlockButton = ({main, type, title, icon = null}) => (
-  <Button title={title} onMouseDown={e => main.toggle_block(e, type)} active={main.block_active(type)}
+const BlockButton = ({main, type, title, onMouseDown = null, icon = null}) => (
+  <Button title={title}
+          onMouseDown={e => (onMouseDown || main.toggle_block)(e, type)}
+          active={main.block_active(type)}
           disabled={main.props.disabled}>
     <FontAwesomeIcon icon={icon || fas[_fa_name(type)]}/>
   </Button>
 )
 
-const on_key_down = (e, editor, next) => {
-  let mark
-
-  if (e.key === ' ') {
-    return on_space(e, editor, next)
-  } else if (e.key === 'Backspace') {
-    return on_backspace(e, editor, next)
-  } else if (e.key === 'Enter') {
-    return on_enter(e, editor, next)
-  } else if (bold_key(e)) {
-    mark = 'bold'
-  } else if (italic_key(e)) {
-    mark = 'italic'
-  } else if (underline_key(e)) {
-    mark = 'underlined'
-  } else if (code_key(e)) {
-    mark = 'code'
-  } else {
-    return next()
-  }
-
-  e.preventDefault()
-  editor.toggleMark(mark)
-}
-
 const render_block = (props, editor, next) => {
   const {attributes, children, node} = props
 
   switch (node.type) {
-    case types.para:
+    case T.para:
       return <p {...attributes}>{children}</p>
-    case types.block_quote:
+    case T.block_quote:
       return <blockquote {...attributes}>{children}</blockquote>
-    case types.bullets:
+    case T.bullets:
       return <ul {...attributes}>{children}</ul>
-    case types.numbers:
+    case T.numbers:
     case 'ordered-list':
       return <ol {...attributes}>{children}</ol>
     case 'todo-list':
@@ -193,7 +211,7 @@ const render_block = (props, editor, next) => {
       return <th {...attributes}>{children}</th>
     case 'table-cell':
       return <td {...attributes}>{children}</td>
-    case types.list_item:
+    case T.list_item:
       return <li {...attributes}>{children}</li>
     case 'horizontal-rule':
       return <hr />
@@ -224,13 +242,13 @@ const render_mark = (props, editor, next) => {
   const {children, mark, attributes} = props
 
   switch (mark.type) {
-    case 'bold':
+    case T.bold:
       return <strong {...attributes}>{children}</strong>
     case 'code':
       return <code {...attributes}>{children}</code>
-    case 'italic':
+    case T.italic:
       return <em {...attributes}>{children}</em>
-    case 'underlined':
+    case T.underlined:
       return <u {...attributes}>{children}</u>
     case 'deleted':
       return <del {...attributes}>{children}</del>
@@ -261,7 +279,7 @@ const on_enter = (e, editor, next) => {
   }
 
   e.preventDefault()
-  editor.splitBlock().setBlocks(types.para)
+  editor.splitBlock().setBlocks(T.para)
 }
 
 const on_backspace = (e, editor, next) => {
@@ -274,16 +292,17 @@ const on_backspace = (e, editor, next) => {
     return next()
   }
 
-  const {startBlock} = value
-  if (startBlock.type === types.para) {
+  const {type} = value.startBlock
+  if (type === T.para) {
     return next()
   }
 
   e.preventDefault()
 
-  console.log('type', startBlock.type)
-  if (startBlock.type === types.list_item) {
-    editor.setBlocks(types.para).unwrapBlock(types.bullets).unwrapBlock(types.numbers)
+  if (type === T.list_item) {
+    editor.setBlocks(T.para).unwrapBlock(T.bullets).unwrapBlock(T.numbers)
+  } else if (type !== T.para) {
+    editor.setBlocks(T.para)
   }
 }
 
@@ -299,12 +318,12 @@ const on_space = (e, editor, next) => {
   const chars = startBlock.text.slice(0, start.offset).replace(/\s*/g, '')
   let type
   if (['*', '-', '+'].includes(chars)) {
-    if (startBlock.type === types.list_item) {
+    if (startBlock.type === T.list_item) {
       return next()
     }
-    type = types.list_item
+    type = T.list_item
   } else if ('>' === chars) {
-    type = types.block_quote
+    type = T.block_quote
   } else if (/^#{1,6}$/.test(chars)) {
     type = `heading${chars.length}`
   } else {
@@ -314,8 +333,8 @@ const on_space = (e, editor, next) => {
 
   editor.setBlocks(type)
 
-  if (type === types.list_item) {
-    editor.wrapBlock(types.bullets)
+  if (type === T.list_item) {
+    editor.wrapBlock(T.bullets)
   }
 
   editor.moveFocusToStartOfNode(startBlock).delete()

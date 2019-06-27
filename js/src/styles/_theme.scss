@@ -254,6 +254,14 @@ $status-height: 20px;
   > div {
     min-height: 120px;
   }
+  p {
+    margin-bottom: 0.5rem;
+  }
+  blockquote {
+    border-left: .25em solid #dfe2e5;
+    color: #6a737d;
+    padding: 0 1em;
+  }
   //&.comment {
   //  min-height: auto;
   //}
