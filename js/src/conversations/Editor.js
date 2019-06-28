@@ -1,16 +1,15 @@
 import React from 'react'
 import MarkdownSerializer from '@edithq/slate-md-serializer'
-import {Editor} from 'slate-react'
+import {Value} from 'slate'
+import {Editor as RawEditor} from 'slate-react'
 import {isKeyHotkey} from 'is-hotkey'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+import {isEqual} from 'lodash'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {
   ButtonGroup,
   Button,
 } from 'reactstrap'
-
-// value
-// onChange
 
 const Serializer = new MarkdownSerializer()
 
@@ -34,24 +33,39 @@ const T = {
   block_quote: 'block-quote',
 }
 const is_list_type = t => t === T.numbers || t=== T.bullets
+const _raw_empty = {
+  object: 'value',
+  document: {
+    object: 'document',
+    data: {},
+    nodes: [
+      {
+        object: 'block',
+        type: 'paragraph',
+        data: {},
+        nodes: [{object: 'text', text: '', marks: []}],
+      },
+    ],
+  },
+}
 
-export default class MessageEditor extends React.Component {
-  state = {
-    value: Serializer.deserialize(''), // TODO
-  }
+export const empty_editor = () => Value.fromJSON(_raw_empty)
+export const has_content = v => !isEqual(v.toJSON(), _raw_empty)
+export const to_markdown = v => Serializer.serialize(v)
 
-  has_block = type => this.state.value.blocks.some(node => node.type === type)
+export class Editor extends React.Component {
+  has_block = type => this.props.value.blocks.some(node => node.type === type)
 
   block_active = type => {
     if (is_list_type(type)) {
-      const {value: {document, blocks}} = this.state
+      const {document, blocks} = this.props.value
 
       if (blocks.size > 0) {
         const parent = document.getParent(blocks.first().key)
         return this.has_block(T.list_item) && parent && parent.type === type
       }
     } else if (type === 'heading') {
-      return this.state.value.blocks.some(node => node.type.startsWith('heading'))
+      return this.props.value.blocks.some(node => node.type.startsWith('heading'))
     } else if (type === T.code) {
       return this.has_block(T.code_line)
     }
@@ -153,13 +167,12 @@ export default class MessageEditor extends React.Component {
   }
 
   on_change = ({value}) => {
-    this.setState({value})
-    // console.log(JSON.stringify(value.toJSON(), null, 2))
-    // console.log(Serializer.serialize(value))
+    this.props.onChange(value)
+    console.log(to_markdown(value))
   }
 
   render () {
-    const {startBlock} = this.state.value
+    const {startBlock} = this.props.value
     return (
       <div>
         <div className="d-flex justify-content-end mb-1">
@@ -177,11 +190,11 @@ export default class MessageEditor extends React.Component {
           </ButtonGroup>
         </div>
         <div className="editor">
-          <Editor
+          <RawEditor
             spellCheck
             placeholder={(startBlock && startBlock.type) === T.para ? this.props.placeholder: ''}
             disabled={this.props.disabled}
-            value={this.state.value}
+            value={this.props.value}
             ref={this.ref}
             onChange={this.on_change}
             onKeyDown={this.on_key_down}
@@ -197,7 +210,7 @@ export default class MessageEditor extends React.Component {
 
 const _fa_name = s => 'fa' + s.charAt(0).toUpperCase() + s.slice(1).replace('-', '')
 
-const mark_active = (main, type) => main.state.value.activeMarks.some(mark => mark.type === type)
+const mark_active = (main, type) => main.props.value.activeMarks.some(mark => mark.type === type)
 
 const MarkButton = ({main, type, title, icon = null}) => (
   <Button title={title}

@@ -15,6 +15,7 @@ import {
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, AsModal, on_mobile} from 'reactstrap-toolbox'
+import {has_content} from '../Editor'
 
 
 class EditSubject_ extends React.Component {
@@ -144,7 +145,11 @@ const SubjectButtons = ({history, conv_state, btns_disabled, publish, set_flag})
 )
 
 export default withRouter(({history, conv_state, publish, lock_subject, set_subject, release_subject, lock_view}) => {
-  const btns_disabled = Boolean(conv_state.locked || conv_state.comment_parent || conv_state.new_message)
+  const btns_disabled = Boolean(
+    conv_state.locked ||
+    conv_state.comment_parent ||
+    has_content(conv_state.new_message)
+  )
   const set_flag = async (flag, leave=true) => {
     const unlock = lock_view()
     await window.logic.conversations.set_flag(conv_state.conv.key, flag)

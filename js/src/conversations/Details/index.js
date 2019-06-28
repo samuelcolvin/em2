@@ -4,7 +4,7 @@ import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, Loading, confirm_modal} from 'reactstrap-toolbox'
-import Editor from '../Editor'
+import {Editor, empty_editor, has_content, to_markdown} from '../Editor'
 import Message from './Message'
 import RightPanel from './RightPanel'
 import Subject from './Subject'
@@ -12,7 +12,7 @@ import Drop from './Drop'
 
 
 class ConvDetailsView extends React.Component {
-  state = {files: []}
+  state = {files: [], new_message: empty_editor()}
   marked_seen = false
   comment_ref = React.createRef()
 
@@ -42,7 +42,7 @@ class ConvDetailsView extends React.Component {
 
   on_keydown = e => {
     if (e.key === 'Enter' && e.ctrlKey) {
-      if (this.state.new_message) {
+      if (has_content(this.state.new_message)) {
         this.add_msg()
       } else if (this.state.comment) {
         this.add_comment()
@@ -89,13 +89,13 @@ class ConvDetailsView extends React.Component {
   }
 
   add_msg = async () => {
-    if (!this.state.locked && !this.upload_ongoing() && this.state.new_message) {
+    if (!this.state.locked && !this.upload_ongoing() && has_content(this.state.new_message)) {
       this.setState({locked: true})
-      const actions = [{act: 'message:add', body: this.state.new_message}]
+      const actions = [{act: 'message:add', body: to_markdown(this.state.new_message)}]
       const files = this.state.files.filter(f => f.done).map(f => f.content_id)
       const r = await window.logic.conversations.act(this.state.conv.key, actions, files)
       this.action_ids = r.data.action_ids
-      this.setState({new_message: null, files: []})
+      this.setState({new_message: empty_editor(), files: []})
     }
   }
 
@@ -243,13 +243,13 @@ class ConvDetailsView extends React.Component {
                   <Editor
                     placeholder="reply to all..."
                     disabled={!!(edit_locked || this.state.comment_parent || this.state.extra_prts)}
-                    value={this.state.new_message || ''}
-                    onChange={e => this.setState({new_message: e.target.value})}
+                    value={this.state.new_message}
+                    onChange={value => this.setState({new_message: value})}
                   />
                 </Drop>
                 <div className="text-right">
                   <Button color="primary"
-                          disabled={edit_locked || this.upload_ongoing() || !this.state.new_message}
+                          disabled={edit_locked || this.upload_ongoing() || !has_content(this.state.new_message)}
                           onClick={this.add_msg}>
                     <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/>
                     {this.state.conv.draft ? 'Add Message' : 'Send'}
