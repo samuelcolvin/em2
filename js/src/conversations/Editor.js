@@ -25,6 +25,7 @@ const T = {
   bold: 'bold',
   italic: 'italic',
   underlined: 'underlined',
+  strike_through: 'strike-through',
   code: 'code',
   code_line: 'code-line',
   bullets: 'bulleted-list',
@@ -153,6 +154,7 @@ export default class MessageEditor extends React.Component {
             <MarkButton main={this} type={T.bold} title="Bold Ctrl+b"/>
             <MarkButton main={this} type={T.italic} title="Italic Ctrl+i"/>
             <MarkButton main={this} type={T.underlined} title="Underline Ctrl+u" icon={fas.faUnderline}/>
+            <MarkButton main={this} type={T.strike_through} title="Strike Through"/>
             <MarkButton main={this} type={T.code} title="Inline Code Ctrl+`" icon={fas.faTerminal}/>
             <BlockButton main={this} type={T.code} title="Code Block"/>
             <BlockButton main={this} type="heading" title="Heading" onMouseDown={this.change_heading}/>
@@ -180,7 +182,7 @@ export default class MessageEditor extends React.Component {
 }
 
 
-const _fa_name = s => 'fa' + s.charAt(0).toUpperCase() + s.slice(1)
+const _fa_name = s => 'fa' + s.charAt(0).toUpperCase() + s.slice(1).replace('-', '')
 
 const mark_active = (main, type) => main.state.value.activeMarks.some(mark => mark.type === type)
 
@@ -262,6 +264,7 @@ const render_mark = (props, editor, next) => {
       return <em {...attributes}>{children}</em>
     case T.underlined:
       return <u {...attributes}>{children}</u>
+    case T.strike_through:
     case 'deleted':
       return <del {...attributes}>{children}</del>
     case 'added':
@@ -330,18 +333,26 @@ const on_space = (e, editor, next) => {
   const {startBlock} = value
   const {start} = selection
   const chars = startBlock.text.slice(0, start.offset).replace(/\s*/g, '')
-  let type
+  let type, wrap_type
   if (['*', '-', '+'].includes(chars)) {
     if (startBlock.type === T.list_item) {
       return next()
     }
     type = T.list_item
+    wrap_type = T.bullets
+  } else if ('1.' === chars) {
+    if (startBlock.type === T.list_item) {
+      return next()
+    }
+    type = T.list_item
+    wrap_type = T.numbers
   } else if ('>' === chars) {
     type = T.block_quote
   } else if (/^#{1,6}$/.test(chars)) {
     type = `heading${chars.length}`
   } else if ('```' === chars) {
     type = T.code_line
+    wrap_type = T.code
   } else {
     return next()
   }
@@ -349,10 +360,8 @@ const on_space = (e, editor, next) => {
 
   editor.setBlocks(type)
 
-  if (type === T.list_item) {
-    editor.wrapBlock(T.bullets)
-  } else if (type === T.code_line) {
-    editor.wrapBlock(T.code)
+  if (wrap_type) {
+    editor.wrapBlock(wrap_type)
   }
 
   editor.moveFocusToStartOfNode(startBlock).delete()
