@@ -262,9 +262,28 @@ $status-height: 20px;
     color: #6a737d;
     padding: 0 1em;
   }
+  code {
+    color: $body-color;
+    background: #f3f3f3;
+    border-radius: 3px;
+    padding: .2em .4em;
+  }
+  pre {
+    background-color: #f6f8fa;
+    border-radius: 3px;
+    font-size: 85%;
+    line-height: 1.45;
+    padding: 12px;
+    code {
+      background: none;
+      border-radius: 0;
+      padding: 0;
+    }
+  }
   //&.comment {
   //  min-height: auto;
   //}
+
 }
 
 .btn-comment {

@@ -25,6 +25,8 @@ const T = {
   bold: 'bold',
   italic: 'italic',
   underlined: 'underlined',
+  code: 'code',
+  code_line: 'code-line',
   bullets: 'bulleted-list',
   numbers: 'numbered-list',
   list_item: 'list-item',
@@ -40,19 +42,19 @@ export default class MessageEditor extends React.Component {
   has_block = type => this.state.value.blocks.some(node => node.type === type)
 
   block_active = type => {
-    let is_active = this.has_block(type)
-
     if (is_list_type(type)) {
       const {value: {document, blocks}} = this.state
 
       if (blocks.size > 0) {
         const parent = document.getParent(blocks.first().key)
-        is_active = this.has_block(T.list_item) && parent && parent.type === type
+        return this.has_block(T.list_item) && parent && parent.type === type
       }
     } else if (type === 'heading') {
-      is_active = this.state.value.blocks.some(node => node.type.startsWith('heading'))
+      return this.state.value.blocks.some(node => node.type.startsWith('heading'))
+    } else if (type === T.code) {
+      return this.has_block(T.code_line)
     }
-    return is_active
+    return this.has_block(type)
   }
 
   toggle_mark = (e, type) => {
@@ -78,10 +80,17 @@ export default class MessageEditor extends React.Component {
       } else {
         editor.setBlocks(T.list_item).wrapBlock(type)
       }
-    } else if (this.has_block(T.list_item)) {
-      editor.setBlocks(this.has_block(type) ? T.para : type).unwrapBlock(T.bullets).unwrapBlock(T.numbers)
+    } else if (type === T.code) {
+      if (this.has_block(T.code_line)) {
+        editor.setBlocks(T.para).unwrapBlock(type)
+      } else {
+        editor.setBlocks(T.code_line).wrapBlock(type)
+      }
     } else {
       editor.setBlocks(this.has_block(type) ? T.para : type)
+      if (this.has_block(T.list_item)) {
+        editor.unwrapBlock(T.bullets).unwrapBlock(T.numbers)
+      }
     }
   }
 
@@ -116,7 +125,7 @@ export default class MessageEditor extends React.Component {
       const type = T.block_quote
       return editor.setBlocks(this.has_block(type) ? T.para : type)
     } else if (code_key(e)) {
-      mark = 'code'
+      mark = T.code
     } else {
       return next()
     }
@@ -136,6 +145,7 @@ export default class MessageEditor extends React.Component {
   }
 
   render () {
+    const {startBlock} = this.state.value
     return (
       <div>
         <div className="d-flex justify-content-end mb-1">
@@ -143,6 +153,8 @@ export default class MessageEditor extends React.Component {
             <MarkButton main={this} type={T.bold} title="Bold Ctrl+b"/>
             <MarkButton main={this} type={T.italic} title="Italic Ctrl+i"/>
             <MarkButton main={this} type={T.underlined} title="Underline Ctrl+u" icon={fas.faUnderline}/>
+            <MarkButton main={this} type={T.code} title="Inline Code Ctrl+`" icon={fas.faTerminal}/>
+            <BlockButton main={this} type={T.code} title="Code Block"/>
             <BlockButton main={this} type="heading" title="Heading" onMouseDown={this.change_heading}/>
             <BlockButton main={this} type={T.block_quote} title="Quote Ctrl+q" icon={fas.faQuoteLeft}/>
             <BlockButton main={this} type={T.bullets} title="Bullet Points" icon={fas.faList}/>
@@ -152,7 +164,7 @@ export default class MessageEditor extends React.Component {
         <div className="editor">
           <Editor
             spellCheck
-            placeholder={this.props.placeholder}
+            placeholder={(startBlock && startBlock.type) === T.para ? this.props.placeholder: ''}
             disabled={this.props.disabled}
             value={this.state.value}
             ref={this.ref}
@@ -215,8 +227,8 @@ const render_block = (props, editor, next) => {
       return <li {...attributes}>{children}</li>
     case 'horizontal-rule':
       return <hr />
-    case 'code':
-      return <code {...attributes}>{children}</code>
+    case T.code:
+      return <pre><code {...attributes}>{children}</code></pre>
     case 'image':
       return <img src={props.src} title={props.title} alt={props.title} />
     case 'link':
@@ -274,12 +286,12 @@ const on_enter = (e, editor, next) => {
     return next()
   }
 
-  if (!/(heading\d|block-quote)/.test(startBlock.type)) {
-    return next()
+  if (/(heading\d|block-quote)/.test(startBlock.type)) {
+    e.preventDefault()
+    editor.splitBlock().setBlocks(T.para)
+  } else {
+    next()
   }
-
-  e.preventDefault()
-  editor.splitBlock().setBlocks(T.para)
 }
 
 const on_backspace = (e, editor, next) => {
@@ -301,6 +313,8 @@ const on_backspace = (e, editor, next) => {
 
   if (type === T.list_item) {
     editor.setBlocks(T.para).unwrapBlock(T.bullets).unwrapBlock(T.numbers)
+  } else if (type === T.code_line) {
+    editor.setBlocks(T.para).unwrapBlock(T.code)
   } else if (type !== T.para) {
     editor.setBlocks(T.para)
   }
@@ -326,6 +340,8 @@ const on_space = (e, editor, next) => {
     type = T.block_quote
   } else if (/^#{1,6}$/.test(chars)) {
     type = `heading${chars.length}`
+  } else if ('```' === chars) {
+    type = T.code_line
   } else {
     return next()
   }
@@ -335,6 +351,8 @@ const on_space = (e, editor, next) => {
 
   if (type === T.list_item) {
     editor.wrapBlock(T.bullets)
+  } else if (type === T.code_line) {
+    editor.wrapBlock(T.code)
   }
 
   editor.moveFocusToStartOfNode(startBlock).delete()
