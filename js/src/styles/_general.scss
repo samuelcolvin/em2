@@ -90,3 +90,8 @@
 .cursor-pointer {
   cursor: pointer !important;
 }
+
+
+.btn-light-border {
+  @include button-variant($light, $border-color);
+}

@@ -85,7 +85,7 @@ export default class MessageEditor extends React.Component {
       if (this.has_block(T.code_line)) {
         editor.setBlocks(T.para).unwrapBlock(type)
       } else {
-        editor.setBlocks(T.code_line).wrapBlock(type)
+        apply_code_block(editor)
       }
     } else {
       editor.setBlocks(this.has_block(type) ? T.para : type)
@@ -107,16 +107,29 @@ export default class MessageEditor extends React.Component {
     this.editor.setBlocks(new_type)
   }
 
-  on_key_down = (e, editor, next) => {
-    let mark
+  disable_button = (type, mode) => {
+    if (this.props.disabled) {
+      return true
+    } else if (type === T.code && mode === 'block') {
+      return false
+    } else {
+      return this.has_block(T.code_line)
+    }
+  }
 
+  on_key_down = (e, editor, next) => {
     if (e.key === ' ') {
       return on_space(e, editor, next)
     } else if (e.key === 'Backspace') {
       return on_backspace(e, editor, next)
     } else if (e.key === 'Enter') {
       return on_enter(e, editor, next)
-    } else if (bold_key(e)) {
+    } else if (this.has_block(T.code_line)) {
+      return next()
+    }
+
+    let mark
+    if (bold_key(e)) {
       mark = T.bold
     } else if (italic_key(e)) {
       mark = T.italic
@@ -187,17 +200,21 @@ const _fa_name = s => 'fa' + s.charAt(0).toUpperCase() + s.slice(1).replace('-',
 const mark_active = (main, type) => main.state.value.activeMarks.some(mark => mark.type === type)
 
 const MarkButton = ({main, type, title, icon = null}) => (
-  <Button title={title} onMouseDown={e => main.toggle_mark(e, type)} active={mark_active(main, type)}
-          disabled={main.props.disabled}>
+  <Button title={title}
+          color="light-border"
+          onMouseDown={e => main.toggle_mark(e, type)}
+          active={mark_active(main, type)}
+          disabled={main.disable_button(type, 'mark')}>
     <FontAwesomeIcon icon={icon || fas[ _fa_name(type)]}/>
   </Button>
 )
 
 const BlockButton = ({main, type, title, onMouseDown = null, icon = null}) => (
   <Button title={title}
+          color="light-border"
           onMouseDown={e => (onMouseDown || main.toggle_block)(e, type)}
           active={main.block_active(type)}
-          disabled={main.props.disabled}>
+          disabled={main.disable_button(type, 'block')}>
     <FontAwesomeIcon icon={icon || fas[_fa_name(type)]}/>
   </Button>
 )
@@ -365,4 +382,17 @@ const on_space = (e, editor, next) => {
   }
 
   editor.moveFocusToStartOfNode(startBlock).delete()
+}
+
+const apply_code_block = editor => {
+  editor.setBlocks(T.code_line).unwrapBlock(T.bullets).unwrapBlock(T.numbers).wrapBlock(T.code)
+
+  const {selection} = editor.value
+  editor.moveToRangeOfNode(editor.value.startBlock)
+    .removeMark(T.bold)
+    .removeMark(T.italic)
+    .removeMark(T.underlined)
+    .removeMark(T.strike_through)
+    .removeMark(T.code)
+    .select(selection)
 }
