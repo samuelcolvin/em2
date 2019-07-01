@@ -9,7 +9,7 @@ import {
   Button,
 } from 'reactstrap'
 import {WithContext, Form} from 'reactstrap-toolbox'
-import {EditorInput, to_markdown, has_content} from './Editor'
+import {EditorInput, to_markdown, has_content} from './../Editor'
 import ParticipantsInput from './ParticipantsInput'
 
 const fields = {

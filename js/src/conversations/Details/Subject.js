@@ -15,7 +15,7 @@ import {
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, AsModal, on_mobile} from 'reactstrap-toolbox'
-import {has_content} from '../Editor'
+import {has_content} from '../../Editor'
 
 
 class EditSubject_ extends React.Component {

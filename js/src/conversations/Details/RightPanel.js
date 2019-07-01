@@ -3,7 +3,7 @@ import {Button, UncontrolledDropdown, DropdownToggle, DropdownMenu, DropdownItem
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {on_mobile, WithContext} from 'reactstrap-toolbox'
-import {has_content} from '../Editor'
+import {has_content} from '../../Editor'
 import ParticipantsInput from '../ParticipantsInput'
 
 const scroll_threshold = 108

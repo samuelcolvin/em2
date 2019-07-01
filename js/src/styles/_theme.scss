@@ -242,7 +242,8 @@ $status-height: 20px;
 }
 
 .md {
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   word-break: break-word;
 
   p {
@@ -276,6 +277,7 @@ $status-height: 20px;
 .editor {
   padding: 0.5rem 0.3rem;
   width: 100%;
+  max-height: 600px;
 
   border: 1px solid #d1d5da;
   border-radius: 3px;

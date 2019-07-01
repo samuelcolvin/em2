@@ -1,7 +1,7 @@
 import React from 'react'
 import {sleep} from 'reactstrap-toolbox'
 import {make_url} from '../../logic/network'
-import {MarkdownRenderer} from '../Editor'
+import {MarkdownRenderer} from '../../Editor'
 
 
 class Html extends React.Component {
