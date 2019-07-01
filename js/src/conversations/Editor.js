@@ -33,6 +33,7 @@ const T = {
   numbers: 'ordered-list',
   list_item: 'list-item',
   block_quote: 'block-quote',
+  hr: 'horizontal-rule',
 }
 const is_list_type = t => t === T.numbers || t=== T.bullets
 const _raw_empty = {
@@ -60,15 +61,14 @@ export class Editor extends React.Component {
   has_block = type => this.props.value.blocks.some(node => node.type === type)
 
   block_active = type => {
+    const {document, blocks} = this.props.value
     if (is_list_type(type)) {
-      const {document, blocks} = this.props.value
-
       if (blocks.size > 0) {
         const parent = document.getParent(blocks.first().key)
         return this.has_block(T.list_item) && parent && parent.type === type
       }
     } else if (type === T.heading) {
-      return this.props.value.blocks.some(node => node.type.startsWith(T.heading))
+      return blocks.some(node => node.type.startsWith(T.heading))
     } else if (type === T.code) {
       return this.has_block(T.code_line)
     }
@@ -285,8 +285,8 @@ const render_block = (props, editor, next) => {
       return <td {...attributes}>{children}</td>
     case T.list_item:
       return <li {...attributes}>{children}</li>
-    case 'horizontal-rule':
-      return <hr />
+    case T.hr:
+      return <hr/>
     case T.code:
       return <pre><code {...attributes}>{children}</code></pre>
     case 'image':
@@ -355,21 +355,30 @@ const on_enter = (e, editor, next) => {
     e.preventDefault()
     editor.splitBlock().setBlocks(T.para)
   } else {
-    next()
+    const chars = startBlock.text.slice(0, start.offset).replace(/\s*/g, '')
+    if (/^-{3,}$/.test(chars)) {
+      editor.setBlocks(T.hr).insertBlock(T.para)
+    } else {
+      next()
+    }
   }
 }
 
 const on_backspace = (e, editor, next) => {
   const {value} = editor
-  const {selection} = value
-  if (selection.isExpanded) {
-    return next()
-  }
-  if (selection.start.offset !== 0) {
+  const {selection, document, startBlock} = value
+  if (selection.isExpanded || selection.start.offset !== 0) {
     return next()
   }
 
-  const {type} = value.startBlock
+  const {type, key} = startBlock
+  const prev = document.getPreviousSibling(key)
+  if (prev.type === T.hr) {
+    editor.removeNodeByKey(prev.key)
+    e.preventDefault()
+    return
+  }
+
   if (type === T.para) {
     return next()
   }
