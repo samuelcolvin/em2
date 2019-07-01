@@ -9,11 +9,12 @@ import {
   Button,
 } from 'reactstrap'
 import {WithContext, Form} from 'reactstrap-toolbox'
+import {EditorInput, to_markdown, has_content} from './Editor'
 import ParticipantsInput from './ParticipantsInput'
 
 const fields = {
   subject: {required: true, max_length: 63},
-  message: {required: true, type: 'textarea', max_length: 10000, inputClassName: 'h-150'},
+  message: {required: true, type: 'rich_text'},
   publish: {title: 'Send Immediately', type: 'bool', className: 'd-none'},
   participants: {type: 'participants'},
 }
@@ -75,22 +76,31 @@ const FormButtons = ({state, form_props, submit, setField}) => {
 
 
 const Create = ({ctx, history}) => {
-  const [form_data, set_form_data] = React.useState(0)
+  const [form_data, set_form_data] = React.useState({})
   React.useEffect(() => {
     ctx.setMenuItem('create')
     ctx.setTitle('Compose Conversation')
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const submit_data = () => {
+    if (form_data.message && has_content(form_data.message)) {
+      return {...form_data, message: to_markdown(form_data.message)}
+    } else {
+      return {...form_data, message: null}
+    }
+  }
 
   return (
     <div className="box create-conv">
       <Form
         fields={fields}
         form_data={form_data}
+        submit_data={submit_data}
         function={window.logic.conversations.create}
         Buttons={FormButtons}
         RenderFields={RenderFields}
         submitted={r => history.push(`/wait/${r.data.key}/`)}
-        type_lookup={{participants: ParticipantsInput}}
+        type_lookup={{participants: ParticipantsInput, rich_text: EditorInput}}
         onChange={set_form_data}
       />
     </div>

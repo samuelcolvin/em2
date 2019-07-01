@@ -8884,10 +8884,10 @@ react@^16.8.6:
     prop-types "^15.6.2"
     scheduler "^0.13.6"
 
-reactstrap-toolbox@0.0.19:
-  version "0.0.19"
-  resolved "https://registry.yarnpkg.com/reactstrap-toolbox/-/reactstrap-toolbox-0.0.19.tgz#496d98fe24f365aafce127664e274f19d6cd878d"
-  integrity sha512-88ZnOjMMUxQRFW4gJFppkMYYvCufxNgyo3TaR3aKtqREdtW/HfaWzTxtBLKr25FQjjQqE+w3uml0W6o/wuNIGw==
+reactstrap-toolbox@^0.0.20:
+  version "0.0.20"
+  resolved "https://registry.yarnpkg.com/reactstrap-toolbox/-/reactstrap-toolbox-0.0.20.tgz#aa69f566a33da20492a8d089c8ea580d8041938d"
+  integrity sha512-YasxqwfwRzZa0oWNt5qamZ9QAj6RV65HHSN/K6u3ZuMYAVIMeRhzM0zBFQwr5u3It80k5vY2+HDI6S/+VS2hBQ==
   dependencies:
     "@babel/runtime" "^7.4.3"
     dev "^0.1.3"

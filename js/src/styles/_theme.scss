@@ -289,6 +289,9 @@ $status-height: 20px;
   //&.comment {
   //  min-height: auto;
   //}
+  &.error {
+    border: 1px solid $form-feedback-invalid-color;
+  }
 }
 
 .btn-comment {

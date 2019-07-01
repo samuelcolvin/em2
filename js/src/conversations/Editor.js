@@ -9,7 +9,10 @@ import * as fas from '@fortawesome/free-solid-svg-icons'
 import {
   ButtonGroup,
   Button,
+  FormGroup,
+  FormFeedback,
 } from 'reactstrap'
+import {InputLabel, InputHelpText, combine_classes} from 'reactstrap-toolbox'
 
 const Serializer = new MarkdownSerializer()
 
@@ -192,7 +195,7 @@ export class Editor extends React.Component {
             <BlockButton main={this} type={T.numbers} title="Numbered List" icon={fas.faListOl}/>
           </ButtonGroup>
         </div>
-        <div className={'md editor' + (this.props.disabled ? ' disabled' : '')}>
+        <div className={combine_classes('md editor',  this.props.disabled && ' disabled', this.props.error && 'error')}>
           <RawEditor
             spellCheck
             placeholder={(startBlock && startBlock.type) === T.para ? this.props.placeholder: ''}
@@ -231,6 +234,15 @@ export class MarkdownRenderer extends React.Component {
   }
 }
 
+export const EditorInput = ({className, field, disabled, error, value, onChange}) => (
+  <FormGroup className={className || field.className}>
+    <InputLabel field={field}/>
+    <Editor value={value || empty_editor()} disabled={disabled} onChange={onChange} error={error}/>
+    <FormFeedback className={error ? 'd-block': ''}>{error}</FormFeedback>
+    <InputHelpText field={field}/>
+  </FormGroup>
+)
+
 const _fa_name = s => 'fa' + s.charAt(0).toUpperCase() + s.slice(1).replace('-', '')
 
 const mark_active = (main, type) => main.props.value.activeMarks.some(mark => mark.type === type)
@@ -240,6 +252,8 @@ const MarkButton = ({main, type, title, icon = null}) => (
           color="light-border"
           onMouseDown={e => main.toggle_mark(e, type)}
           active={mark_active(main, type)}
+          type="button"
+          tabIndex="-1"
           disabled={main.disable_button(type, 'mark')}>
     <FontAwesomeIcon icon={icon || fas[ _fa_name(type)]}/>
   </Button>
@@ -250,6 +264,8 @@ const BlockButton = ({main, type, title, onMouseDown = null, icon = null}) => (
           color="light-border"
           onMouseDown={e => (onMouseDown || main.toggle_block)(e, type)}
           active={main.block_active(type)}
+          type="button"
+          tabIndex="-1"
           disabled={main.disable_button(type, 'block')}>
     <FontAwesomeIcon icon={icon || fas[_fa_name(type)]}/>
   </Button>
@@ -373,7 +389,7 @@ const on_backspace = (e, editor, next) => {
 
   const {type, key} = startBlock
   const prev = document.getPreviousSibling(key)
-  if (prev.type === T.hr) {
+  if (prev && prev.type === T.hr) {
     editor.removeNodeByKey(prev.key)
     e.preventDefault()
     return

@@ -31,7 +31,7 @@
     "react-router-dom": "^5.0.0",
     "react-scripts": "3.0.0",
     "reactstrap": "^8.0.0",
-    "reactstrap-toolbox": "0.0.19",
+    "reactstrap-toolbox": "^0.0.20",
     "slate": "^0.47.4",
     "slate-react": "^0.22.4",
     "validator": "^10.11.0",
