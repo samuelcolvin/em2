@@ -28,7 +28,7 @@ const T = {
   code: 'code',
   code_line: 'code-line',
   bullets: 'bulleted-list',
-  numbers: 'numbered-list',
+  numbers: 'ordered-list',
   list_item: 'list-item',
   block_quote: 'block-quote',
 }
@@ -243,7 +243,6 @@ const render_block = (props, editor, next) => {
     case T.bullets:
       return <ul {...attributes}>{children}</ul>
     case T.numbers:
-    case 'ordered-list':
       return <ol {...attributes}>{children}</ol>
     case 'todo-list':
       return <ul {...attributes}>{children}</ul>
