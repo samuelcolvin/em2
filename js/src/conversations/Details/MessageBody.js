@@ -1,7 +1,7 @@
 import React from 'react'
-import ReactMarkdown from 'react-markdown'
 import {sleep} from 'reactstrap-toolbox'
 import {make_url} from '../../logic/network'
+import {MarkdownRenderer} from '../Editor'
 
 
 class Html extends React.Component {
@@ -63,17 +63,9 @@ class Html extends React.Component {
   }
 }
 
-// TODO following local links, eg. to conversations, block links to settings, perhaps move this to an iframe
-const markdown_props = {
-  className: 'msg-md',
-  renderers: {
-    link: props => <a href={props.href} target="_blank" rel="noopener noreferrer">{props.children}</a>,
-  },
-}
-
 export default ({msg, conv, session_id}) => {
   if (msg.format === 'markdown') {
-    return <ReactMarkdown {...markdown_props} source={msg.body}/>
+    return <MarkdownRenderer value={msg.body}/>
   } else if (msg.format === 'html') {
     return <Html msg={msg} conv={conv} session_id={session_id}/>
   } else {

@@ -24,7 +24,9 @@ const T = {
   bold: 'bold',
   italic: 'italic',
   underlined: 'underlined',
-  strike_through: 'strike-through',
+  deleted: 'deleted',
+  link: 'link',
+  heading: 'heading',
   code: 'code',
   code_line: 'code-line',
   bullets: 'bulleted-list',
@@ -52,6 +54,7 @@ const _raw_empty = {
 export const empty_editor = () => Value.fromJSON(_raw_empty)
 export const has_content = v => !isEqual(v.toJSON(), _raw_empty)
 export const to_markdown = v => Serializer.serialize(v)
+const from_markdown = v => Serializer.deserialize(v)
 
 export class Editor extends React.Component {
   has_block = type => this.props.value.blocks.some(node => node.type === type)
@@ -64,8 +67,8 @@ export class Editor extends React.Component {
         const parent = document.getParent(blocks.first().key)
         return this.has_block(T.list_item) && parent && parent.type === type
       }
-    } else if (type === 'heading') {
-      return this.props.value.blocks.some(node => node.type.startsWith('heading'))
+    } else if (type === T.heading) {
+      return this.props.value.blocks.some(node => node.type.startsWith(T.heading))
     } else if (type === T.code) {
       return this.has_block(T.code_line)
     }
@@ -167,8 +170,8 @@ export class Editor extends React.Component {
   }
 
   on_change = ({value}) => {
+    // console.log(to_markdown(value))
     this.props.onChange(value)
-    console.log(to_markdown(value))
   }
 
   render () {
@@ -180,20 +183,20 @@ export class Editor extends React.Component {
             <MarkButton main={this} type={T.bold} title="Bold Ctrl+b"/>
             <MarkButton main={this} type={T.italic} title="Italic Ctrl+i"/>
             <MarkButton main={this} type={T.underlined} title="Underline Ctrl+u" icon={fas.faUnderline}/>
-            <MarkButton main={this} type={T.strike_through} title="Strike Through"/>
+            <MarkButton main={this} type={T.deleted} title="Strike Through" icon={fas.faStrikethrough}/>
             <MarkButton main={this} type={T.code} title="Inline Code Ctrl+`" icon={fas.faTerminal}/>
             <BlockButton main={this} type={T.code} title="Code Block"/>
-            <BlockButton main={this} type="heading" title="Heading" onMouseDown={this.change_heading}/>
+            <BlockButton main={this} type={T.heading} title="Heading" onMouseDown={this.change_heading}/>
             <BlockButton main={this} type={T.block_quote} title="Quote Ctrl+q" icon={fas.faQuoteLeft}/>
             <BlockButton main={this} type={T.bullets} title="Bullet Points" icon={fas.faList}/>
             <BlockButton main={this} type={T.numbers} title="Numbered List" icon={fas.faListOl}/>
           </ButtonGroup>
         </div>
-        <div className="editor">
+        <div className={'md editor' + (this.props.disabled ? ' disabled' : '')}>
           <RawEditor
             spellCheck
             placeholder={(startBlock && startBlock.type) === T.para ? this.props.placeholder: ''}
-            disabled={this.props.disabled}
+            readOnly={this.props.disabled}
             value={this.props.value}
             ref={this.ref}
             onChange={this.on_change}
@@ -207,6 +210,26 @@ export class Editor extends React.Component {
   }
 }
 
+// TODO following local links, eg. to conversations, block links to settings, perhaps move this to an iframe
+export class MarkdownRenderer extends React.Component {
+  shouldComponentUpdate (nextProps, nextState, nextContext) {
+    return this.props.value !== nextProps.value
+  }
+
+  render () {
+    return (
+      <div className="md">
+        <RawEditor
+          readOnly={true}
+          value={from_markdown(this.props.value)}
+          renderBlock={render_block}
+          renderMark={render_mark}
+          renderInline={render_inline}
+        />
+      </div>
+    )
+  }
+}
 
 const _fa_name = s => 'fa' + s.charAt(0).toUpperCase() + s.slice(1).replace('-', '')
 
@@ -247,7 +270,13 @@ const render_block = (props, editor, next) => {
     case 'todo-list':
       return <ul {...attributes}>{children}</ul>
     case 'table':
-      return <table {...attributes}>{children}</table>
+      return (
+        <table className="table table-striped" {...attributes}>
+          <tbody>
+            {children}
+          </tbody>
+        </table>
+      )
     case 'table-row':
       return <tr {...attributes}>{children}</tr>
     case 'table-head':
@@ -262,8 +291,6 @@ const render_block = (props, editor, next) => {
       return <pre><code {...attributes}>{children}</code></pre>
     case 'image':
       return <img src={props.src} title={props.title} alt={props.title} />
-    case 'link':
-      return <a href={props.href}>{children}</a>
     case 'heading1':
       return <h1 {...attributes}>{children}</h1>
     case 'heading2':
@@ -281,19 +308,25 @@ const render_block = (props, editor, next) => {
   }
 }
 
-const render_mark = (props, editor, next) => {
-  const {children, mark, attributes} = props
+const render_inline = ({attributes, children, node}, editor, next) => {
+  if (node.type === T.link) {
+    return <a href={node.data.get('href')} target="_blank" rel="noopener noreferrer" {...attributes}>{children}</a>
+  } else {
+    return next()
+  }
+}
 
+const render_mark = ({children, mark, attributes}, editor, next) => {
   switch (mark.type) {
     case T.bold:
       return <strong {...attributes}>{children}</strong>
-    case 'code':
+    case T.code:
       return <code {...attributes}>{children}</code>
     case T.italic:
       return <em {...attributes}>{children}</em>
     case T.underlined:
       return <u {...attributes}>{children}</u>
-    case T.strike_through:
+    case T.deleted:
     case 'deleted':
       return <del {...attributes}>{children}</del>
     case 'added':
@@ -404,7 +437,7 @@ const apply_code_block = editor => {
     .removeMark(T.bold)
     .removeMark(T.italic)
     .removeMark(T.underlined)
-    .removeMark(T.strike_through)
+    .removeMark(T.deleted)
     .removeMark(T.code)
     .select(selection)
 }
