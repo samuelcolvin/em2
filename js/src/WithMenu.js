@@ -154,8 +154,10 @@ class TopMainMenu_ extends React.Component {
   }
 
   set_visible = () => {
-    const width = document.getElementById('main').offsetWidth
-    this.setState({visible: width <= menu_position_switch})
+    if (this.mounted) {
+      const width = document.getElementById('main').offsetWidth
+      this.setState({visible: width <= menu_position_switch})
+    }
   }
 
   render () {

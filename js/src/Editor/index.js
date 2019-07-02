@@ -41,7 +41,11 @@ export const to_markdown = v => Serializer.serialize(v)
 const from_markdown = v => Serializer.deserialize(v)
 
 export class Editor extends React.Component {
-  state = {edit_link: null}
+  state = {link: null}
+
+  asyncSetState = s => (
+    new Promise(resolve => this.setState(s, () => resolve()))
+  )
 
   has_block = type => this.props.value.blocks.some(node => node.type === type)
 
@@ -109,10 +113,36 @@ export class Editor extends React.Component {
     this.editor.setBlocks(new_type)
   }
 
-  set_link = e => {
+  link_modal = e => {
     e.preventDefault()
-    console.log('set_link')
-    this.setState({edit_link: 'https://foobar.com'})
+    let link = this.editor.value.fragment.text
+    const link_node = this.props.value.inlines.find(i => i.type === T.link)
+    if (link_node && link_node.text.includes(link)) {
+      link = {href: link_node.data.get('href'), title: link_node.text}
+    }
+    this.setState({link})
+  }
+
+  remove_link = e => {
+    e.preventDefault()
+    this.editor.unwrapInline(T.link)
+  }
+
+  set_link = async (title, href) => {
+    // have to make sure the previous render is complete before mutating the editor
+    await this.asyncSetState({link: null})
+
+    if (this.editor.value.selection.isExpanded) {
+      this.editor.delete()
+    } else if (this.props.value.inlines.some(i => i.type === T.link)) {
+      // TODO delete the entire inline
+      this.editor.delete()
+    }
+    this.editor
+      .insertText(title)
+      .moveFocusBackward(title.length)
+      .wrapInline({type: T.link, data: {href}})
+      .moveToEnd()
   }
 
   disable_button = (type, mode) => {
@@ -120,12 +150,14 @@ export class Editor extends React.Component {
       return true
     } else if (type === T.code && mode === 'block') {
       return false
+    } else if (type === 'unlink') {
+      return !this.props.value.inlines.some(i => i.type === T.link)
     } else {
       return this.has_block(T.code_line)
     }
   }
 
-  on_key_down = (e, editor, next) => {
+  onKeyDown = (e, editor, next) => {
     if (e.key === ' ') {
       return on_space(e, editor, next)
     } else if (e.key === 'Backspace') {
@@ -160,7 +192,7 @@ export class Editor extends React.Component {
     this.editor = editor
   }
 
-  on_change = ({value}) => {
+  onChange = ({value}) => {
     // console.log(to_markdown(value))
     this.props.onChange(value)
   }
@@ -171,7 +203,9 @@ export class Editor extends React.Component {
       <div>
         <div className="d-flex justify-content-end mb-1">
           <ButtonGroup>
-            <MarkButton main={this} type={T.link} title="Create Link" onMouseDown={this.set_link}/>
+            <MarkButton main={this} type={T.link} title="Create Link" onMouseDown={this.link_modal}/>
+            <MarkButton main={this} type="unlink" title="Remove Link" onMouseDown={this.remove_link}
+                        icon={fas.faUnlink}/>
             <MarkButton main={this} type={T.bold} title="Bold Ctrl+b"/>
             <MarkButton main={this} type={T.italic} title="Italic Ctrl+i"/>
             <MarkButton main={this} type={T.underlined} title="Underline Ctrl+u" icon={fas.faUnderline}/>
@@ -191,15 +225,17 @@ export class Editor extends React.Component {
             readOnly={this.props.disabled}
             value={this.props.value}
             ref={this.ref}
-            onChange={this.on_change}
-            onKeyDown={this.on_key_down}
+            onChange={this.onChange}
+            onKeyDown={this.onKeyDown}
             renderBlock={render_block}
+            renderInline={render_inline}
             renderMark={render_mark}
           />
         </div>
         <EditLink
-          link={this.state.edit_link}
-          update_link={edit_link => this.setState({edit_link})}
+          link={this.state.link}
+          close={() => this.setState({link: null})}
+          finished={this.set_link}
         />
       </div>
     )
@@ -219,8 +255,8 @@ export class MarkdownRenderer extends React.Component {
           readOnly={true}
           value={from_markdown(this.props.value)}
           renderBlock={render_block}
-          renderMark={render_mark}
           renderInline={render_inline}
+          renderMark={render_mark}
         />
       </div>
     )

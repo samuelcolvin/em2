@@ -1,7 +1,7 @@
 import React from 'react'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
-import {Button,} from 'reactstrap'
+import {Button} from 'reactstrap'
 
 export const T = {
   para: 'paragraph',
@@ -125,7 +125,7 @@ export const render_inline = ({attributes, children, node}, editor, next) => {
   }
 }
 
-export const render_mark = ({children, mark, attributes}, editor, next) => {
+export const render_mark = ({attributes, children, mark, node}, editor, next) => {
   switch (mark.type) {
     case T.bold:
       return <strong {...attributes}>{children}</strong>
