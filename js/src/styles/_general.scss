@@ -90,3 +90,15 @@
 .cursor-pointer {
   cursor: pointer !important;
 }
+
+
+.btn-light-border {
+  @include button-variant($light, $border-color);
+}
+
+.link-button {
+  display: inline-block;
+  background: none;
+  color: lighten($link-color, 20%);
+  border: none;
+}

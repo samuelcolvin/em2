@@ -16,7 +16,7 @@ _clean_markdown = [
     (re.compile(r'<.*?>', flags=re.S), ''),
     (re.compile(r'_(\S.*?\S)_'), r'\1'),
     (re.compile(r'\[(.+?)\]\(.*?\)'), r'\1'),
-    (re.compile(r'(\*\*|`)'), ''),
+    (re.compile(r'(?:\*\*|`|~~)'), ''),
     (re.compile(r'^(#+|\*|\d+\.) ', flags=re.M), ''),
 ]
 _clean_all = [

@@ -4,6 +4,7 @@ import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, Loading, confirm_modal} from 'reactstrap-toolbox'
+import {Editor, empty_editor} from '../../Editor'
 import Message from './Message'
 import RightPanel from './RightPanel'
 import Subject from './Subject'
@@ -11,9 +12,8 @@ import Drop from './Drop'
 
 
 class ConvDetailsView extends React.Component {
-  state = {files: []}
+  state = {files: [], new_message: empty_editor, comment: empty_editor}
   marked_seen = false
-  comment_ref = React.createRef()
 
   async componentDidMount () {
     this.mounted = true
@@ -41,7 +41,7 @@ class ConvDetailsView extends React.Component {
 
   on_keydown = e => {
     if (e.key === 'Enter' && e.ctrlKey) {
-      if (this.state.new_message) {
+      if (this.state.new_message.has_content) {
         this.add_msg()
       } else if (this.state.comment) {
         this.add_comment()
@@ -73,7 +73,7 @@ class ConvDetailsView extends React.Component {
         this.action_ids = null
         this.setState({locked: false})
       }
-      if (!this.marked_seen) {
+      if (!this.marked_seen && this.state.conv) {
         this.marked_seen = true
         await window.logic.conversations.seen(this.state.conv.key)
       }
@@ -88,13 +88,13 @@ class ConvDetailsView extends React.Component {
   }
 
   add_msg = async () => {
-    if (!this.state.locked && !this.upload_ongoing() && this.state.new_message) {
+    if (!this.state.locked && !this.upload_ongoing() && this.state.new_message.has_content) {
       this.setState({locked: true})
-      const actions = [{act: 'message:add', body: this.state.new_message}]
+      const actions = [{act: 'message:add', body: this.state.new_message.to_markdown()}]
       const files = this.state.files.filter(f => f.done).map(f => f.content_id)
       const r = await window.logic.conversations.act(this.state.conv.key, actions, files)
       this.action_ids = r.data.action_ids
-      this.setState({new_message: null, files: []})
+      this.setState({new_message: empty_editor, files: []})
     }
   }
 
@@ -108,12 +108,12 @@ class ConvDetailsView extends React.Component {
   upload_ongoing = () => !!this.state.files.filter(f => f.progress).length
 
   add_comment = async () => {
-    if (!this.state.locked && this.state.comment && this.state.comment_parent) {
+    if (!this.state.locked && this.state.comment.has_content && this.state.comment_parent) {
       this.setState({locked: true})
-      const actions = [{act: 'message:add', body: this.state.comment, parent: this.state.comment_parent}]
+      const actions = [{act: 'message:add', body: this.state.comment.to_markdown(), parent: this.state.comment_parent}]
       const r = await window.logic.conversations.act(this.state.conv.key, actions)
       this.action_ids = r.data.action_ids
-      this.setState({comment: null, comment_parent: null})
+      this.setState({comment: empty_editor, comment_parent: null})
     }
   }
 
@@ -222,7 +222,6 @@ class ConvDetailsView extends React.Component {
                        state={this.state}
                        session_id={this.props.ctx.user.session_id}
                        setState={s => this.setState(s)}
-                       comment_ref={this.comment_ref}
                        add_comment={() => this.add_comment()}/>
             ))}
             <div className="box no-pad add-msg">
@@ -239,14 +238,16 @@ class ConvDetailsView extends React.Component {
                       add_file={this.add_file}
                       remove_file={this.remove_file}
                       update_file={this.update_file}>
-                  <textarea placeholder="reply to all..." className="msg"
-                            disabled={!!(edit_locked || this.state.comment_parent || this.state.extra_prts)}
-                            value={this.state.new_message || ''}
-                            onChange={e => this.setState({new_message: e.target.value})}/>
+                  <Editor
+                    placeholder="reply to all..."
+                    disabled={!!(edit_locked || this.state.comment_parent || this.state.extra_prts)}
+                    content={this.state.new_message}
+                    onChange={value => this.setState({new_message: value})}
+                  />
                 </Drop>
                 <div className="text-right">
                   <Button color="primary"
-                          disabled={edit_locked || this.upload_ongoing() || !this.state.new_message}
+                          disabled={edit_locked || this.upload_ongoing() || !this.state.new_message.has_content}
                           onClick={this.add_msg}>
                     <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/>
                     {this.state.conv.draft ? 'Add Message' : 'Send'}
