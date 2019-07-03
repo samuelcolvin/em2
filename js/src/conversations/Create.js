@@ -9,7 +9,7 @@ import {
   Button,
 } from 'reactstrap'
 import {WithContext, Form} from 'reactstrap-toolbox'
-import {EditorInput, to_markdown, has_content} from './../Editor'
+import {EditorInput} from './../Editor'
 import ParticipantsInput from './ParticipantsInput'
 
 const fields = {
@@ -83,8 +83,8 @@ const Create = ({ctx, history}) => {
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit_data = () => {
-    if (form_data.message && has_content(form_data.message)) {
-      return {...form_data, message: to_markdown(form_data.message)}
+    if (form_data.message && form_data.message.has_content) {
+      return {...form_data, message: form_data.message.to_markdown()}
     } else {
       return {...form_data, message: null}
     }

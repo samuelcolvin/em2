@@ -26,7 +26,7 @@ const CommentButton = ({msg, state, setState, comment_ref, children, edit_locked
   return (
     <div className="text-right">
       <Button size="sm" color="comment" id={btn_id}
-              disabled={!!(edit_locked || state.comment_parent || state.new_message || state.extra_prts)}
+              disabled={!!(edit_locked || state.comment_parent || state.new_message.has_content || state.extra_prts)}
               onClick={click}>
         <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
       </Button>

@@ -15,7 +15,6 @@ import {
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, AsModal, on_mobile} from 'reactstrap-toolbox'
-import {has_content} from '../../Editor'
 
 
 class EditSubject_ extends React.Component {
@@ -148,7 +147,7 @@ export default withRouter(({history, conv_state, publish, lock_subject, set_subj
   const btns_disabled = Boolean(
     conv_state.locked ||
     conv_state.comment_parent ||
-    has_content(conv_state.new_message)
+    conv_state.new_message.has_content
   )
   const set_flag = async (flag, leave=true) => {
     const unlock = lock_view()

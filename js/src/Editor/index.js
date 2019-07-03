@@ -40,9 +40,15 @@ const quote_key = isKeyHotkey('mod+q')
 const code_key = isKeyHotkey('mod+`')
 const link_key = isKeyHotkey('mod+k')
 
-export const empty_editor = () => Value.fromJSON(raw_empty)
-export const has_content = v => !isEqual(v.toJSON(), raw_empty)
-export const to_markdown = v => typeof(v) === 'object' ? Serializer.serialize(v) : v
+function Content (value) {
+  this.value = value
+  this.is_rich = typeof(value) === 'object'
+  this.has_content = this.is_rich ? !isEqual(this.value.toJSON(), raw_empty) : !!this.value
+  this.to_markdown = () => this.is_rich ? Serializer.serialize(this.value) : this.value
+  this.to_value = () => this.is_rich ? this.value : from_markdown(this.value)
+}
+
+export const empty_editor = new Content(Value.fromJSON(raw_empty))
 const from_markdown = v => Serializer.deserialize(v)
 
 const ls_key = 'raw_editor_mode'
@@ -63,10 +69,13 @@ export class Editor extends React.Component {
     new Promise(resolve => this.setState(s, () => resolve()))
   )
 
-  has_block = type => this.props.value.blocks.some(node => node.type === type)
+  has_block = type => this.props.content.is_rich && this.props.content.value.blocks.some(node => node.type === type)
 
   block_active = type => {
-    const {document, blocks} = this.props.value
+    if (!this.props.content.is_rich) {
+      return false
+    }
+    const {document, blocks} = this.props.content.value
     if (is_list_type(type)) {
       if (blocks.size > 0) {
         const parent = document.getParent(blocks.first().key)
@@ -142,7 +151,7 @@ export class Editor extends React.Component {
 
   link_modal = () => {
     let link = word_selection(this.editor)
-    const link_node = this.props.value.inlines.find(i => i.type === T.link)
+    const link_node = this.props.content.value.inlines.find(i => i.type === T.link)
     if (link_node && link_node.text.includes(link)) {
       link = {href: link_node.data.get('href'), title: link_node.text}
     }
@@ -158,7 +167,7 @@ export class Editor extends React.Component {
     // have to make sure the previous render is complete before mutating the editor
     await this.asyncSetState({link: null})
 
-    const link_node = this.props.value.inlines.find(i => i.type === T.link)
+    const link_node = this.props.content.value.inlines.find(i => i.type === T.link)
     if (link_node && link_node.text.includes(this.editor.value.fragment.text)) {
       this.editor.moveToRangeOfNode(link_node)
     }
@@ -236,14 +245,15 @@ export class Editor extends React.Component {
   onChange = ({value}) => {
     // console.log(to_markdown(value))
     // console.log(JSON.stringify(value.toJSON(), null, 2))
-    this.props.onChange(value)
+
+    this.props.onChange(new Content(value))
   }
 
   render () {
-    const {focusBlock} = this.props.value
+    const {value} = this.props.content
     let tooltip
-    if (!this.state.link) {
-      const link_node = this.props.value.inlines.find(i => i.type === T.link)
+    if (!this.state.link && this.props.content.is_rich) {
+      const link_node = value.inlines.find(i => i.type === T.link)
       if (link_node) {
         tooltip = {key: link_node.key, href: link_node.data.get('href')}
       }
@@ -277,7 +287,7 @@ export class Editor extends React.Component {
               autoFocus
               className={classes}
               placeholder={this.props.placeholder}
-              value={to_markdown(this.props.value)}
+              value={this.props.content.to_markdown()}
               onChange={e => this.onChange({value: e.target.value})}
               disabled={this.props.disabled}
             />
@@ -288,9 +298,9 @@ export class Editor extends React.Component {
             <SlateEditor
               spellCheck
               autoFocus
-              placeholder={(focusBlock && focusBlock.type) === T.para ? this.props.placeholder: ''}
+              placeholder={(value.focusBlock && value.focusBlock.type) === T.para ? this.props.placeholder: ''}
               readOnly={this.props.disabled}
-              value={this.props.value}
+              value={this.props.content.to_value()}
               ref={this.ref}
               onChange={this.onChange}
               onKeyDown={this.onKeyDown}
@@ -345,7 +355,7 @@ export class MarkdownRenderer extends React.Component {
 export const EditorInput = ({className, field, disabled, error, value, onChange}) => (
   <FormGroup className={className || field.className}>
     <InputLabel field={field}/>
-    <Editor value={value || empty_editor()} disabled={disabled} onChange={onChange} error={error}/>
+    <Editor content={value || empty_editor} disabled={disabled} onChange={onChange} error={error}/>
     <FormFeedback className={error ? 'd-block': ''}>{error}</FormFeedback>
     <InputHelpText field={field}/>
   </FormGroup>

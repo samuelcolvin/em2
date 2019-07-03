@@ -3,7 +3,6 @@ import {Button, UncontrolledDropdown, DropdownToggle, DropdownMenu, DropdownItem
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {on_mobile, WithContext} from 'reactstrap-toolbox'
-import {has_content} from '../../Editor'
 import ParticipantsInput from '../ParticipantsInput'
 
 const scroll_threshold = 108
@@ -44,7 +43,7 @@ const ScrollSpy = ({children}) => {
 
 
 const RightPanel = ({state, edit_locked, set_participants, add_participants, remove_participants, ctx}) => {
-  const disabled = !!(edit_locked || state.comment_parent || has_content(state.new_message))
+  const disabled = !!(edit_locked || state.comment_parent || state.new_message.has_content)
   return (
     <ScrollSpy>
       <div className="box no-pad pb-3">

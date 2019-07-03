@@ -12,7 +12,6 @@ import {
   ModalFooter,
 } from 'reactstrap'
 import isUrl from 'is-url'
-import {on_backspace, on_enter, on_space} from './utils'
 
 export const EditLink = ({link, close, finished}) => {
   const [link_title, setTitle] = React.useState('')
