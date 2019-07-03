@@ -12,9 +12,8 @@ import Drop from './Drop'
 
 
 class ConvDetailsView extends React.Component {
-  state = {files: [], new_message: empty_editor}
+  state = {files: [], new_message: empty_editor, comment: empty_editor}
   marked_seen = false
-  comment_ref = React.createRef()
 
   async componentDidMount () {
     this.mounted = true
@@ -109,12 +108,12 @@ class ConvDetailsView extends React.Component {
   upload_ongoing = () => !!this.state.files.filter(f => f.progress).length
 
   add_comment = async () => {
-    if (!this.state.locked && this.state.comment && this.state.comment_parent) {
+    if (!this.state.locked && this.state.comment.has_content && this.state.comment_parent) {
       this.setState({locked: true})
-      const actions = [{act: 'message:add', body: this.state.comment, parent: this.state.comment_parent}]
+      const actions = [{act: 'message:add', body: this.state.comment.to_markdown(), parent: this.state.comment_parent}]
       const r = await window.logic.conversations.act(this.state.conv.key, actions)
       this.action_ids = r.data.action_ids
-      this.setState({comment: null, comment_parent: null})
+      this.setState({comment: empty_editor, comment_parent: null})
     }
   }
 
@@ -223,7 +222,6 @@ class ConvDetailsView extends React.Component {
                        state={this.state}
                        session_id={this.props.ctx.user.session_id}
                        setState={s => this.setState(s)}
-                       comment_ref={this.comment_ref}
                        add_comment={() => this.add_comment()}/>
             ))}
             <div className="box no-pad add-msg">
