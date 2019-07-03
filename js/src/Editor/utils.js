@@ -307,3 +307,34 @@ export const word_selection = (editor) => {
   }
   return editor.moveAnchorBackward(offset - left).moveFocusForward(right - offset).value.fragment.text
 }
+
+
+export const Drag = ({editor_id}) => {
+  let editor_el, last_y
+
+  const mousemove = e => {
+    const height = editor_el.clientHeight + e.pageY - last_y
+    if (height > 100) {
+      editor_el.style.height = height + 'px'
+      last_y = e.pageY
+    }
+  }
+
+  const mouseup = () => {
+    window.removeEventListener('mousemove', mousemove)
+    window.removeEventListener('mouseup', mouseup)
+  }
+
+  const onMouseDown = e => {
+    e.preventDefault()
+    last_y = e.pageY
+    editor_el = document.getElementById(editor_id)
+    window.addEventListener('mousemove', mousemove)
+    window.addEventListener('mouseup', mouseup)
+  }
+  return (
+    <div className="resize" onMouseDown={onMouseDown}>
+      <FontAwesomeIcon icon={fas.faGripLines} size="xs"/>
+    </div>
+  )
+}

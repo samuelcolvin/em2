@@ -28,6 +28,7 @@ import {
   on_space,
   apply_code_block,
   word_selection,
+  Drag,
 } from './utils'
 import {EditLink, as_url} from './EditLink'
 
@@ -245,8 +246,12 @@ export class Editor extends React.Component {
   onChange = ({value}) => {
     // console.log(to_markdown(value))
     // console.log(JSON.stringify(value.toJSON(), null, 2))
-
     this.props.onChange(new Content(value))
+  }
+
+  onPaste = (e, editor) => {
+    const raw = e.clipboardData.getData('Text')
+    editor.insertText(raw)
   }
 
   render () {
@@ -298,16 +303,19 @@ export class Editor extends React.Component {
             <SlateEditor
               spellCheck
               autoFocus
+              id="slate-editor"
               placeholder={(value.focusBlock && value.focusBlock.type) === T.para ? this.props.placeholder: ''}
               readOnly={this.props.disabled}
               value={this.props.content.to_value()}
               ref={this.ref}
-              onChange={this.onChange}
               onKeyDown={this.onKeyDown}
+              onChange={this.onChange}
+              onPaste={this.onPaste}
               renderBlock={render_block}
               renderInline={render_inline}
               renderMark={render_mark}
             />
+            <Drag editor_id="slate-editor"/>
           </div>
         )}
         <EditLink

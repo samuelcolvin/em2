@@ -275,9 +275,9 @@ $status-height: 20px;
 }
 
 .editor {
-  padding: 0.5rem 0.3rem;
+  padding: 0;
   width: 100%;
-  max-height: 600px;
+  overflow: hidden;
 
   border: 1px solid #d1d5da;
   border-radius: 3px;
@@ -285,8 +285,22 @@ $status-height: 20px;
   &:disabled, &.disabled {
     background: #f8f8f8;
   }
-  > div {
-    min-height: 120px;
+  #slate-editor {
+    padding: 0.5rem 0.3rem 0;
+    min-height: 100px;
+    height: 150px;
+    overflow: auto;
+  }
+  .resize {
+    padding: 0;
+    min-height: 0;
+    height: 0.8rem;
+    width: 100%;
+    cursor: s-resize;
+    background: $gray-100;
+    color: $gray-600;
+    text-align: center;
+    line-height: 0.6rem;
   }
   &.error {
     border: 1px solid $form-feedback-invalid-color;
