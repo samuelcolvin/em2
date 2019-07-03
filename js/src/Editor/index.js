@@ -265,7 +265,8 @@ export class Editor extends React.Component {
             <BlockButton main={this} type={T.block_quote} title="Quote Ctrl+q" icon={fas.faQuoteLeft}/>
             <BlockButton main={this} type={T.bullets} title="Bullet Points" icon={fas.faList}/>
             <BlockButton main={this} type={T.numbers} title="Numbered List" icon={fas.faListOl}/>
-            <Button title="Toggle Mode" color="light-border" onMouseDown={this.toggle_mode} type="button" tabIndex="-1">
+            <Button title="Toggle raw markdown mode" color="light-border" type="button" tabIndex="-1"
+                    onMouseDown={this.toggle_mode}>
               <FontAwesomeIcon icon={this.state.raw_mode ? fas.faToggleOn : fas.faToggleOff}/>
             </Button>
           </ButtonGroup>
@@ -280,8 +281,7 @@ export class Editor extends React.Component {
               onChange={e => this.onChange({value: e.target.value})}
               disabled={this.props.disabled}
             />
-            <small className="text-muted">
-              Your editor is in raw <a {...help_args}>markdown</a> mode.</small>
+            <small className="text-muted">Your editor is in raw <a {...help_args}>markdown</a> mode.</small>
           </div>
         ) : (
           <div className={classes}>

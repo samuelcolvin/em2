@@ -12,6 +12,7 @@ import {
   ModalFooter,
 } from 'reactstrap'
 import isUrl from 'is-url'
+import {on_backspace, on_enter, on_space} from './utils'
 
 export const EditLink = ({link, close, finished}) => {
   const [link_title, setTitle] = React.useState('')
@@ -54,6 +55,14 @@ export const EditLink = ({link, close, finished}) => {
       setError('URL may not be be blank.')
     )
   }
+
+  const onKeyDown = e => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      save()
+    }
+  }
+
   return (
     <Modal isOpen={link !== null} toggle={close} className="simplified-modal">
       <ModalHeader toggle={close}>Edit Link</ModalHeader>
@@ -75,6 +84,7 @@ export const EditLink = ({link, close, finished}) => {
             type="text"
             invalid={!!href_error}
             value={link_href}
+            onKeyDown={onKeyDown}
             onChange={e => {setHref(e.target.value); setError(null)}}
           />
           <FormFeedback>{href_error}</FormFeedback>
