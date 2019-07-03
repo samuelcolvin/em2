@@ -19,7 +19,7 @@ export const EditLink = ({link, close, finished}) => {
   const [href_error, setError] = React.useState(null)
 
   React.useEffect(() => {
-    // using ides like this seems to work better than refs
+    // using ids here seems to work better than refs
     let focus_id = 'link-href'
     if (link && typeof(link) === 'string') {
       const href = as_url(link)

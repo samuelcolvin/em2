@@ -41,27 +41,31 @@ const fa_name = s => 'fa' + s.charAt(0).toUpperCase() + s.slice(1).replace('-', 
 const mark_active = (main, type) => main.props.value.activeMarks.some(mark => mark.type === type)
 
 export const MarkButton = ({main, type, title, onMouseDown = null, icon = null}) => (
-  <Button title={title}
-          color="light-border"
-          onMouseDown={e => (onMouseDown || main.toggle_mark)(e, type)}
-          active={mark_active(main, type)}
-          type="button"
-          tabIndex="-1"
-          disabled={main.disable_button(type, 'mark')}>
-    <FontAwesomeIcon icon={icon || fas[ fa_name(type)]}/>
-  </Button>
+  main.state.raw_mode ? null : (
+    <Button title={title}
+            color="light-border"
+            onMouseDown={e => (onMouseDown || main.toggle_mark)(e, type)}
+            active={mark_active(main, type)}
+            type="button"
+            tabIndex="-1"
+            disabled={main.disable_button(type, 'mark')}>
+      <FontAwesomeIcon icon={icon || fas[ fa_name(type)]}/>
+    </Button>
+  )
 )
 
 export const BlockButton = ({main, type, title, onMouseDown = null, icon = null}) => (
-  <Button title={title}
-          color="light-border"
-          onMouseDown={e => (onMouseDown || main.toggle_block)(e, type)}
-          active={main.block_active(type)}
-          type="button"
-          tabIndex="-1"
-          disabled={main.disable_button(type, 'block')}>
-    <FontAwesomeIcon icon={icon || fas[fa_name(type)]}/>
-  </Button>
+  main.state.raw_mode ? null : (
+    <Button title={title}
+            color="light-border"
+            onMouseDown={e => (onMouseDown || main.toggle_block)(e, type)}
+            active={main.block_active(type)}
+            type="button"
+            tabIndex="-1"
+            disabled={main.disable_button(type, 'block')}>
+      <FontAwesomeIcon icon={icon || fas[fa_name(type)]}/>
+    </Button>
+  )
 )
 
 export const render_block = (props, editor, next) => {

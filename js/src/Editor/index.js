@@ -1,11 +1,13 @@
 import React from 'react'
 import MarkdownSerializer from '@edithq/slate-md-serializer'
 import {Value} from 'slate'
-import {Editor as RawEditor} from 'slate-react'
+import {Editor as SlateEditor} from 'slate-react'
 import {isKeyHotkey} from 'is-hotkey'
 import {isEqual} from 'lodash'
+import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {
+  Button,
   ButtonGroup,
   FormGroup,
   FormFeedback,
@@ -40,11 +42,22 @@ const link_key = isKeyHotkey('mod+k')
 
 export const empty_editor = () => Value.fromJSON(raw_empty)
 export const has_content = v => !isEqual(v.toJSON(), raw_empty)
-export const to_markdown = v => Serializer.serialize(v)
+export const to_markdown = v => typeof(v) === 'object' ? Serializer.serialize(v) : v
 const from_markdown = v => Serializer.deserialize(v)
 
+const ls_key = 'raw_editor_mode'
+
+const help_args = {
+  href: 'https://guides.github.com/features/mastering-markdown/',
+  target: '_blank',
+  rel: 'noopener noreferrer',
+}
+
 export class Editor extends React.Component {
-  state = {link: null}
+  constructor (props) {
+    super(props)
+    this.state = {link: null, raw_mode: !!localStorage[ls_key]}
+  }
 
   asyncSetState = s => (
     new Promise(resolve => this.setState(s, () => resolve()))
@@ -160,6 +173,19 @@ export class Editor extends React.Component {
       .moveToEnd()
   }
 
+  toggle_mode = e => {
+    e.preventDefault()
+    this.setState(s => {
+      const raw_mode = !s.raw_mode
+      if (raw_mode) {
+        localStorage[ls_key] = '1'
+      } else {
+        localStorage.removeItem(ls_key)
+      }
+      return {raw_mode}
+    })
+  }
+
   disable_button = (type, mode) => {
     if (this.props.disabled) {
       return true
@@ -223,11 +249,12 @@ export class Editor extends React.Component {
       }
     }
 
+    const classes = combine_classes('md editor',  this.props.disabled && ' disabled', this.props.error && 'error')
     return (
       <div>
         <div className="d-flex justify-content-end mb-1">
           <ButtonGroup>
-            <MarkButton main={this} type={T.link} title="Create Link" onMouseDown={this.create_link}/>
+            <MarkButton main={this} type={T.link} title="Create Link Ctrl+k" onMouseDown={this.create_link}/>
             <MarkButton main={this} type={T.bold} title="Bold Ctrl+b"/>
             <MarkButton main={this} type={T.italic} title="Italic Ctrl+i"/>
             <MarkButton main={this} type={T.underlined} title="Underline Ctrl+u" icon={fas.faUnderline}/>
@@ -238,23 +265,41 @@ export class Editor extends React.Component {
             <BlockButton main={this} type={T.block_quote} title="Quote Ctrl+q" icon={fas.faQuoteLeft}/>
             <BlockButton main={this} type={T.bullets} title="Bullet Points" icon={fas.faList}/>
             <BlockButton main={this} type={T.numbers} title="Numbered List" icon={fas.faListOl}/>
+            <Button title="Toggle Mode" color="light-border" onMouseDown={this.toggle_mode} type="button" tabIndex="-1">
+              <FontAwesomeIcon icon={this.state.raw_mode ? fas.faToggleOn : fas.faToggleOff}/>
+            </Button>
           </ButtonGroup>
         </div>
-        <div className={combine_classes('md editor',  this.props.disabled && ' disabled', this.props.error && 'error')}>
-          <RawEditor
-            spellCheck
-            autoFocus
-            placeholder={(focusBlock && focusBlock.type) === T.para ? this.props.placeholder: ''}
-            readOnly={this.props.disabled}
-            value={this.props.value}
-            ref={this.ref}
-            onChange={this.onChange}
-            onKeyDown={this.onKeyDown}
-            renderBlock={render_block}
-            renderInline={render_inline}
-            renderMark={render_mark}
-          />
-        </div>
+        {this.state.raw_mode ? (
+          <div>
+            <textarea
+              autoFocus
+              className={classes}
+              placeholder={this.props.placeholder}
+              value={to_markdown(this.props.value)}
+              onChange={e => this.onChange({value: e.target.value})}
+              disabled={this.props.disabled}
+            />
+            <small className="text-muted">
+              Your editor is in raw <a {...help_args}>markdown</a> mode.</small>
+          </div>
+        ) : (
+          <div className={classes}>
+            <SlateEditor
+              spellCheck
+              autoFocus
+              placeholder={(focusBlock && focusBlock.type) === T.para ? this.props.placeholder: ''}
+              readOnly={this.props.disabled}
+              value={this.props.value}
+              ref={this.ref}
+              onChange={this.onChange}
+              onKeyDown={this.onKeyDown}
+              renderBlock={render_block}
+              renderInline={render_inline}
+              renderMark={render_mark}
+            />
+          </div>
+        )}
         <EditLink
           link={this.state.link}
           close={() => this.setState({link: null})}
@@ -285,7 +330,7 @@ export class MarkdownRenderer extends React.Component {
   render () {
     return (
       <div className="md">
-        <RawEditor
+        <SlateEditor
           readOnly={true}
           value={from_markdown(this.props.value)}
           renderBlock={render_block}

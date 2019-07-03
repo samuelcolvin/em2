@@ -295,6 +295,9 @@ $status-height: 20px;
     border: 1px solid $form-feedback-invalid-color;
   }
 }
+textarea.editor {
+  min-height: 146px;
+}
 
 .btn-comment {
   color: darken($secondary, 5%);
