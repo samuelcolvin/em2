@@ -13,7 +13,7 @@ import {
 } from 'reactstrap'
 import isUrl from 'is-url'
 
-export default ({link, close, finished}) => {
+export const EditLink = ({link, close, finished}) => {
   const [link_title, setTitle] = React.useState('')
   const [link_href, setHref] = React.useState('')
   const [href_error, setError] = React.useState(null)
@@ -77,7 +77,6 @@ export default ({link, close, finished}) => {
       <ModalFooter>
         <ButtonGroup>
           <Button color="secondary" onClick={close}>Cancel</Button>
-          {/*<Button color="warning" onClick={TODO}>Remove Link</Button>*/}
           <Button color="primary" onClick={save}>Save</Button>
         </ButtonGroup>
       </ModalFooter>
@@ -89,7 +88,7 @@ const http_re = /^https?:\/\//
 const popular_tlds = '(com|edu|gov|org|co|info|net|ru|de|br|ir|uk|jp|it|io)'
 const url_re = new RegExp(`(^www\\.|\\.${popular_tlds}$|\\.${popular_tlds}[/#?])`)
 
-const as_url = s => {
+export const as_url = s => {
   if (/ /.test(s)) {
     return null
   } else if (http_re.test(s)) {

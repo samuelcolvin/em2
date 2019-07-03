@@ -119,7 +119,14 @@ export const render_block = (props, editor, next) => {
 
 export const render_inline = ({attributes, children, node}, editor, next) => {
   if (node.type === T.link) {
-    return <a href={node.data.get('href')} target="_blank" rel="noopener noreferrer" {...attributes}>{children}</a>
+    return <a
+        href={node.data.get('href')}
+        target="_blank"
+        rel="noopener noreferrer"
+        id={`link-${node.key}`}
+        {...attributes}>
+      {children}
+    </a>
   } else {
     return next()
   }
@@ -258,4 +265,39 @@ export const apply_code_block = editor => {
     .removeMark(T.deleted)
     .removeMark(T.code)
     .select(selection)
+}
+
+
+export const word_selection = (editor) => {
+  const {value} = editor
+  const {selection, startText} = value
+  const {start, isExpanded} = selection
+
+  if (isExpanded || value.inlines.find(i => i.type === T.link)) {
+    return value.fragment.text
+  }
+  const {text} = startText
+  const {offset} = start
+  if (offset === text.length) {
+    // at the end of the block, don't selection anything
+    return ''
+  }
+
+  let left = text.slice(0, offset).search(/\S+$/)
+  if (left === -1) {
+    // character before the cursor is a space, selection starts at the cursor
+    left = offset
+  }
+  let right = text.slice(offset).search(/\s/)
+  if (right < 0) {
+    // character after teh cursor is a space, selection ends at the cursor
+    right = text.length
+  } else {
+    right = right + offset
+  }
+  if (left === right) {
+    // nothing to select
+    return ''
+  }
+  return editor.moveAnchorBackward(offset - left).moveFocusForward(right - offset).value.fragment.text
 }

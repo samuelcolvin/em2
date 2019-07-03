@@ -9,6 +9,7 @@ import {
   ButtonGroup,
   FormGroup,
   FormFeedback,
+  Tooltip,
 } from 'reactstrap'
 import {InputLabel, InputHelpText, combine_classes} from 'reactstrap-toolbox'
 import {
@@ -24,8 +25,9 @@ import {
   on_backspace,
   on_space,
   apply_code_block,
+  word_selection,
 } from './utils'
-import EditLink from './EditLink'
+import {EditLink, as_url} from './EditLink'
 
 const Serializer = new MarkdownSerializer()
 
@@ -113,14 +115,24 @@ export class Editor extends React.Component {
     this.editor.setBlocks(new_type)
   }
 
-  link_modal = e => {
+  create_link = e => {
     e.preventDefault()
-    let link = this.editor.value.fragment.text
+    const text = word_selection(this.editor)
+    const url = as_url(text)
+    if (url) {
+      setTimeout(() => this.set_link(text, url), 0)
+    } else {
+      this.link_modal()
+    }
+  }
+
+  link_modal = () => {
+    let link = word_selection(this.editor)
     const link_node = this.props.value.inlines.find(i => i.type === T.link)
     if (link_node && link_node.text.includes(link)) {
       link = {href: link_node.data.get('href'), title: link_node.text}
     }
-    this.setState({link})
+    setTimeout(() => this.setState({link}), 0)
   }
 
   remove_link = e => {
@@ -132,10 +144,12 @@ export class Editor extends React.Component {
     // have to make sure the previous render is complete before mutating the editor
     await this.asyncSetState({link: null})
 
+    const link_node = this.props.value.inlines.find(i => i.type === T.link)
+    if (link_node && link_node.text.includes(this.editor.value.fragment.text)) {
+      this.editor.moveToRangeOfNode(link_node)
+    }
+
     if (this.editor.value.selection.isExpanded) {
-      this.editor.delete()
-    } else if (this.props.value.inlines.some(i => i.type === T.link)) {
-      // TODO delete the entire inline
       this.editor.delete()
     }
     this.editor
@@ -150,8 +164,6 @@ export class Editor extends React.Component {
       return true
     } else if (type === T.code && mode === 'block') {
       return false
-    } else if (type === 'unlink') {
-      return !this.props.value.inlines.some(i => i.type === T.link)
     } else {
       return this.has_block(T.code_line)
     }
@@ -194,18 +206,25 @@ export class Editor extends React.Component {
 
   onChange = ({value}) => {
     // console.log(to_markdown(value))
+    // console.log(JSON.stringify(value.toJSON(), null, 2))
     this.props.onChange(value)
   }
 
   render () {
-    const {startBlock} = this.props.value
+    const {focusBlock} = this.props.value
+    let tooltip
+    if (!this.state.link) {
+      const link_node = this.props.value.inlines.find(i => i.type === T.link)
+      if (link_node) {
+        tooltip = {key: link_node.key, href: link_node.data.get('href')}
+      }
+    }
+
     return (
       <div>
         <div className="d-flex justify-content-end mb-1">
           <ButtonGroup>
-            <MarkButton main={this} type={T.link} title="Create Link" onMouseDown={this.link_modal}/>
-            <MarkButton main={this} type="unlink" title="Remove Link" onMouseDown={this.remove_link}
-                        icon={fas.faUnlink}/>
+            <MarkButton main={this} type={T.link} title="Create Link" onMouseDown={this.create_link}/>
             <MarkButton main={this} type={T.bold} title="Bold Ctrl+b"/>
             <MarkButton main={this} type={T.italic} title="Italic Ctrl+i"/>
             <MarkButton main={this} type={T.underlined} title="Underline Ctrl+u" icon={fas.faUnderline}/>
@@ -221,7 +240,8 @@ export class Editor extends React.Component {
         <div className={combine_classes('md editor',  this.props.disabled && ' disabled', this.props.error && 'error')}>
           <RawEditor
             spellCheck
-            placeholder={(startBlock && startBlock.type) === T.para ? this.props.placeholder: ''}
+            autoFocus
+            placeholder={(focusBlock && focusBlock.type) === T.para ? this.props.placeholder: ''}
             readOnly={this.props.disabled}
             value={this.props.value}
             ref={this.ref}
@@ -237,6 +257,17 @@ export class Editor extends React.Component {
           close={() => this.setState({link: null})}
           finished={this.set_link}
         />
+        {tooltip && (
+          <Tooltip isOpen={true} placement="top" target={'link-' + tooltip.key}>
+            <div className="text-center">
+              {tooltip.href}
+            </div>
+            <div className="d-flex justify-content-around">
+              <button className="link-button" onClick={() => this.link_modal()}>change</button>
+              <button className="link-button" onClick={this.remove_link}>remove</button>
+            </div>
+          </Tooltip>
+        )}
       </div>
     )
   }
