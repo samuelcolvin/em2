@@ -36,6 +36,7 @@ const italic_key = isKeyHotkey('mod+i')
 const underline_key = isKeyHotkey('mod+u')
 const quote_key = isKeyHotkey('mod+q')
 const code_key = isKeyHotkey('mod+`')
+const link_key = isKeyHotkey('mod+k')
 
 export const empty_editor = () => Value.fromJSON(raw_empty)
 export const has_content = v => !isEqual(v.toJSON(), raw_empty)
@@ -192,6 +193,8 @@ export class Editor extends React.Component {
       return editor.setBlocks(this.has_block(type) ? T.para : type)
     } else if (code_key(e)) {
       mark = T.code
+    } else if (link_key(e)) {
+      return this.create_link(e)
     } else {
       return next()
     }

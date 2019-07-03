@@ -19,9 +19,12 @@ export const EditLink = ({link, close, finished}) => {
   const [href_error, setError] = React.useState(null)
 
   React.useEffect(() => {
+    // using ides like this seems to work better than refs
+    let focus_id = 'link-href'
     if (link && typeof(link) === 'string') {
       const href = as_url(link)
       if (href) {
+        focus_id = 'link-title'
         setHref(href)
         setTitle(link)
       } else {
@@ -35,6 +38,10 @@ export const EditLink = ({link, close, finished}) => {
       setTitle('')
       setHref('')
     }
+    setTimeout(() => {
+      const el = document.getElementById(focus_id)
+      el && el.focus()
+    }, 0)
   }, [link])
 
   const save = () => {
@@ -86,14 +93,15 @@ export const EditLink = ({link, close, finished}) => {
 
 const http_re = /^https?:\/\//
 const popular_tlds = '(com|edu|gov|org|co|info|net|ru|de|br|ir|uk|jp|it|io)'
-const url_re = new RegExp(`(^www\\.|\\.${popular_tlds}$|\\.${popular_tlds}[/#?])`)
+const url_like_re = new RegExp(`(^www\\.|\\.${popular_tlds}$|\\.${popular_tlds}[/#?])`)
 
 export const as_url = s => {
-  if (/ /.test(s)) {
+  // could use something like /[^a-zA-Z0-9.:\/?=%_\-]/ here, but may this is better
+  if (/[ '"]/.test(s)) {
     return null
   } else if (http_re.test(s)) {
     return encodeURI(s)
-  } else if (url_re.test(s)) {
+  } else if (url_like_re.test(s)) {
     return 'http://' + encodeURI(s)
   } else {
     return null
