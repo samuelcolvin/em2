@@ -1,9 +1,9 @@
 import asyncio
 import base64
 import hashlib
+import re
 import time
 from typing import Optional
-from urllib.parse import urlparse
 
 import http_ece
 import ujson
@@ -111,18 +111,25 @@ async def _sub_post(conns: Connections, session: ClientSession, sub: Subscriptio
     if r.status == 410:
         await unsubscribe(conns, sub, user_id)
     elif r.status != 201:
+        from pprint import pformat
+
+        # details of errors here
+        print(
+            f'unexpected response from webpush {r.status}\nheaders: {pformat(dict(r.headers))}\ntext: {text}',
+            flush=True,
+        )
         raise RequestError(r.status, sub.endpoint, text=text)
 
 
 vapid_encoding = 'aes128gcm'
+aud_re = re.compile('https?://[^/]+')
 
 
 def _vapid_headers(sub: SubscriptionModel, settings: Settings):
-    url = urlparse(sub.endpoint)
     vapid_claims = {
-        'aud': f'{url.scheme}://{url.netloc}',
+        'aud': aud_re.match(sub.endpoint).group(0),
         'sub': 'mailto:' + settings.vapid_sub_email,
-        'ext': int(time.time()) + 12 * 3600,
+        'ext': int(time.time()) + 300,
     }
     return {
         'ttl': '60',
