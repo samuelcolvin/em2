@@ -3,11 +3,11 @@ import hashlib
 import logging
 from typing import Optional, Set
 
-from aiohttp import ClientError, ClientSession, InvalidURL
+from aiohttp import ClientError, InvalidURL
 from buildpg import Values
 
 from em2.settings import Settings
-from em2.utils.storage import S3, S3Client
+from em2.utils.storage import S3
 
 logger = logging.getLogger('em2.smtp')
 
@@ -47,10 +47,7 @@ async def get_images(ctx, conv_id: int, image_urls: Set[str]):
 
     settings: Settings = ctx['settings']
     session = ctx['client_session']
-    async with S3(settings) as s3_client:
-        to_create = await asyncio.gather(
-            *[get_image(u, existing, conv_key, session, s3_client, settings) for u, existing in to_get]
-        )
+    to_create = await asyncio.gather(*[get_image(u, existing, conv_key, session, settings) for u, existing in to_get])
 
     async with ctx['pg'].acquire() as conn:
         for row in to_create:
@@ -74,9 +71,7 @@ image_extensions = {
 }
 
 
-async def get_image(
-    url: str, existing: Optional[dict], conv_key: str, session: ClientSession, s3_client: S3Client, settings: Settings
-) -> dict:
+async def get_image(url: str, existing: Optional[dict], conv_key: str, session, settings: Settings) -> dict:
     def _error(error: int) -> dict:
         return {'url': url, 'error': error, 'storage': None, 'size': None, 'hash': None, 'content_type': None}
 
@@ -109,13 +104,14 @@ async def get_image(
         # file is the same, no need to save just use the existing version
         return existing
 
-    storage = await s3_client.upload(
-        bucket=settings.s3_cache_bucket,
-        path=f'{conv_key}/{hashlib.sha256(url.encode()).hexdigest()}.{ext}',
-        content=content,
-        content_type=content_type,
-        content_disposition='inline',
-    )
+    async with S3(settings) as s3_client:
+        storage = await s3_client.upload(
+            bucket=settings.s3_cache_bucket,
+            path=f'{conv_key}/{hashlib.sha256(url.encode()).hexdigest()}.{ext}',
+            content=content,
+            content_type=content_type,
+            content_disposition='inline',
+        )
 
     return {
         'url': url,

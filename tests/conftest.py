@@ -59,6 +59,7 @@ def _fix_settings_session():
         s3_file_bucket='s3_files_bucket.example.com',
         s3_cache_bucket='s3_cache_bucket.example.com',
         max_ref_image_size=666,
+        max_ref_image_count=10,
         vapid_private_key=(
             'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgvGPhHfTSfxCod+wT'
             'zLuyK8KWjPGGvKJKJjzBGSF47YuhRANCAAQJNQfHBSOe5nI5fmUcwTFw3ckqXXvR'

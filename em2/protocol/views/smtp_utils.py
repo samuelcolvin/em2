@@ -117,7 +117,7 @@ class ProcessSMTP:
         actor_id = await get_create_user(self.conns, actor_email, UserTypes.remote_other)
 
         existing_conv = bool(conv_id)
-        body, is_html, images = get_smtp_body(msg, message_id, existing_conv)
+        body, is_html, images = self.get_smtp_body(msg, message_id, existing_conv)
         files = find_smtp_files(msg)
         pg = self.conns.main
         async with pg.transaction():
@@ -243,6 +243,55 @@ class ProcessSMTP:
             msg_id = msg_id.split('@', 1)[0]
         return msg_id
 
+    def parse_html(self, body: str, existing_conv: bool) -> Tuple[str, Set[str]]:
+        soup = BeautifulSoup(body, 'html.parser')
+
+        if existing_conv:
+            # remove the body only if conversation already exists in the db
+            for el_selector in to_remove:
+                for el in soup.select(el_selector):
+                    el.decompose()
+
+        # find images
+        images = [img['src'] for img in soup.select('img')]
+
+        for style in soup.select('style'):
+            images += [m.group(2) for m in style_url_re.finditer(style.string)]
+
+        # do it like this as we want take the first max_ref_image_count unique images
+        image_set = set()
+        for image in images:
+            if image not in image_set:
+                image_set.add(image)
+                if len(image_set) >= self.conns.settings.max_ref_image_count:
+                    break
+
+        # body = soup.prettify()
+        body = str(soup)
+        for regex, rep in html_regexes:
+            body = regex.sub(rep, body)
+
+        return body, image_set
+
+    def get_smtp_body(self, msg: EmailMessage, message_id: str, existing_conv: bool) -> Tuple[str, bool, Set[str]]:
+        m: EmailMessage = msg.get_body(preferencelist=('html', 'plain'))
+        if not m:
+            raise RuntimeError('email with no content')
+
+        body = m.get_content()
+        is_html = m.get_content_type() == 'text/html'
+        if is_html and m['Content-Transfer-Encoding'] == 'quoted-printable':
+            # are there any other special characters to remove?
+            body = quopri.decodestring(body.replace('\xa0', '')).decode()
+
+        if not body:
+            logger.warning('Unable to find body in email "%s"', message_id)
+
+        images = set()
+        if is_html:
+            body, images = self.parse_html(body, existing_conv)
+        return body, is_html, images
+
 
 to_remove = 'div.gmail_quote', 'div.gmail_extra'  # 'div.gmail_signature'
 style_url_re = re.compile(r'\surl\(([\'"]?)((?:https?:)?//.+?)\1\)', re.I)
@@ -251,46 +300,3 @@ html_regexes = [
     (re.compile(r'<br/>$', re.M), ''),
     (re.compile(r'\n{2,}'), '\n'),
 ]
-
-
-def parse_html(body: str, existing_conv: bool) -> Tuple[str, Set[str]]:
-    soup = BeautifulSoup(body, 'html.parser')
-
-    if existing_conv:
-        # remove the body only if conversation already exists in the db
-        for el_selector in to_remove:
-            for el in soup.select(el_selector):
-                el.decompose()
-
-    # find images
-    images = {img['src'] for img in soup.select('img')}
-
-    for style in soup.select('style'):
-        images.update(m.group(2) for m in style_url_re.finditer(style.string))
-
-    # body = soup.prettify()
-    body = str(soup)
-    for regex, rep in html_regexes:
-        body = regex.sub(rep, body)
-
-    return body, images
-
-
-def get_smtp_body(msg: EmailMessage, message_id: str, existing_conv: bool) -> Tuple[str, bool, Set[str]]:
-    m: EmailMessage = msg.get_body(preferencelist=('html', 'plain'))
-    if not m:
-        raise RuntimeError('email with no content')
-
-    body = m.get_content()
-    is_html = m.get_content_type() == 'text/html'
-    if is_html and m['Content-Transfer-Encoding'] == 'quoted-printable':
-        # are there any other special characters to remove?
-        body = quopri.decodestring(body.replace('\xa0', '')).decode()
-
-    if not body:
-        logger.warning('Unable to find body in email "%s"', message_id)
-
-    images = set()
-    if is_html:
-        body, images = parse_html(body, existing_conv)
-    return body, is_html, images

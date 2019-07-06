@@ -462,6 +462,27 @@ async def test_image_extraction(conns, db_conn, create_email, send_to_remote, wo
     ]
 
 
+async def test_image_extraction_many(conns, db_conn, create_email, send_to_remote, worker, dummy_server):
+    send_id, message_id = send_to_remote
+
+    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+
+    msg = create_email(
+        html_body='\n'.join(
+            f"<img src='{dummy_server.server_name}/image/?size={i}'/>"
+            for i in range(15)  # more than the limit 10 as per conftest
+        ),
+        headers={'In-Reply-To': message_id},
+    )
+    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    assert 2 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+
+    assert await worker.run_check() == 5
+    assert len(dummy_server.log) == 20
+
+    assert await db_conn.fetchval('select count(*) from image_cache') == 10
+
+
 async def test_get_images_ok(worker_ctx, factory: Factory, dummy_server, db_conn):
     await factory.create_user()
     conv = await factory.create_conv()

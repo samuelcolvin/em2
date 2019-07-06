@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     aws_sns_signing_host = '.amazonaws.com'
     aws_sns_signing_schema = 'https'
     max_ref_image_size = 10 * 1024 ** 2
+    max_ref_image_count = 20
 
     vapid_private_key: str = None
     vapid_sub_email: EmailStr = None
