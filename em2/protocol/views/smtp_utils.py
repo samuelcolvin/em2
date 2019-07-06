@@ -201,7 +201,7 @@ class ProcessSMTP:
                 await push_all(self.conns, conv_id, transmit=False)
 
         if images:
-            await self.conns.redis.enqueue_job('get_images', conv_id, images)
+            await self.conns.redis.enqueue_job('get_images', conv_id, add_action_pk, images)
 
     async def get_conv(self, msg: EmailMessage) -> Tuple[int, int]:
         conv_actor = None

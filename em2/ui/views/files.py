@@ -1,7 +1,8 @@
+import base64
 from datetime import timedelta
 from uuid import uuid4
 
-from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented
+from aiohttp.web_exceptions import HTTPFound, HTTPNotImplemented, HTTPOk
 from atoolbox import JsonErrors, json_response, parse_request_query
 from pydantic import BaseModel, conint, constr, validator
 
@@ -57,6 +58,45 @@ class GetFile(View):
         storage = await self.conn.fetchval('select storage from files where id=$1', file_id)
         assert storage, 'storage still not set'
         return storage
+
+
+class GetHtmlImage(View):
+    async def call(self):
+        s = self.settings
+        if not all((s.aws_secret_key, s.aws_access_key, s.s3_temp_bucket)):  # pragma: no cover
+            raise HTTPNotImplemented(text="Storage keys not set, can't display images")
+
+        try:
+            url = base64.b64decode(self.request.match_info['url']).decode()
+        except ValueError:
+            raise JsonErrors.HTTPBadRequest('invalid url')
+
+        conv_prefix = self.request.match_info['conv']
+        conv_id, last_action = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix)
+
+        action_id, storage, error = await or404(
+            self.conn.fetchrow(
+                """
+                select a.id, storage, error
+                from image_cache i
+                join actions a on i.action = a.pk
+                where i.conv=$1 and i.url=$2
+                """,
+                conv_id,
+                url,
+            ),
+            msg='unable to find image',
+        )
+        if last_action and action_id > last_action:
+            raise JsonErrors.HTTPForbidden("You're not permitted to view this file")
+
+        if error:
+            # 200, but not an image should show image error in browser
+            raise HTTPOk(text=f'unable to download image, response {error}')
+
+        _, bucket, path = parse_storage_uri(storage)
+        url = S3(s).signed_download_url(bucket, path)
+        raise HTTPFound(url)
 
 
 upload_pending_ttl = 3600

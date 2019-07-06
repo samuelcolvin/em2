@@ -110,6 +110,8 @@ async def _sub_post(conns: Connections, session: ClientSession, sub: Subscriptio
         text = await r.text()
     if r.status == 410:
         await unsubscribe(conns, sub, user_id)
+    elif r.status == 403 and text == 'invalid JWT provided':
+        await unsubscribe(conns, sub, user_id)
     elif r.status != 201:
         from pprint import pformat
 

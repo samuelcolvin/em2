@@ -60,7 +60,7 @@ class Html extends React.Component {
     return {body: msg_el.innerHTML, styles}
   }
 
-  replace_cid = src => make_url('ui', `/${this.props.session_id}/conv/${this.props.conv}/cid-image/${src.substr(4)}`)
+  replace_cid = src => make_url('ui', `/${this.props.session_id}/conv/${this.props.conv}/file/${src.substr(4)}`)
 
   img_url = url => make_url('ui', `/${this.props.session_id}/conv/${this.props.conv}/html-image/${btoa(url)}`)
 

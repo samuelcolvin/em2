@@ -14,7 +14,7 @@ logger = logging.getLogger('em2.smtp')
 __all__ = ['get_images']
 
 
-async def get_images(ctx, conv_id: int, image_urls: Set[str]):
+async def get_images(ctx, conv_id: int, action_pk: int, image_urls: Set[str]):
     to_get = []
 
     async with ctx['pg'].acquire() as conn:
@@ -52,7 +52,8 @@ async def get_images(ctx, conv_id: int, image_urls: Set[str]):
     async with ctx['pg'].acquire() as conn:
         for row in to_create:
             await conn.execute_b(
-                'insert into image_cache (:values__names) values :values', values=Values(conv=conv_id, **row)
+                'insert into image_cache (:values__names) values :values',
+                values=Values(conv=conv_id, action=action_pk, **row),
             )
 
 

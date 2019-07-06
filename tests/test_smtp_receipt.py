@@ -4,11 +4,10 @@ from email.message import EmailMessage
 import pytest
 from aiohttp.web_exceptions import HTTPGatewayTimeout
 from arq.jobs import Job
-from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
+from pytest_toolbox.comparison import RegexStr
 
 from em2.background import push_all
 from em2.core import File, conv_actions_json, get_flag_counts
-from em2.protocol.smtp.images import get_images
 from em2.protocol.views.smtp_utils import InvalidEmailMsg, process_smtp
 from em2.utils.smtp import CopyToTemp, find_smtp_files
 
@@ -481,130 +480,3 @@ async def test_image_extraction_many(conns, db_conn, create_email, send_to_remot
     assert len(dummy_server.log) == 20
 
     assert await db_conn.fetchval('select count(*) from image_cache') == 10
-
-
-async def test_get_images_ok(worker_ctx, factory: Factory, dummy_server, db_conn):
-    await factory.create_user()
-    conv = await factory.create_conv()
-
-    url = dummy_server.server_name + '/image/'
-    await get_images(worker_ctx, conv.id, {url})
-
-    assert len(dummy_server.log) == 2
-    assert dummy_server.log[0] == 'GET image'
-    assert await db_conn.fetchval('select count(*) from image_cache') == 1
-    r = dict(await db_conn.fetchrow('select * from image_cache'))
-    assert r == {
-        'id': AnyInt(),
-        'conv': conv.id,
-        'storage': RegexStr(f's3://s3_cache_bucket.example.com/{conv.key}/.+?.png'),
-        'error': None,
-        'created': CloseToNow(),
-        'last_access': None,
-        'url': url,
-        'hash': '5b09369749b5240d619e70883c4c89030708917c1b2f5f81e2dc1094c451fff9',
-        'size': 10,
-        'content_type': 'image/png',
-    }
-
-
-async def test_get_images_bad(worker_ctx, factory: Factory, dummy_server, db_conn):
-    await factory.create_user()
-    conv = await factory.create_conv()
-
-    await get_images(
-        worker_ctx,
-        conv.id,
-        {
-            dummy_server.server_name + '/status/200/',  # wrong content_type
-            dummy_server.server_name + '/status/201/',  # wrong status
-            dummy_server.server_name + '/image/?size=700',  # too large
-            'this-is-not-a-valid-url.com/broken',
-        },
-    )
-
-    assert len(dummy_server.log) == 3
-    # assert dummy_server.log[0] == 'GET image'
-    assert await db_conn.fetchval('select count(*) from image_cache') == 4
-    cache_files = await db_conn.fetch(
-        'select url, storage, error, size, hash, content_type from image_cache order by error'
-    )
-    assert [dict(r) for r in cache_files] == [
-        {
-            'url': dummy_server.server_name + '/status/201/',
-            'storage': None,
-            'error': 201,
-            'size': None,
-            'hash': None,
-            'content_type': None,
-        },
-        {
-            'url': dummy_server.server_name + '/image/?size=700',
-            'storage': None,
-            'error': 1413,
-            'size': None,
-            'hash': None,
-            'content_type': None,
-        },
-        {
-            'url': dummy_server.server_name + '/status/200/',
-            'storage': None,
-            'error': 1415,
-            'size': None,
-            'hash': None,
-            'content_type': None,
-        },
-        {
-            'url': 'this-is-not-a-valid-url.com/broken',
-            'storage': None,
-            'error': 1502,
-            'size': None,
-            'hash': None,
-            'content_type': None,
-        },
-    ]
-
-
-async def test_get_images_exist_on_conv(worker_ctx, factory: Factory, dummy_server, db_conn):
-    await factory.create_user()
-    conv = await factory.create_conv()
-
-    url = dummy_server.server_name + '/image/'
-    await get_images(worker_ctx, conv.id, {url})
-    assert len(dummy_server.log) == 2
-
-    await get_images(worker_ctx, conv.id, {url})
-    assert len(dummy_server.log) == 2
-    assert await db_conn.fetchval('select count(*) from image_cache') == 1
-
-
-async def test_get_images_exist_elsewhere(worker_ctx, factory: Factory, dummy_server, db_conn):
-    await factory.create_user()
-    conv1 = await factory.create_conv()
-
-    url = dummy_server.server_name + '/image/'
-    await get_images(worker_ctx, conv1.id, {url})
-    assert len(dummy_server.log) == 2
-
-    conv2 = await factory.create_conv()
-    await get_images(worker_ctx, conv2.id, {url})
-    assert len(dummy_server.log) == 3  # got the image again, matching hash
-    assert await db_conn.fetchval('select count(*) from image_cache') == 2
-    cache_files = await db_conn.fetch('select url, conv, error, size, hash from image_cache order by conv')
-
-    assert [dict(r) for r in cache_files] == [
-        {
-            'url': url,
-            'conv': conv1.id,
-            'error': None,
-            'size': 10,
-            'hash': '5b09369749b5240d619e70883c4c89030708917c1b2f5f81e2dc1094c451fff9',
-        },
-        {
-            'url': url,
-            'conv': conv2.id,
-            'error': None,
-            'size': 10,
-            'hash': '5b09369749b5240d619e70883c4c89030708917c1b2f5f81e2dc1094c451fff9',
-        },
-    ]

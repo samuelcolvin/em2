@@ -213,6 +213,7 @@ create index idx_files_action ON files USING btree (action);
 create table image_cache (
   id bigserial primary key,
   conv bigint not null references conversations on delete restrict,
+  action bigint references actions not null,
   storage varchar(255),
   error smallint,
   created timestamptz not null default current_timestamp,
