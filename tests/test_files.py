@@ -15,7 +15,7 @@ async def test_get_file_link(cli, factory: Factory):
     content_id = obj['content_id']
     assert obj == {
         'content_id': RegexStr('.{36}'),
-        'url': 'https://s3.us-east-1.amazonaws.com/s3_files_bucket.example.com',
+        'url': 'https://s3_files_bucket.example.com/',
         'fields': {
             'Key': f'{conv.key}/{content_id}/testing.png',
             'Content-Type': 'image/jpeg',
@@ -46,7 +46,7 @@ async def test_get_file_link_non_creator(cli, factory: Factory):
 
     q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
     obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q, session_id=user2.session_id))
-    assert obj['url'] == 'https://s3.us-east-1.amazonaws.com/s3_files_bucket.example.com'
+    assert obj['url'] == 'https://s3_files_bucket.example.com/'
 
 
 async def test_get_file_link_not_permitted(cli, factory: Factory):

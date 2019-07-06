@@ -50,6 +50,7 @@ main_csp = {
         f'https://ui.{main_domain}',
         f'wss://ui.{main_domain}',
         f'https://auth.{main_domain}',
+        f'https://attachments.{main_domain}',
     ],
 }
 iframe_auth_csp = {'default-src': ["'none'"], 'connect-src': [f'https://auth.{main_domain}'], 'style-src': [origin]}

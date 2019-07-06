@@ -5,7 +5,6 @@ import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {file_icon, file_size} from './files'
 
-const file_key = f => `${f.name}-${f.size}-${f.lastModified}`
 const is_file_drag = e => e.dataTransfer.types.length === 1 && e.dataTransfer.types[0] === 'Files'
 const failed_icon = fas.faMinusCircle
 
@@ -49,7 +48,7 @@ const FileSummary = props => {
         </div>
       </div>
       <div className={`preview-overlay ${!props.locked && over ? 'd-flex' : 'd-none'}`}
-           onClick={() => props.remove_file(file_key)}>
+           onClick={() => props.remove_file(props.file_key)}>
         <FontAwesomeIcon icon={fas.faTimes} size="3x"/>
       </div>
     </div>
@@ -137,7 +136,7 @@ export default class Drop extends React.Component {
     }
     this.setState({already_uploaded: false, dragging: false})
     for (let file of accepted_files) {
-      const key = file_key(file)
+      const key = `${file.name}-${file.size}-${file.lastModified}`
       if (this.state[key]) {
         this.setState({already_uploaded: true})
       } else {

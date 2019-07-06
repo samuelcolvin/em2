@@ -138,7 +138,7 @@ class S3:
 
         b64_policy = base64.b64encode(json.dumps(policy).encode()).decode()
         fields.update(Policy=b64_policy, Signature=self._signature(b64_policy))
-        return dict(url=f'https://s3.{self._settings.aws_region}.amazonaws.com/{bucket}', fields=fields)
+        return dict(url=f'https://{bucket}/', fields=fields)
 
     def _signature(self, to_sign: str) -> str:
         s = hmac.new(self._settings.aws_secret_key.encode(), to_sign.encode(), hashlib.sha1).digest()
