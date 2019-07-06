@@ -103,7 +103,7 @@ async def vapid_endpoint(request):
 
 
 async def get_image(request):
-    return Response(body=b'X' * int(request.query.get('size', '0')), content_type='image/png')
+    return Response(body=b'X' * int(request.query.get('size', '10')), content_type='image/png')
 
 
 routes = [

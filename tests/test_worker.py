@@ -7,4 +7,4 @@ async def test_start_stop_worker(redis, settings, worker_ctx):
     keys = set(ctx.keys())
     await worker.shutdown(ctx)
     assert keys == {'settings', 'client_session', 'pg', 'resolver', 'conns', 'smtp_handler', 'redis'}
-    assert set(worker_ctx.keys()) == {'settings', 'client_session', 'pg', 'resolver', 'conns', 'smtp_handler'}
+    assert set(worker_ctx.keys()) == {'settings', 'client_session', 'pg', 'resolver', 'conns', 'smtp_handler', 'redis'}

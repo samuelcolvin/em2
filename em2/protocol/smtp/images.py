@@ -3,7 +3,7 @@ import hashlib
 import logging
 from typing import Optional, Set
 
-from aiohttp import ClientError, ClientSession
+from aiohttp import ClientError, ClientSession, InvalidURL
 from buildpg import Values
 
 from em2.settings import Settings
@@ -59,6 +59,7 @@ async def get_images(ctx, conv_id: int, image_urls: Set[str]):
             )
 
 
+# https://en.wikipedia.org/wiki/Comparison_of_web_browsers#Image_format_support looking at chrome and firefox
 image_extensions = {
     'image/png': 'png',
     'image/jpeg': 'jpg',
@@ -96,11 +97,12 @@ async def get_image(
                 size += len(chunk)
                 if size > settings.max_ref_image_size:
                     return _error(1413)
-    except (ClientError, OSError) as e:
+    except (ClientError, InvalidURL, OSError) as e:
         # could do more errors here
         logger.warning('error downloading image from %r %s: %s', full_url, e.__class__.__name__, e, exc_info=True)
         return _error(1502)
 
+    # TODO resize large images
     content_hash = hashlib.sha256(content).hexdigest()
 
     if existing and content_hash == existing['hash']:

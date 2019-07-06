@@ -58,6 +58,7 @@ def _fix_settings_session():
         s3_temp_bucket='s3_temp_bucket.example.com',
         s3_file_bucket='s3_files_bucket.example.com',
         s3_cache_bucket='s3_cache_bucket.example.com',
+        max_ref_image_size=666,
         vapid_private_key=(
             'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgvGPhHfTSfxCod+wT'
             'zLuyK8KWjPGGvKJKJjzBGSF47YuhRANCAAQJNQfHBSOe5nI5fmUcwTFw3ckqXXvR'
@@ -296,6 +297,7 @@ async def _fix_worker_ctx(redis, settings, db_conn):
         pg=DummyPgPool(db_conn),
         client_session=session,
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
+        redis=redis,
     )
     ctx.update(smtp_handler=LogSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
 
