@@ -40,11 +40,9 @@
           const main = document.createElement('div')
           main.id = 'main'
           main.innerHTML = event.data.body
-          let styles = ''
-          main.querySelectorAll('style').forEach(el => styles += el.innerHTML)
-          if (styles.length > 0) {
+          if (event.data.styles) {
             const s = document.createElement('style')
-            s.innerHTML = styles
+            s.innerHTML = event.data.styles
             main.appendChild(s)
           }
           document.body.appendChild(main)

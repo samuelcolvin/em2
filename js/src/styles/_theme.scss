@@ -7,7 +7,7 @@ $status-height-md: 32px;
 body {
   padding-top: $status-top + $status-height-sm + 4px;
   @include media-breakpoint-up(md) {
-    padding-top: $status-top + $status-height-md + 4px;
+    padding-top: $status-top + $status-height-md + 8px;
   }
   background-color: $body-back;
   padding-bottom: 3rem;
@@ -143,7 +143,7 @@ body {
   position: fixed;
   top: $status-top + $status-height-sm + 4px;
   @include media-breakpoint-up(md) {
-    top: $status-top + $status-height-md + 4px;
+    top: $status-top + $status-height-md + 8px;
   }
 }
 

@@ -88,11 +88,10 @@ inline_regex = re.compile(' src')
 
 
 class ProcessSMTP:
-    __slots__ = 'conns', 'conn'
+    __slots__ = ('conns',)
 
     def __init__(self, conns: Connections):
         self.conns: Connections = conns
-        self.conn: BuildPgConnection = conns.main
 
     async def run(self, msg: EmailMessage, recipients: Set[str], storage: str, spam: bool, warnings: dict):
         # TODO deal with non multipart
@@ -118,10 +117,12 @@ class ProcessSMTP:
         actor_id = await get_create_user(self.conns, actor_email, UserTypes.remote_other)
 
         existing_conv = bool(conv_id)
-        body, is_html = get_smtp_body(msg, message_id, existing_conv)
-        async with self.conn.transaction():
+        body, is_html, images = get_smtp_body(msg, message_id, existing_conv)
+        files = find_smtp_files(msg)
+        pg = self.conns.main
+        async with pg.transaction():
             if existing_conv:
-                existing_prts = await self.conn.fetch(
+                existing_prts = await pg.fetch(
                     'select email from participants p join users u on p.user_id=u.id where conv=$1', conv_id
                 )
                 existing_prts = {r[0] for r in existing_prts}
@@ -147,15 +148,15 @@ class ProcessSMTP:
                     actions=actions,
                     spam=spam,
                     warnings=warnings,
-                    files=find_smtp_files(msg),
+                    files=files,
                 )
                 assert action_ids
 
                 all_action_ids += action_ids
-                await self.conn.execute(
+                await pg.execute(
                     'update actions set ts=$1 where conv=$2 and id=any($3)', timestamp, conv_id, all_action_ids
                 )
-                send_id, add_action_pk = await self.conn.fetchrow(
+                send_id, add_action_pk = await pg.fetchrow(
                     """
                     insert into sends (action, ref, complete, storage)
                     (select pk, $1, true, $2 from actions where conv=$3 and id=any($4) and act='message:add' limit 1)
@@ -166,7 +167,7 @@ class ProcessSMTP:
                     conv_id,
                     action_ids,
                 )
-                await self.conn.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
+                await pg.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
                 await push_multiple(self.conns, conv_id, action_ids, transmit=False)
             else:
                 conv = CreateConvModel(
@@ -184,9 +185,9 @@ class ProcessSMTP:
                     ts=timestamp,
                     spam=spam,
                     warnings=warnings,
-                    files=find_smtp_files(msg),
+                    files=files,
                 )
-                send_id, add_action_pk = await self.conn.fetchrow(
+                send_id, add_action_pk = await pg.fetchrow(
                     """
                     insert into sends (action, ref, complete, storage)
                     (select pk, $1, true, $2 from actions where conv=$3 and act='message:add' limit 1)
@@ -196,7 +197,7 @@ class ProcessSMTP:
                     storage,
                     conv_id,
                 )
-                await self.conn.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
+                await pg.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
                 await push_all(self.conns, conv_id, transmit=False)
 
     async def get_conv(self, msg: EmailMessage) -> Tuple[int, int]:
@@ -204,7 +205,7 @@ class ProcessSMTP:
         # find which conversation this relates to
         in_reply_to = msg['In-Reply-To']
         if in_reply_to:
-            conv_actor = await self.conn.fetchrow(
+            conv_actor = await self.conns.main.fetchrow(
                 """
                 select a.conv, a.actor from sends
                 join actions a on sends.action = a.pk
@@ -220,7 +221,7 @@ class ProcessSMTP:
             # try references instead to try and get conv_id
             ref_msg_ids = {self.clean_msg_id(msg_id) for msg_id in references.split(' ') if msg_id}
             if ref_msg_ids:
-                conv_actor = await self.conn.fetchrow(
+                conv_actor = await self.conns.main.fetchrow(
                     """
                     select a.conv, a.actor from sends
                     join actions a on sends.action = a.pk
@@ -241,6 +242,7 @@ class ProcessSMTP:
 
 
 to_remove = 'div.gmail_quote', 'div.gmail_extra'  # 'div.gmail_signature'
+style_url_re = re.compile(r"""\surl\((['"]?)((?:https?:)?//.+?)\1\)""", re.I)
 html_regexes = [
     (re.compile(r'<br/></div><br/>$', re.M), ''),
     (re.compile(r'<br/>$', re.M), ''),
@@ -248,7 +250,30 @@ html_regexes = [
 ]
 
 
-def get_smtp_body(msg: EmailMessage, message_id: str, existing_conv: bool) -> Tuple[str, bool]:
+def parse_html(body: str, existing_conv: bool) -> Tuple[str, Set[str]]:
+    soup = BeautifulSoup(body, 'html.parser')
+
+    if existing_conv:
+        # remove the body only if conversation already exists in the db
+        for el_selector in to_remove:
+            for el in soup.select(el_selector):
+                el.decompose()
+
+    # find images
+    images = {img['src'] for img in soup.select('img')}
+
+    for style in soup.select('style'):
+        images.update(m.group(2) for m in style_url_re.finditer(style.string))
+
+    # body = soup.prettify()
+    body = str(soup)
+    for regex, rep in html_regexes:
+        body = regex.sub(rep, body)
+
+    return body, images
+
+
+def get_smtp_body(msg: EmailMessage, message_id: str, existing_conv: bool) -> Tuple[str, bool, Set[str]]:
     m: EmailMessage = msg.get_body(preferencelist=('html', 'plain'))
     if not m:
         raise RuntimeError('email with no content')
@@ -262,17 +287,7 @@ def get_smtp_body(msg: EmailMessage, message_id: str, existing_conv: bool) -> Tu
     if not body:
         logger.warning('Unable to find body in email "%s"', message_id)
 
+    images = {}
     if is_html:
-        soup = BeautifulSoup(body, 'html.parser')
-
-        if existing_conv:
-            # remove the body only if conversation already exists in the db
-            for el_selector in to_remove:
-                for el in soup.select(el_selector):
-                    el.decompose()
-
-        # body = soup.prettify()
-        body = str(soup)
-        for regex, rep in html_regexes:
-            body = regex.sub(rep, body)
-    return body, is_html
+        body, images = parse_html(body, existing_conv)
+    return body, is_html, images

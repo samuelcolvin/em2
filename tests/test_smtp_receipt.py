@@ -405,3 +405,30 @@ async def test_invalid_email_no_date(conns):
     with pytest.raises(InvalidEmailMsg) as exc_info:
         await process_smtp(conns, msg, {'testing@example.com'}, 's3://foobar/whatever')
     assert exc_info.value.args[0] == 'invalid "Date" header'
+
+
+async def test_image_extraction(conns, db_conn, create_email, send_to_remote):
+    send_id, message_id = send_to_remote
+
+    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+    msg = create_email(
+        html_body="""
+      <style>body {background: lightblue url("http://www.example.com/back.jpeg")}</style>
+        <body>
+          <p>This is the body.</p>
+          <img src="https://www.example.com/testing.png" alt="Testing" height="42" width="42">
+        </body>
+        """,
+        headers={'In-Reply-To': message_id},
+    )
+    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    assert 2 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+    body = await db_conn.fetchval("select body from actions where act='message:add' order by pk desc limit 1")
+    assert body == (
+        '<style>body {background: lightblue url("http://www.example.com/back.jpeg")}</style>\n'
+        '<body>\n'
+        '<p>This is the body.</p>\n'
+        '<img alt="Testing" height="42" src="https://www.example.com/testing.png" width="42"/>\n'
+        '</body>'
+    )
+    assert await db_conn.fetchval("select details->>'prev' from conversations") == 'This is the body.'
