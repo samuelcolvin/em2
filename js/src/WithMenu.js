@@ -214,7 +214,7 @@ const WithMenu = ({children}) => {
   return (
     <div className="with-menu">
       <div ref={ref_left} className="left-menu" style={{display: 'none'}}>
-        <div ref={ref_menu} style={{position: 'fixed', top: '80px'}}>
+        <div ref={ref_menu} className="left-menu-fixed">
           <LeftMenu/>
         </div>
       </div>
