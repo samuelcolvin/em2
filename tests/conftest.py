@@ -57,6 +57,7 @@ def _fix_settings_session():
         auth_key=Fernet.generate_key(),
         s3_temp_bucket='s3_temp_bucket.example.com',
         s3_file_bucket='s3_files_bucket.example.com',
+        s3_cache_bucket='s3_cache_bucket.example.com',
         vapid_private_key=(
             'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgvGPhHfTSfxCod+wT'
             'zLuyK8KWjPGGvKJKJjzBGSF47YuhRANCAAQJNQfHBSOe5nI5fmUcwTFw3ckqXXvR'
@@ -293,7 +294,7 @@ async def _fix_worker_ctx(redis, settings, db_conn):
     ctx = dict(
         settings=settings,
         pg=DummyPgPool(db_conn),
-        session=session,
+        client_session=session,
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
     ctx.update(smtp_handler=LogSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
@@ -321,7 +322,7 @@ async def _fix_ses_worker(redis, settings, db_conn):
     ctx = dict(
         settings=settings,
         pg=DummyPgPool(db_conn),
-        session=session,
+        client_session=session,
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
     ctx.update(smtp_handler=SesSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))

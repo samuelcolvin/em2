@@ -200,6 +200,9 @@ class ProcessSMTP:
                 await pg.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
                 await push_all(self.conns, conv_id, transmit=False)
 
+        if images:
+            await self.conns.redis.enqueue_job('get_images', conv_id, images)
+
     async def get_conv(self, msg: EmailMessage) -> Tuple[int, int]:
         conv_actor = None
         # find which conversation this relates to
@@ -242,7 +245,7 @@ class ProcessSMTP:
 
 
 to_remove = 'div.gmail_quote', 'div.gmail_extra'  # 'div.gmail_signature'
-style_url_re = re.compile(r"""\surl\((['"]?)((?:https?:)?//.+?)\1\)""", re.I)
+style_url_re = re.compile(r'\surl\(([\'"]?)((?:https?:)?//.+?)\1\)', re.I)
 html_regexes = [
     (re.compile(r'<br/></div><br/>$', re.M), ''),
     (re.compile(r'<br/>$', re.M), ''),
@@ -287,7 +290,7 @@ def get_smtp_body(msg: EmailMessage, message_id: str, existing_conv: bool) -> Tu
     if not body:
         logger.warning('Unable to find body in email "%s"', message_id)
 
-    images = {}
+    images = set()
     if is_html:
         body, images = parse_html(body, existing_conv)
     return body, is_html, images

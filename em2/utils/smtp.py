@@ -123,8 +123,8 @@ class CopyToTemp:
         content_disposition = file.content_disp
         if file.content_disp == 'attachment':
             content_disposition = f'attachment; filename="{file.name}"'
-        await s3_client.upload(bucket, path, file.content, file.content_type, content_disposition)
-        return file.content_id, f's3://{bucket}/{path}', len(file.content)
+        storage = await s3_client.upload(bucket, path, file.content, file.content_type, content_disposition)
+        return file.content_id, storage, len(file.content)
 
     async def _await_ongoing(self, key, sleep=0.5):
         for i in range(20):

@@ -9,6 +9,7 @@ from pydantic.utils import import_string
 
 from em2.protocol.push import push_actions
 from em2.protocol.smtp import BaseSmtpHandler, smtp_send
+from em2.protocol.smtp.images import get_images
 from em2.settings import Settings
 from em2.ui.views.files import delete_stale_upload
 from em2.utils.db import Connections
@@ -20,7 +21,7 @@ async def startup(ctx):
     ctx.update(
         settings=settings,
         pg=await asyncpg.create_pool_b(dsn=settings.pg_dsn),
-        session=ClientSession(timeout=ClientTimeout(total=10)),
+        client_session=ClientSession(timeout=ClientTimeout(total=10)),
         resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
     )
     smtp_handler_cls: Type[BaseSmtpHandler] = import_string(settings.smtp_handler)
@@ -30,10 +31,10 @@ async def startup(ctx):
 
 
 async def shutdown(ctx):
-    await asyncio.gather(ctx['session'].close(), ctx['pg'].close(), ctx['smtp_handler'].shutdown())
+    await asyncio.gather(ctx['client_session'].close(), ctx['pg'].close(), ctx['smtp_handler'].shutdown())
 
 
-functions = [smtp_send, push_actions, delete_stale_upload, web_push]
+functions = [smtp_send, push_actions, delete_stale_upload, web_push, get_images]
 worker_settings = dict(functions=functions, on_startup=startup, on_shutdown=shutdown)
 
 

@@ -56,10 +56,12 @@ class Settings(BaseSettings):
     s3_temp_bucket: str = None
     s3_temp_bucket_lifetime: timedelta = 'P30D'
     s3_file_bucket: str = None
+    s3_cache_bucket: str = None
     # generate randomly to avoid leaking secrets:
     ses_url_token: str = token_urlsafe()
     aws_sns_signing_host = '.amazonaws.com'
     aws_sns_signing_schema = 'https'
+    max_ref_image_size = 10 * 1024 ** 2
 
     vapid_private_key: str = None
     vapid_sub_email: EmailStr = None

@@ -66,7 +66,7 @@ async def web_push(ctx, actions_data: str):
     if not conns.settings.vapid_private_key or not conns.settings.vapid_sub_email:
         return 'web push not configured'
 
-    session: ClientSession = ctx['session']
+    session: ClientSession = ctx['client_session']
     data = ujson.loads(actions_data)
     participants = data.pop('participants')
     # hack to avoid building json for every user, remove the ending "}" so extra json can be appended

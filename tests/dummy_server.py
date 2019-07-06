@@ -102,9 +102,14 @@ async def vapid_endpoint(request):
     return Response(status=201)
 
 
+async def get_image(request):
+    return Response(body=b'X' * int(request.query.get('size', '0')), content_type='image/png')
+
+
 routes = [
     web.post('/ses_endpoint_url/', ses_endpoint_url),
     web.get('/sns_signing_url.pem', sns_signing_endpoint),
     web.route('*', '/s3_endpoint_url/{bucket}/{key:.*}', s3_endpoint),
     web.post('/vapid/', vapid_endpoint),
+    web.get('/image/', get_image),
 ]

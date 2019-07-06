@@ -201,7 +201,7 @@ create table files (
   storage varchar(255),
   storage_expires timestamptz,
   content_disp ContentDisposition not null,
-  hash varchar(63) not null,
+  hash varchar(65) not null,
   content_id varchar(255) not null,
   name varchar(1023),
   content_type varchar(63),
@@ -209,6 +209,22 @@ create table files (
   unique (conv, content_id)
 );
 create index idx_files_action ON files USING btree (action);
+
+create table image_cache (
+  id bigserial primary key,
+  conv bigint not null references conversations on delete restrict,
+  storage varchar(255),
+  error smallint,
+  created timestamptz not null default current_timestamp,
+  last_access timestamptz,
+
+  url varchar(2047) not null,
+  hash varchar(65),
+  size int,
+  content_type varchar(63),
+  unique (url, conv)
+);
+create index idx_image_cache_created ON image_cache USING btree (created);
 
 ---------------------------------------------------------------------------
 -- search table, this references conversations so must be the same db,   --

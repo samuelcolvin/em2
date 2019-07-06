@@ -407,16 +407,18 @@ async def test_invalid_email_no_date(conns):
     assert exc_info.value.args[0] == 'invalid "Date" header'
 
 
-async def test_image_extraction(conns, db_conn, create_email, send_to_remote):
+async def test_image_extraction(conns, db_conn, create_email, send_to_remote, worker, dummy_server):
     send_id, message_id = send_to_remote
 
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+    url1 = dummy_server.server_name + '/image/?size=123'
+    url2 = dummy_server.server_name + '/image/?size=456'
     msg = create_email(
-        html_body="""
-      <style>body {background: lightblue url("http://www.example.com/back.jpeg")}</style>
+        html_body=f"""
+        <style>body {{background: url("{url1}")}}</style>
         <body>
           <p>This is the body.</p>
-          <img src="https://www.example.com/testing.png" alt="Testing" height="42" width="42">
+          <img src="{url2}" alt="Testing" height="42" width="42">
         </body>
         """,
         headers={'In-Reply-To': message_id},
@@ -425,10 +427,34 @@ async def test_image_extraction(conns, db_conn, create_email, send_to_remote):
     assert 2 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     body = await db_conn.fetchval("select body from actions where act='message:add' order by pk desc limit 1")
     assert body == (
-        '<style>body {background: lightblue url("http://www.example.com/back.jpeg")}</style>\n'
-        '<body>\n'
-        '<p>This is the body.</p>\n'
-        '<img alt="Testing" height="42" src="https://www.example.com/testing.png" width="42"/>\n'
-        '</body>'
+        f'<style>body {{background: url("{url1}")}}</style>\n'
+        f'<body>\n'
+        f'<p>This is the body.</p>\n'
+        f'<img alt="Testing" height="42" src="{url2}" width="42"/>\n'
+        f'</body>'
     )
     assert await db_conn.fetchval("select details->>'prev' from conversations") == 'This is the body.'
+
+    assert await worker.run_check() == 5
+    assert dummy_server.log[0] == 'GET image'
+    assert dummy_server.log[1] == 'GET image'
+    assert dummy_server.log[2].startswith('PUT s3_endpoint_url/s3_cache_bucket.example.com/')
+    assert dummy_server.log[3].startswith('PUT s3_endpoint_url/s3_cache_bucket.example.com/')
+
+    cache_files = await db_conn.fetch('select url, error, size, hash, content_type from image_cache order by size')
+    assert [dict(r) for r in cache_files] == [
+        {
+            'url': url1,
+            'error': None,
+            'size': 123,
+            'hash': '9ed9bf64e48c7b343c6dd5700c3ae57fb517a01bac891fd19c1dab57b23accdc',
+            'content_type': 'image/png',
+        },
+        {
+            'url': url2,
+            'error': None,
+            'size': 456,
+            'hash': '2cd3827451fd0fdf29d52743e49930d28228275cb960a25f3a973fe827389e7f',
+            'content_type': 'image/png',
+        },
+    ]
