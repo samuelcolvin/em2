@@ -74,13 +74,14 @@ class GetHtmlImage(View):
         conv_prefix = self.request.match_info['conv']
         conv_id, last_action = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix)
 
+        # does this query uses indexes correctly?
         action_id, storage, error = await or404(
             self.conn.fetchrow(
                 """
-                select a.id, storage, error
-                from image_cache i
-                join actions a on i.action = a.pk
-                where i.conv=$1 and i.url=$2
+                update image_cache i set last_access=now()
+                from actions a
+                where i.conv=$1 and i.url=$2 and i.action = a.pk
+                returning a.id, storage, error
                 """,
                 conv_id,
                 url,

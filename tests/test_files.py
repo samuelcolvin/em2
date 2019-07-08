@@ -1,4 +1,5 @@
 import base64
+import hashlib
 
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
@@ -279,15 +280,34 @@ async def test_download_cache_image(worker_ctx, factory: Factory, dummy_server, 
     conv = await factory.create_conv()
     action = await db_conn.fetchval('select pk from actions order by id desc limit 1')
 
-    url = dummy_server.server_name + '/image/'
-    await get_images(worker_ctx, conv.id, action, {url})
+    url1 = dummy_server.server_name + '/image/?v=1'
+    url2 = dummy_server.server_name + '/image/?v=2'
+    url3 = dummy_server.server_name + '/image/?v=3'
+    await get_images(worker_ctx, conv.id, action, {url1, url2, url3})
 
-    assert await db_conn.fetchval('select count(*) from image_cache') == 1
+    assert await db_conn.fetchval('select count(*) from image_cache') == 3
+    storage, last_access_b4 = await db_conn.fetchrow('select storage, last_access from image_cache where url=$1', url2)
+    sub_path = hashlib.sha256(url2.encode()).hexdigest()
+    assert storage == f's3://s3_cache_bucket.example.com/{conv.key}/{sub_path}.png'
+    assert last_access_b4 is None
 
-    url_enc = base64.b64encode(url.encode()).decode()
+    url_enc = base64.b64encode(url2.encode()).decode()
     r = await cli.get(factory.url('ui:get-html-image', conv=conv.key, url=url_enc), allow_redirects=False)
     assert r.status == 302, await r.text()
-    assert r.headers['Location'].startswith('https://s3_cache_bucket.example.com/')
+    assert r.headers['Location'].startswith(
+        f'https://s3_cache_bucket.example.com/{conv.key}/{sub_path}.png?AWSAccessKeyId='
+    )
+    last_access_after = await db_conn.fetchval('select last_access from image_cache where url=$1', url2)
+    assert last_access_after == CloseToNow()
+
+
+async def test_download_cache_image_wrong(factory: Factory, cli):
+    await factory.create_user()
+    conv = await factory.create_conv()
+
+    url_enc = base64.b64encode(b'http://www.example.com/testing').decode()
+    obj = await cli.get_json(factory.url('ui:get-html-image', conv=conv.key, url=url_enc), status=404)
+    assert obj == {'message': 'unable to find image'}
 
 
 async def test_download_cache_image_bad(worker_ctx, factory: Factory, dummy_server, db_conn, cli):
