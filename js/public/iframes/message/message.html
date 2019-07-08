@@ -40,9 +40,29 @@
           const main = document.createElement('div')
           main.id = 'main'
           main.innerHTML = event.data.body
-          if (event.data.styles) {
+
+          // extract styles and replace src urls for the following images
+          // * inline attachments eg. URLs start with cid:
+          // * imgs with urls to external resources
+          // * image urls referenced in styles via url(...)
+
+          const replace_cid = src => `${event.data.img_url}/file/${src.substr(4)}`
+          const img_url = url => `${event.data.img_url}/html-image/${btoa(url)}`
+
+          for (let img of main.querySelectorAll('img')) {
+            img.src = img.src.startsWith('cid:') ? replace_cid(img.src) : img_url(img.src)
+          }
+
+          const process_style = el => {
+            main.removeChild(el)
+            return el.innerHTML.replace(/url\((['"]?)((?:https?:)?\/\/.+?)\1\)/gi, (_, __, url) => img_url(url))
+          }
+
+          const styles = [...main.querySelectorAll('style')].map(process_style).join('\n')
+
+          if (styles) {
             const s = document.createElement('style')
-            s.innerHTML = event.data.styles
+            s.innerHTML = styles
             main.appendChild(s)
           }
           document.body.appendChild(main)

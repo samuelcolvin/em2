@@ -58,7 +58,12 @@ iframe_msg_csp = {
     'default-src': ["'none'"],
     'style-src': ["'unsafe-inline'"],
     'font-src': ["'unsafe-inline'"],
-    'img-src': ["'unsafe-inline'", f'https://ui.{main_domain}', f'https://temp.{main_domain}'],
+    'img-src': [
+        "'unsafe-inline'",
+        f'https://ui.{main_domain}',
+        f'https://temp.{main_domain}',
+        f'https://cache.{main_domain}',
+    ],
 }
 details_env = 'BRANCH', 'PULL_REQUEST', 'HEAD', 'CONTEXT', 'REVIEW_ID'
 
