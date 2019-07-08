@@ -181,7 +181,7 @@ async def test_get_images_bad(worker_ctx, factory: Factory, dummy_server, db_con
             dummy_server.server_name + '/status/200/',  # wrong content_type
             dummy_server.server_name + '/status/201/',  # wrong status
             dummy_server.server_name + '/image/?size=700',  # too large
-            'this-is-not-a-valid-url.com/broken',
+            'cid:ii_jxuceprp0',
         },
     )
 
@@ -216,14 +216,7 @@ async def test_get_images_bad(worker_ctx, factory: Factory, dummy_server, db_con
             'hash': None,
             'content_type': None,
         },
-        {
-            'url': 'this-is-not-a-valid-url.com/broken',
-            'storage': None,
-            'error': 1502,
-            'size': None,
-            'hash': None,
-            'content_type': None,
-        },
+        {'url': 'cid:ii_jxuceprp0', 'storage': None, 'error': 1502, 'size': None, 'hash': None, 'content_type': None},
     ]
 
 

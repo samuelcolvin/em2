@@ -419,6 +419,7 @@ async def test_image_extraction(conns, db_conn, create_email, send_to_remote, wo
         <body>
           <p>This is the body.</p>
           <img src="{url2}" alt="Testing" height="42" width="42">
+          <img src="cid:foobar" alt="embedded attachment">
         </body>
         """,
         headers={'In-Reply-To': message_id},
@@ -431,6 +432,7 @@ async def test_image_extraction(conns, db_conn, create_email, send_to_remote, wo
         f'<body>\n'
         f'<p>This is the body.</p>\n'
         f'<img alt="Testing" height="42" src="{url2}" width="42"/>\n'
+        f'<img alt="embedded attachment" src="cid:foobar"/>\n'
         f'</body>'
     )
     assert await db_conn.fetchval("select details->>'prev' from conversations") == 'This is the body.'
