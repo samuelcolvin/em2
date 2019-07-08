@@ -15,6 +15,10 @@ __all__ = ['get_images']
 
 
 async def get_images(ctx, conv_id: int, action_pk: int, image_urls: Set[str]):
+    settings: Settings = ctx['settings']
+    if not all((settings.aws_secret_key, settings.aws_access_key, settings.s3_cache_bucket)):  # pragma: no cover
+        return "Storage keys not set, can't download images"
+
     to_get = []
 
     async with ctx['pg'].acquire() as conn:
@@ -45,7 +49,6 @@ async def get_images(ctx, conv_id: int, action_pk: int, image_urls: Set[str]):
         # nothing to do
         return
 
-    settings: Settings = ctx['settings']
     session = ctx['client_session']
     to_create = await asyncio.gather(*[get_image(u, existing, conv_key, session, settings) for u, existing in to_get])
 

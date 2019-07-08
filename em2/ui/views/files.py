@@ -7,6 +7,7 @@ from atoolbox import JsonErrors, json_response, parse_request_query
 from pydantic import BaseModel, conint, constr, validator
 
 from em2.core import get_conv_for_user
+from em2.settings import Settings
 from em2.utils.datetime import utcnow
 from em2.utils.db import or404
 from em2.utils.smtp import CopyToTemp
@@ -62,8 +63,8 @@ class GetFile(View):
 
 class GetHtmlImage(View):
     async def call(self):
-        s = self.settings
-        if not all((s.aws_secret_key, s.aws_access_key, s.s3_temp_bucket)):  # pragma: no cover
+        s: Settings = self.settings
+        if not all((s.aws_secret_key, s.aws_access_key, s.s3_cache_bucket)):  # pragma: no cover
             raise HTTPNotImplemented(text="Storage keys not set, can't display images")
 
         try:
