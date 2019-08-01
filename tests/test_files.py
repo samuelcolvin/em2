@@ -1,6 +1,10 @@
-from pytest_toolbox.comparison import AnyInt, RegexStr
+import base64
+import hashlib
+
+from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
 from em2.core import ActionModel, ActionTypes
+from em2.protocol.smtp.images import get_images
 from em2.ui.views.files import delete_stale_upload
 
 from .conftest import Factory
@@ -135,3 +139,190 @@ async def test_message_with_attachment_not_uploaded(cli, factory: Factory):
     data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': [content_id]}
     r = await cli.post_json(factory.url('ui:act', conv=conv.key), data, status=400)
     assert await r.json() == {'message': 'file not uploaded'}
+
+
+async def test_get_images_ok(worker_ctx, factory: Factory, dummy_server, db_conn):
+    await factory.create_user()
+    conv = await factory.create_conv()
+    action = await db_conn.fetchval('select pk from actions order by id desc limit 1')
+
+    url = dummy_server.server_name + '/image/'
+    await get_images(worker_ctx, conv.id, action, {url})
+
+    assert len(dummy_server.log) == 2
+    assert dummy_server.log[0] == 'GET image'
+    assert await db_conn.fetchval('select count(*) from image_cache') == 1
+    r = dict(await db_conn.fetchrow('select * from image_cache'))
+    assert r == {
+        'id': AnyInt(),
+        'action': action,
+        'conv': conv.id,
+        'storage': RegexStr(f's3://s3_cache_bucket.example.com/{conv.key}/.+?.png'),
+        'error': None,
+        'created': CloseToNow(),
+        'last_access': None,
+        'url': url,
+        'hash': '5b09369749b5240d619e70883c4c89030708917c1b2f5f81e2dc1094c451fff9',
+        'size': 10,
+        'content_type': 'image/png',
+    }
+
+
+async def test_get_images_bad(worker_ctx, factory: Factory, dummy_server, db_conn):
+    await factory.create_user()
+    conv = await factory.create_conv()
+    action = await db_conn.fetchval('select pk from actions order by id desc limit 1')
+
+    await get_images(
+        worker_ctx,
+        conv.id,
+        action,
+        {
+            dummy_server.server_name + '/status/200/',  # wrong content_type
+            dummy_server.server_name + '/status/201/',  # wrong status
+            dummy_server.server_name + '/image/?size=700',  # too large
+            'cid:ii_jxuceprp0',
+        },
+    )
+
+    assert len(dummy_server.log) == 3
+    # assert dummy_server.log[0] == 'GET image'
+    assert await db_conn.fetchval('select count(*) from image_cache') == 4
+    cache_files = await db_conn.fetch(
+        'select url, storage, error, size, hash, content_type from image_cache order by error'
+    )
+    assert [dict(r) for r in cache_files] == [
+        {
+            'url': dummy_server.server_name + '/status/201/',
+            'storage': None,
+            'error': 201,
+            'size': None,
+            'hash': None,
+            'content_type': None,
+        },
+        {
+            'url': dummy_server.server_name + '/image/?size=700',
+            'storage': None,
+            'error': 1413,
+            'size': None,
+            'hash': None,
+            'content_type': None,
+        },
+        {
+            'url': dummy_server.server_name + '/status/200/',
+            'storage': None,
+            'error': 1415,
+            'size': None,
+            'hash': None,
+            'content_type': None,
+        },
+        {'url': 'cid:ii_jxuceprp0', 'storage': None, 'error': 1502, 'size': None, 'hash': None, 'content_type': None},
+    ]
+
+
+async def test_get_images_exist_on_conv(worker_ctx, factory: Factory, dummy_server, db_conn):
+    await factory.create_user()
+    conv = await factory.create_conv()
+    action = await db_conn.fetchval('select pk from actions order by id desc limit 1')
+
+    url = dummy_server.server_name + '/image/'
+    await get_images(worker_ctx, conv.id, action, {url})
+    assert len(dummy_server.log) == 2
+
+    await get_images(worker_ctx, conv.id, action, {url})
+    assert len(dummy_server.log) == 2
+    assert await db_conn.fetchval('select count(*) from image_cache') == 1
+
+
+async def test_get_images_exist_elsewhere(worker_ctx, factory: Factory, dummy_server, db_conn):
+    await factory.create_user()
+    conv1 = await factory.create_conv()
+    action1 = await db_conn.fetchval('select pk from actions order by id desc limit 1')
+
+    url = dummy_server.server_name + '/image/'
+    await get_images(worker_ctx, conv1.id, action1, {url})
+    assert len(dummy_server.log) == 2
+
+    conv2 = await factory.create_conv()
+    action2 = await db_conn.fetchval('select pk from actions order by id desc limit 1')
+    await get_images(worker_ctx, conv2.id, action2, {url})
+    assert len(dummy_server.log) == 3  # got the image again, matching hash
+    assert await db_conn.fetchval('select count(*) from image_cache') == 2
+    cache_files = await db_conn.fetch('select url, conv, error, size, hash from image_cache order by conv')
+
+    assert [dict(r) for r in cache_files] == [
+        {
+            'url': url,
+            'conv': conv1.id,
+            'error': None,
+            'size': 10,
+            'hash': '5b09369749b5240d619e70883c4c89030708917c1b2f5f81e2dc1094c451fff9',
+        },
+        {
+            'url': url,
+            'conv': conv2.id,
+            'error': None,
+            'size': 10,
+            'hash': '5b09369749b5240d619e70883c4c89030708917c1b2f5f81e2dc1094c451fff9',
+        },
+    ]
+
+
+async def test_download_cache_image(worker_ctx, factory: Factory, dummy_server, db_conn, cli):
+    await factory.create_user()
+    conv = await factory.create_conv()
+    action = await db_conn.fetchval('select pk from actions order by id desc limit 1')
+
+    url1 = dummy_server.server_name + '/image/?v=1'
+    url2 = dummy_server.server_name + '/image/?v=2'
+    url3 = dummy_server.server_name + '/image/?v=3'
+    await get_images(worker_ctx, conv.id, action, {url1, url2, url3})
+
+    assert await db_conn.fetchval('select count(*) from image_cache') == 3
+    storage, last_access_b4 = await db_conn.fetchrow('select storage, last_access from image_cache where url=$1', url2)
+    sub_path = hashlib.sha256(url2.encode()).hexdigest()
+    assert storage == f's3://s3_cache_bucket.example.com/{conv.key}/{sub_path}.png'
+    assert last_access_b4 is None
+
+    url_enc = base64.b64encode(url2.encode()).decode()
+    r = await cli.get(factory.url('ui:get-html-image', conv=conv.key, url=url_enc), allow_redirects=False)
+    assert r.status == 302, await r.text()
+    assert r.headers['Location'].startswith(
+        f'https://s3_cache_bucket.example.com/{conv.key}/{sub_path}.png?AWSAccessKeyId='
+    )
+    last_access_after = await db_conn.fetchval('select last_access from image_cache where url=$1', url2)
+    assert last_access_after == CloseToNow()
+
+
+async def test_download_cache_image_wrong(factory: Factory, cli):
+    await factory.create_user()
+    conv = await factory.create_conv()
+
+    url_enc = base64.b64encode(b'http://www.example.com/testing').decode()
+    obj = await cli.get_json(factory.url('ui:get-html-image', conv=conv.key, url=url_enc), status=404)
+    assert obj == {'message': 'unable to find image'}
+
+
+async def test_download_cache_image_bad(worker_ctx, factory: Factory, dummy_server, db_conn, cli):
+    await factory.create_user()
+    conv = await factory.create_conv()
+    action = await db_conn.fetchval('select pk from actions order by id desc limit 1')
+
+    url = dummy_server.server_name + '/status/502/'
+    await get_images(worker_ctx, conv.id, action, {url})
+
+    assert await db_conn.fetchval('select count(*) from image_cache') == 1
+
+    url_enc = base64.b64encode(url.encode()).decode()
+    r = await cli.get(factory.url('ui:get-html-image', conv=conv.key, url=url_enc))
+    text = await r.text()
+    assert r.status == 200, text
+    assert text == 'unable to download image, response: 502'
+
+
+async def test_download_cache_image_invalid_url(factory: Factory, cli):
+    await factory.create_user()
+    conv = await factory.create_conv()
+
+    obj = await cli.get_json(factory.url('ui:get-html-image', conv=conv.key, url='foobar'), status=400)
+    assert obj == {'message': 'invalid url'}

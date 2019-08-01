@@ -169,7 +169,7 @@ create trigger action_insert before insert on actions for each row execute proce
 
 create table sends (
   id bigserial primary key,
-  action bigint references actions not null,
+  action bigint not null references actions,
   outbound boolean not null default false,
   node varchar(255),  -- null for smtp
   ref varchar(500),
@@ -178,37 +178,54 @@ create table sends (
   unique (action, node),
   unique (action, ref)
 );
-create index idx_sends_ref ON sends USING btree (outbound, node, ref);
+create index idx_sends_ref on sends using btree (outbound, node, ref);
 
 create table send_events (
   id bigserial primary key,
-  send bigint references sends not null,
+  send bigint not null references sends,
   status varchar(100),
   ts timestamptz not null default current_timestamp,
   user_ids int[],
   extra json
 );
-create index idx_send_events_send ON send_events USING btree (send);
-create index idx_send_events_user_ids ON send_events USING gin (user_ids);
+create index idx_send_events_send on send_events using btree (send);
+create index idx_send_events_user_ids on send_events using gin (user_ids);
 
 create type ContentDisposition as enum ('attachment', 'inline');
 
 create table files (
   id bigserial primary key,
   conv bigint not null references conversations on delete restrict,
-  action bigint references actions not null,
+  action bigint not null references actions,
   send bigint references sends,
   storage varchar(255),
   storage_expires timestamptz,
   content_disp ContentDisposition not null,
-  hash varchar(63) not null,
+  hash varchar(65) not null,
   content_id varchar(255) not null,
   name varchar(1023),
   content_type varchar(63),
   size bigint,
   unique (conv, content_id)
 );
-create index idx_files_action ON files USING btree (action);
+create index idx_files_action on files using btree (action);
+
+create table image_cache (
+  id bigserial primary key,
+  conv bigint not null references conversations on delete restrict,
+  action bigint not null references actions,
+  storage varchar(255),
+  error smallint,
+  created timestamptz not null default current_timestamp,
+  last_access timestamptz,
+
+  url varchar(2047) not null,
+  hash varchar(65),
+  size int,
+  content_type varchar(63),
+  unique (url, conv)
+);
+create index idx_image_cache_created on image_cache using btree (created);
 
 ---------------------------------------------------------------------------
 -- search table, this references conversations so must be the same db,   --

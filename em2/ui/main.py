@@ -23,7 +23,7 @@ from .views.conversations import (
     Search,
     SetConvFlag,
 )
-from .views.files import GetFile, UploadFile
+from .views.files import GetFile, GetHtmlImage, UploadFile
 from .views.labels import AddRemoveLabel, LabelBread
 from .views.realtime import WebPushSubscribe, WebPushUnsubscribe, websocket
 
@@ -55,7 +55,8 @@ async def create_app_ui(settings=None):
         web.post(s + f'conv/{conv_match}/set-label/', AddRemoveLabel.view(), name='add-remove-label'),
         *LabelBread.routes(s + 'labels/', name='labels'),
         # no trailing slash so we capture everything and deal with weird/ugly content ids
-        web.get(s + fr'conv/{conv_match}/get-image/{{content_id:.*}}', GetFile.view(), name='get-file'),
+        web.get(s + fr'conv/{conv_match}/file/{{content_id:.*}}', GetFile.view(), name='get-file'),
+        web.get(s + fr'conv/{conv_match}/html-image/{{url:.*}}', GetHtmlImage.view(), name='get-html-image'),
         web.get(s + fr'conv/{conv_match}/upload-file/', UploadFile.view(), name='upload-file'),
         web.get(s + 'search/', Search.view(), name='search'),
         web.get(s + 'ws/', websocket, name='websocket'),

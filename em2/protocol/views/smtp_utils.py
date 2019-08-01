@@ -88,11 +88,10 @@ inline_regex = re.compile(' src')
 
 
 class ProcessSMTP:
-    __slots__ = 'conns', 'conn'
+    __slots__ = ('conns',)
 
     def __init__(self, conns: Connections):
         self.conns: Connections = conns
-        self.conn: BuildPgConnection = conns.main
 
     async def run(self, msg: EmailMessage, recipients: Set[str], storage: str, spam: bool, warnings: dict):
         # TODO deal with non multipart
@@ -118,10 +117,12 @@ class ProcessSMTP:
         actor_id = await get_create_user(self.conns, actor_email, UserTypes.remote_other)
 
         existing_conv = bool(conv_id)
-        body, is_html = get_smtp_body(msg, message_id, existing_conv)
-        async with self.conn.transaction():
+        body, is_html, images = self.get_smtp_body(msg, message_id, existing_conv)
+        files = find_smtp_files(msg)
+        pg = self.conns.main
+        async with pg.transaction():
             if existing_conv:
-                existing_prts = await self.conn.fetch(
+                existing_prts = await pg.fetch(
                     'select email from participants p join users u on p.user_id=u.id where conv=$1', conv_id
                 )
                 existing_prts = {r[0] for r in existing_prts}
@@ -147,15 +148,15 @@ class ProcessSMTP:
                     actions=actions,
                     spam=spam,
                     warnings=warnings,
-                    files=find_smtp_files(msg),
+                    files=files,
                 )
                 assert action_ids
 
                 all_action_ids += action_ids
-                await self.conn.execute(
+                await pg.execute(
                     'update actions set ts=$1 where conv=$2 and id=any($3)', timestamp, conv_id, all_action_ids
                 )
-                send_id, add_action_pk = await self.conn.fetchrow(
+                send_id, add_action_pk = await pg.fetchrow(
                     """
                     insert into sends (action, ref, complete, storage)
                     (select pk, $1, true, $2 from actions where conv=$3 and id=any($4) and act='message:add' limit 1)
@@ -166,7 +167,7 @@ class ProcessSMTP:
                     conv_id,
                     action_ids,
                 )
-                await self.conn.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
+                await pg.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
                 await push_multiple(self.conns, conv_id, action_ids, transmit=False)
             else:
                 conv = CreateConvModel(
@@ -184,9 +185,9 @@ class ProcessSMTP:
                     ts=timestamp,
                     spam=spam,
                     warnings=warnings,
-                    files=find_smtp_files(msg),
+                    files=files,
                 )
-                send_id, add_action_pk = await self.conn.fetchrow(
+                send_id, add_action_pk = await pg.fetchrow(
                     """
                     insert into sends (action, ref, complete, storage)
                     (select pk, $1, true, $2 from actions where conv=$3 and act='message:add' limit 1)
@@ -196,15 +197,18 @@ class ProcessSMTP:
                     storage,
                     conv_id,
                 )
-                await self.conn.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
+                await pg.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
                 await push_all(self.conns, conv_id, transmit=False)
+
+        if images:
+            await self.conns.redis.enqueue_job('get_images', conv_id, add_action_pk, images)
 
     async def get_conv(self, msg: EmailMessage) -> Tuple[int, int]:
         conv_actor = None
         # find which conversation this relates to
         in_reply_to = msg['In-Reply-To']
         if in_reply_to:
-            conv_actor = await self.conn.fetchrow(
+            conv_actor = await self.conns.main.fetchrow(
                 """
                 select a.conv, a.actor from sends
                 join actions a on sends.action = a.pk
@@ -220,7 +224,7 @@ class ProcessSMTP:
             # try references instead to try and get conv_id
             ref_msg_ids = {self.clean_msg_id(msg_id) for msg_id in references.split(' ') if msg_id}
             if ref_msg_ids:
-                conv_actor = await self.conn.fetchrow(
+                conv_actor = await self.conns.main.fetchrow(
                     """
                     select a.conv, a.actor from sends
                     join actions a on sends.action = a.pk
@@ -239,30 +243,26 @@ class ProcessSMTP:
             msg_id = msg_id.split('@', 1)[0]
         return msg_id
 
+    def get_smtp_body(self, msg: EmailMessage, message_id: str, existing_conv: bool) -> Tuple[str, bool, Set[str]]:
+        m: EmailMessage = msg.get_body(preferencelist=('html', 'plain'))
+        if not m:
+            raise RuntimeError('email with no content')
 
-to_remove = 'div.gmail_quote', 'div.gmail_extra'  # 'div.gmail_signature'
-html_regexes = [
-    (re.compile(r'<br/></div><br/>$', re.M), ''),
-    (re.compile(r'<br/>$', re.M), ''),
-    (re.compile(r'\n{2,}'), '\n'),
-]
+        body = m.get_content()
+        is_html = m.get_content_type() == 'text/html'
+        if is_html and m['Content-Transfer-Encoding'] == 'quoted-printable':
+            # are there any other special characters to remove?
+            body = quopri.decodestring(body.replace('\xa0', '')).decode()
 
+        if not body:
+            logger.warning('Unable to find body in email "%s"', message_id)
 
-def get_smtp_body(msg: EmailMessage, message_id: str, existing_conv: bool) -> Tuple[str, bool]:
-    m: EmailMessage = msg.get_body(preferencelist=('html', 'plain'))
-    if not m:
-        raise RuntimeError('email with no content')
+        images = set()
+        if is_html:
+            body, images = self.parse_html(body, existing_conv)
+        return body, is_html, images
 
-    body = m.get_content()
-    is_html = m.get_content_type() == 'text/html'
-    if is_html and m['Content-Transfer-Encoding'] == 'quoted-printable':
-        # are there any other special characters to remove?
-        body = quopri.decodestring(body.replace('\xa0', '')).decode()
-
-    if not body:
-        logger.warning('Unable to find body in email "%s"', message_id)
-
-    if is_html:
+    def parse_html(self, body: str, existing_conv: bool) -> Tuple[str, Set[str]]:
         soup = BeautifulSoup(body, 'html.parser')
 
         if existing_conv:
@@ -271,8 +271,33 @@ def get_smtp_body(msg: EmailMessage, message_id: str, existing_conv: bool) -> Tu
                 for el in soup.select(el_selector):
                     el.decompose()
 
+        # find images
+        images = [img['src'] for img in soup.select('img') if src_url_re.match(img['src'])]
+
+        for style in soup.select('style'):
+            images += [m.group(2) for m in style_url_re.finditer(style.string)]
+
+        # do it like this as we want to take the first max_ref_image_count unique images
+        image_set = set()
+        for image in images:
+            if image not in image_set:
+                image_set.add(image)
+                if len(image_set) >= self.conns.settings.max_ref_image_count:
+                    break
+
         # body = soup.prettify()
         body = str(soup)
         for regex, rep in html_regexes:
             body = regex.sub(rep, body)
-    return body, is_html
+
+        return body, image_set
+
+
+to_remove = 'div.gmail_quote', 'div.gmail_extra'  # 'div.gmail_signature'
+style_url_re = re.compile(r'\surl\(([\'"]?)((?:https?:)?//.+?)\1\)', re.I)
+src_url_re = re.compile(r'(?:https?:)?//', re.I)
+html_regexes = [
+    (re.compile(r'<br/></div><br/>$', re.M), ''),
+    (re.compile(r'<br/>$', re.M), ''),
+    (re.compile(r'\n{2,}'), '\n'),
+]

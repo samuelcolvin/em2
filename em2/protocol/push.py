@@ -54,7 +54,7 @@ class Pusher:
         self.settings: Settings = ctx['settings']
         self.job_try = ctx['job_try']
         self.auth_fernet = Fernet(self.settings.auth_key)
-        self.session: ClientSession = ctx['session']
+        self.session: ClientSession = ctx['client_session']
         self.pg: Pool = ctx['pg']
         self.resolver: aiodns.DNSResolver = ctx['resolver']
         self.redis: ArqRedis = ctx['redis']

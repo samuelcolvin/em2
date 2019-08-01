@@ -54,7 +54,7 @@ export class Requests {
 
 async function request_version () {
   try {
-    const r = await fetch(`/version.txt?v=${new Date().getTime()}`)
+    const r = await fetch(`/version.txt?v=${Math.round(new Date().getTime() / 1000)}`)
     const text = await r.text()
     return text.replace('\n', '')
   } catch (error) {

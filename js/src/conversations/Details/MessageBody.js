@@ -11,7 +11,12 @@ class Html extends React.Component {
   on_message = event => {
     if (event.origin === 'null' && this.props.msg.first_action === event.data.iframe_id) {
       if (event.data.loaded) {
-        this.iframe_ref.current.contentWindow.postMessage({body: this.build_body()}, '*')
+        // TODO, how can body be empty?
+        const data = {
+          body: this.props.msg.body || '',
+          img_url: make_url('ui', `/${this.props.session_id}/conv/${this.props.conv}`),
+        }
+        this.iframe_ref.current.contentWindow.postMessage(data, '*')
       } else if (event.data.height) {
         // do this rather than keeping height in state to avoid rendering the iframe multiple times
         this.iframe_ref.current.style.height = (event.data.height + 10) + 'px'
@@ -34,14 +39,6 @@ class Html extends React.Component {
 
   componentWillUnmount () {
     window.removeEventListener('message', this.on_message)
-  }
-
-  // TODO, how can body be empty?
-  build_body = () => (this.props.msg.body || '').replace(/src="cid:(.+?)"/g, this.replace_id)
-
-  replace_id = (m, cid) => {
-    const url = make_url('ui', `/${this.props.session_id}/conv/${this.props.conv}/get-image/${cid}`)
-    return `src="${url}"`
   }
 
   shouldComponentUpdate (nextProps) {

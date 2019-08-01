@@ -48,9 +48,10 @@ class S3Client:
     async def upload(
         self, bucket: str, path: str, content: bytes, content_type: Optional[str], content_disposition: Optional[str]
     ):
-        return await self._client.put_object(
+        await self._client.put_object(
             Bucket=bucket, Key=path, Body=content, ContentType=content_type, ContentDisposition=content_disposition
         )
+        return f's3://{bucket}/{path}'
 
     async def delete(self, bucket: str, path: str):
         return await self._client.delete_object(Bucket=bucket, Key=path)

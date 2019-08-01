@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     ses_url_token: str = token_urlsafe()
     aws_sns_signing_host = '.amazonaws.com'
     aws_sns_signing_schema = 'https'
+    s3_cache_bucket: str = None
+    max_ref_image_size = 10 * 1024 ** 2
+    max_ref_image_count = 20
 
     vapid_private_key: str = None
     vapid_sub_email: EmailStr = None
