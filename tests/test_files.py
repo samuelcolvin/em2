@@ -317,7 +317,7 @@ async def test_download_cache_image_bad(worker_ctx, factory: Factory, dummy_serv
     r = await cli.get(factory.url('ui:get-html-image', conv=conv.key, url=url_enc))
     text = await r.text()
     assert r.status == 200, text
-    assert text == 'unable to download image, response 502'
+    assert text == 'unable to download image, response: 502'
 
 
 async def test_download_cache_image_invalid_url(factory: Factory, cli):

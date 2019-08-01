@@ -75,7 +75,7 @@ class GetHtmlImage(View):
         conv_prefix = self.request.match_info['conv']
         conv_id, last_action = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix)
 
-        # does this query uses indexes correctly?
+        # does this query use indexes correctly?
         action_id, storage, error = await or404(
             self.conn.fetchrow(
                 """
@@ -94,7 +94,7 @@ class GetHtmlImage(View):
 
         if error:
             # 200, but not an image should show image error in browser
-            raise HTTPOk(text=f'unable to download image, response {error}')
+            raise HTTPOk(text=f'unable to download image, response: {error}')
 
         _, bucket, path = parse_storage_uri(storage)
         url = S3(s).signed_download_url(bucket, path)
