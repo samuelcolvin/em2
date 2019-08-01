@@ -277,7 +277,7 @@ class ProcessSMTP:
         for style in soup.select('style'):
             images += [m.group(2) for m in style_url_re.finditer(style.string)]
 
-        # do it like this as we want take the first max_ref_image_count unique images
+        # do it like this as we want to take the first max_ref_image_count unique images
         image_set = set()
         for image in images:
             if image not in image_set:
@@ -295,7 +295,7 @@ class ProcessSMTP:
 
 to_remove = 'div.gmail_quote', 'div.gmail_extra'  # 'div.gmail_signature'
 style_url_re = re.compile(r'\surl\(([\'"]?)((?:https?:)?//.+?)\1\)', re.I)
-src_url_re = re.compile('(?:https?:)?//')
+src_url_re = re.compile(r'(?:https?:)?//', re.I)
 html_regexes = [
     (re.compile(r'<br/></div><br/>$', re.M), ''),
     (re.compile(r'<br/>$', re.M), ''),

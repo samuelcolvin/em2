@@ -3,7 +3,7 @@ import hashlib
 import logging
 from typing import Optional, Set
 
-from aiohttp import ClientError, InvalidURL
+from aiohttp import ClientError, ClientSession, InvalidURL
 from buildpg import Values
 
 from em2.settings import Settings
@@ -49,7 +49,7 @@ async def get_images(ctx, conv_id: int, action_pk: int, image_urls: Set[str]):
         # nothing to do
         return
 
-    session = ctx['client_session']
+    session: ClientSession = ctx['client_session']
     to_create = await asyncio.gather(*[get_image(u, existing, conv_key, session, settings) for u, existing in to_get])
 
     async with ctx['pg'].acquire() as conn:
@@ -75,7 +75,9 @@ image_extensions = {
 }
 
 
-async def get_image(url: str, existing: Optional[dict], conv_key: str, session, settings: Settings) -> dict:
+async def get_image(
+    url: str, existing: Optional[dict], conv_key: str, session: ClientSession, settings: Settings
+) -> dict:
     def _error(error: int) -> dict:
         return {'url': url, 'error': error, 'storage': None, 'size': None, 'hash': None, 'content_type': None}
 
