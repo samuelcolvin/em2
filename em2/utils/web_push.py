@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import hashlib
+import logging
 import re
 import time
 from typing import Optional
@@ -17,6 +18,8 @@ from pydantic import BaseModel, UrlStr
 from em2.core import get_flag_counts
 from em2.settings import Settings
 from em2.utils.db import Connections
+
+logger = logging.getLogger('em2.web_push')
 
 
 def web_push_user_key_prefix(user_id):
@@ -110,15 +113,15 @@ async def _sub_post(conns: Connections, session: ClientSession, sub: Subscriptio
         text = await r.text()
     if r.status == 410:
         await unsubscribe(conns, sub, user_id)
-    elif r.status == 403 and text == 'invalid JWT provided':
+    elif r.status == 403 and text == 'invalid JWT provided\n':
+        # seems to happen with https://fcm.googleapis.com/fcm/send/...
         await unsubscribe(conns, sub, user_id)
     elif r.status != 201:
-        from pprint import pformat
-
-        # details of errors here
-        print(
-            f'unexpected response from webpush {r.status}\nheaders: {pformat(dict(r.headers))}\ntext: {text}',
-            flush=True,
+        logger.error(
+            f'unexpected response from webpush %s: %s',
+            r.status,
+            repr(text[:100]),
+            extra={'headers': dict(r.headers), 'text': text, 'url': sub.endpoint},
         )
         raise RequestError(r.status, sub.endpoint, text=text)
 
