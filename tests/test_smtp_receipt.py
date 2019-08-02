@@ -122,15 +122,15 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
             'conv': conv_key,
             'act': 'participant:add',
             'ts': '2032-01-01T12:00:00+00:00',
-            'actor': 'sender@remote.com',
-            'participant': 'sender@remote.com',
+            'actor': 'sender@example.net',
+            'participant': 'sender@example.net',
         },
         {
             'id': 2,
             'conv': conv_key,
             'act': 'participant:add',
             'ts': '2032-01-01T12:00:00+00:00',
-            'actor': 'sender@remote.com',
+            'actor': 'sender@example.net',
             'participant': 'testing-1@example.com',
         },
         {
@@ -138,7 +138,7 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
             'conv': conv_key,
             'act': 'message:add',
             'ts': '2032-01-01T12:00:00+00:00',
-            'actor': 'sender@remote.com',
+            'actor': 'sender@example.net',
             'body': 'This is the <b>message</b>.',
             'msg_format': 'html',
             'files': [
@@ -165,7 +165,7 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
             'conv': conv_key,
             'act': 'conv:publish',
             'ts': '2032-01-01T12:00:00+00:00',
-            'actor': 'sender@remote.com',
+            'actor': 'sender@example.net',
             'body': 'Test Subject',
         },
     ]
@@ -357,7 +357,7 @@ async def test_reply_attachment(factory, conns, db_conn, create_email, send_to_r
         'conv': factory.conv.key,
         'act': 'message:add',
         'ts': '2032-01-01T12:00:00+00:00',
-        'actor': 'sender@remote.com',
+        'actor': 'sender@example.net',
         'body': 'this is a reply',
         'msg_format': 'html',
         'files': [
@@ -385,7 +385,7 @@ async def test_invalid_email_from(conns):
 
 async def test_invalid_email_msg_id(conns):
     msg = EmailMessage()
-    msg['From'] = 'other@remote.com'
+    msg['From'] = 'other@example.net'
     msg['To'] = 'testing@example.com'
     msg.set_content('testing')
 
@@ -396,9 +396,9 @@ async def test_invalid_email_msg_id(conns):
 
 async def test_invalid_email_no_date(conns):
     msg = EmailMessage()
-    msg['From'] = 'other@remote.com'
+    msg['From'] = 'other@example.net'
     msg['To'] = 'testing@example.com'
-    msg['Message-ID'] = 'testing@remote.com'
+    msg['Message-ID'] = 'testing@example.net'
     # msg['Date'] = 'Thu, 01 Jan 2032 12:00:00 -0000'
     msg.set_content('testing')
 

@@ -23,7 +23,7 @@ from em2.utils.web import MakeUrl  # noqa: E402
 email = 'robot@example.com'
 password = 'testing'
 
-other_users = [{'email': 'testing@example.com'}, {'email': 'different@remote.com'}]
+other_users = [{'email': 'testing@example.com'}, {'email': 'different@example.net'}]
 
 
 class Client:

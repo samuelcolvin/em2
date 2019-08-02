@@ -505,7 +505,7 @@ async def test_participant_add_many(factory: Factory, db_conn):
 async def test_publish_remote(factory: Factory, redis, db_conn, worker: Worker, caplog):
     caplog.set_level(logging.INFO)
     await factory.create_user()
-    await factory.create_conv(participants=[{'email': 'whatever@remote.com'}], publish=True)
+    await factory.create_conv(participants=[{'email': 'whatever@example.net'}], publish=True)
     assert 4 == await db_conn.fetchval('select count(*) from actions')
     await worker.async_run()
     assert (worker.jobs_complete, worker.jobs_failed, worker.jobs_retried) == (3, 0, 0)
@@ -515,7 +515,7 @@ async def test_publish_remote(factory: Factory, redis, db_conn, worker: Worker, 
     assert push_job.result == 'retry=0 smtp=1 em2=0'
 
     log = '\n'.join(r.message for r in caplog.records)
-    assert "testing-1@example.com > whatever@remote.com\n  Subject: Test Subject" in log
+    assert "testing-1@example.com > whatever@example.net\n  Subject: Test Subject" in log
 
 
 async def test_publish_seen(factory: Factory, db_conn, conns):

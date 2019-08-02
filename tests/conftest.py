@@ -342,7 +342,7 @@ async def _fix_ses_worker(redis, settings, db_conn):
 @pytest.fixture(name='send_to_remote')
 async def _fix_send_to_remote(factory: Factory, worker: Worker, db_conn):
     await factory.create_user()
-    await factory.create_conv(participants=[{'email': 'sender@remote.com'}], publish=True)
+    await factory.create_conv(participants=[{'email': 'sender@example.net'}], publish=True)
     assert 4 == await db_conn.fetchval('select count(*) from actions')
     await worker.async_run()
     assert (worker.jobs_complete, worker.jobs_failed, worker.jobs_retried) == (3, 0, 0)
@@ -395,11 +395,11 @@ def _fix_attachment():
 def _fix_create_email():
     def run(
         subject='Test Subject',
-        e_from='sender@remote.com',
+        e_from='sender@example.net',
         to=('testing-1@example.com',),
         text_body='this is a message.',
         html_body='this is an html <b>message</b>.',
-        message_id='message-id@remote.com',
+        message_id='message-id@example.net',
         attachments=(),
         headers=None,
     ):
@@ -435,7 +435,7 @@ def _fix_create_ses_email(dummy_server, sns_data, create_email):
         to=('testing-1@example.com',),
         key='foobar',
         headers=None,
-        message_id='message-id@remote.com',
+        message_id='message-id@example.net',
         receipt_extra=None,
         **kwargs,
     ):

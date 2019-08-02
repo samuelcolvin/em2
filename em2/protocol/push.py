@@ -62,30 +62,30 @@ class Pusher:
 
     async def split_destinations(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
         results = await asyncio.gather(*[self.resolve_user(*u) for u in users])
-        retry_users, smtp, em2 = set(), set(), set()
+        retry_users, smtp_addresses, em2_nodes = set(), set(), set()
         for node, email in filter(None, results):
             if node == RETRY:
                 retry_users.add((email, False))
             elif node == SMTP:
-                smtp.add(email)
+                smtp_addresses.add(email)
             else:
-                em2.add(node)
+                em2_nodes.add(node)
 
         if retry_users:
             await self.redis.enqueue_job(
                 'push_actions', actions_data, retry_users, _job_try=self.job_try + 1, _defer_by=self.job_try * 10
             )
         actions = json.loads(actions_data)['actions']
-        if smtp:
-            logger.info('%d smtp emails to send', len(smtp))
+        if smtp_addresses:
+            logger.info('%d smtp emails to send', len(smtp_addresses))
             # "seen" actions don't get sent via SMTP
             # TODO anything else to skip here?
             if not all(a['act'] == ActionTypes.seen for a in actions):
                 await self.redis.enqueue_job('smtp_send', actions)
-        else:
-            logger.info('%d em2 nodes to push action to', len(em2))
+        if em2_nodes:
+            logger.info('%d em2 nodes to push action to', len(em2_nodes))
             raise NotImplementedError('pushing to other em2 platforms not yet supported')
-        return f'retry={len(retry_users)} smtp={len(smtp)} em2={len(em2)}'
+        return f'retry={len(retry_users)} smtp={len(smtp_addresses)} em2={len(em2_nodes)}'
 
     async def resolve_user(self, email: str, current_user_type: UserTypes):
         if current_user_type == UserTypes.new:
