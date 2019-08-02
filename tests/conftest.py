@@ -7,7 +7,6 @@ from email.message import EmailMessage
 from io import BytesIO
 from typing import List, Optional
 
-import aiodns
 import pytest
 from aiohttp import ClientSession, ClientTimeout
 from aiohttp.test_utils import teardown_test_loop
@@ -29,6 +28,7 @@ from em2.utils.web import MakeUrl
 from em2.worker import worker_settings
 
 from . import dummy_server
+from .resolver import TestDNSResolver
 
 
 @pytest.fixture(scope='session', name='settings_session')
@@ -44,6 +44,7 @@ def _fix_settings_session():
             pg_db = f'em2_test_{worker_id}'
 
     return Settings(
+        testing=True,
         DATABASE_URL=f'postgres://postgres@localhost:5432/{pg_db}',
         REDISCLOUD_URL=f'redis://localhost:6379/{redis_db}',
         bcrypt_work_factor=6,
@@ -291,13 +292,13 @@ async def factory(redis, cli, url):
 
 
 @pytest.yield_fixture(name='worker_ctx')
-async def _fix_worker_ctx(redis, settings, db_conn):
+async def _fix_worker_ctx(redis, settings, db_conn, dummy_server):
     session = ClientSession(timeout=ClientTimeout(total=10))
     ctx = dict(
         settings=settings,
         pg=DummyPgPool(db_conn),
         client_session=session,
-        resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
+        resolver=TestDNSResolver(dummy_server),
         redis=redis,
     )
     ctx.update(smtp_handler=LogSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
@@ -320,13 +321,10 @@ async def _fix_worker(redis, worker_ctx):
 
 
 @pytest.yield_fixture(name='ses_worker')
-async def _fix_ses_worker(redis, settings, db_conn):
+async def _fix_ses_worker(redis, settings, db_conn, dummy_server):
     session = ClientSession(timeout=ClientTimeout(total=10))
     ctx = dict(
-        settings=settings,
-        pg=DummyPgPool(db_conn),
-        client_session=session,
-        resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
+        settings=settings, pg=DummyPgPool(db_conn), client_session=session, resolver=TestDNSResolver(dummy_server)
     )
     ctx.update(smtp_handler=SesSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
     worker = Worker(functions=worker_settings['functions'], redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)
@@ -351,7 +349,7 @@ async def _fix_send_to_remote(factory: Factory, worker: Worker, db_conn):
 
 
 @pytest.fixture(name='sns_data')
-def _fix_sns_data(dummy_server, mocker):
+def _fix_sns_data(dummy_server: DummyServer, mocker):
     def run(message_id, *, mock_verify=True, **message):
         if mock_verify:
             mocker.patch('em2.protocol.views.smtp_ses.x509.load_pem_x509_certificate')

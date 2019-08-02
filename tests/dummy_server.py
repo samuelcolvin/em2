@@ -5,9 +5,13 @@ from email import message_from_bytes
 import http_ece
 from aiohttp import web
 from aiohttp.hdrs import METH_GET, METH_HEAD
-from aiohttp.web_response import Response
+from aiohttp.web_response import Response, json_response
 from cryptography.hazmat.backends import default_backend as cryptography_default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
+
+
+async def em2_routing(request):
+    return json_response({'node': f'http://{request.headers["host"]}/foobar/'})
 
 
 async def ses_endpoint_url(request):
@@ -107,6 +111,7 @@ async def get_image(request):
 
 
 routes = [
+    web.get('/route/', em2_routing),
     web.post('/ses_endpoint_url/', ses_endpoint_url),
     web.get('/sns_signing_url.pem', sns_signing_endpoint),
     web.route('*', '/s3_endpoint_url/{bucket}/{key:.*}', s3_endpoint),

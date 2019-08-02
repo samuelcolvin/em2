@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Type
 from urllib.parse import urlencode
 
 import aiodns
@@ -13,7 +13,7 @@ from asyncpg.pool import Pool
 from atoolbox import RequestError
 from atoolbox.json_tools import lenient_json
 from cryptography.fernet import Fernet
-from pydantic import BaseModel, UrlStr
+from pydantic import BaseModel, UrlStr, ValidationError
 
 from em2.core import ActionTypes, UserTypes
 from em2.settings import Settings
@@ -84,7 +84,7 @@ class Pusher:
                 await self.redis.enqueue_job('smtp_send', actions)
         if em2_nodes:
             logger.info('%d em2 nodes to push action to', len(em2_nodes))
-            raise NotImplementedError('pushing to other em2 platforms not yet supported')
+            await self.em2_send(actions, em2_nodes)
         return f'retry={len(retry_users)} smtp={len(smtp_addresses)} em2={len(em2_nodes)}'
 
     async def resolve_user(self, email: str, current_user_type: UserTypes):
@@ -112,13 +112,14 @@ class Pusher:
 
         domain = email.rsplit('@', 1)[1]
         sub_domain = f'{em2_subdomain}.{domain}'
-        domain_em2_platform = await self.cname_query(sub_domain)
+        em2_domain = await self.cname_query(sub_domain)
 
-        if domain_em2_platform:
+        if em2_domain:
             # domain has an em2 platform
             user_type = UserTypes.remote_em2
+            scheme = 'http' if self.settings.testing else 'https'
             try:
-                r = await self.get(f'https://{domain_em2_platform}/route/', params={'email': email}, model=RouteModel)
+                r = await self.get(f'{scheme}://{em2_domain}/route/', params={'email': email}, model=RouteModel)
             except HttpError:
                 # domain has an em2 platform, but request failed, try again later
                 node = RETRY
@@ -134,6 +135,9 @@ class Pusher:
         if current_user_type != user_type:
             await self.pg.execute('update users set user_type=$1, v=null where email=$2', user_type, email)
         return node, email
+
+    async def em2_send(self, actions: List[Dict[str, Any]], em2_nodes: Set[str]):
+        debug(actions, em2_nodes)
 
     async def cname_query(self, domain: str) -> str:
         domain_key = f'dns-cname:{domain}'
@@ -162,7 +166,7 @@ class Pusher:
         model: Type[BaseModel] = None,
         expected_statuses: Sequence[int] = (200,),
     ):
-        return await self._request('GET', url, params, data, headers, model, expected_statuses)
+        return await self._em2_request('GET', url, params, data, headers, model, expected_statuses)
 
     async def post(
         self,
@@ -174,10 +178,9 @@ class Pusher:
         model: Type[BaseModel] = None,
         expected_statuses: Sequence[int] = (200,),
     ):
-        return await self._request('POST', url, params, data, headers, model, expected_statuses)
+        return await self._em2_request('POST', url, params, data, headers, model, expected_statuses)
 
-    async def _request(self, method, url, params, data, headers, model, expected_statuses) -> ResponseSummary:
-
+    async def _em2_request(self, method, url, params, data, headers, model, expected_statuses) -> ResponseSummary:
         response_headers = response_data = None
         if data:
             data_ = json.dumps(data)
@@ -197,7 +200,7 @@ class Pusher:
                     m = model.parse_obj(d) if model else None
                     return ResponseSummary(r.status, response_headers, d, m)
 
-        except (ClientError, ClientConnectionError, asyncio.TimeoutError, ValueError) as e:
+        except (ClientError, OSError, asyncio.TimeoutError, ValidationError) as e:
             exc = f'{e.__class__.__name__}: {e}'
         else:
             exc = f'bad response: {r.status}'

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     auth_key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa='
 
     domain: str = 'localhost'  # currently used as a proxy for development mode, should probably be changed
+    testing: bool = False  # used only in unit test eg, to use http not https for the em2 protocol
     any_origin: bool = False  # WARNING: this is dangerous, only use when testing
     local_port: Optional[int] = 8000
     commit: str = 'unknown'

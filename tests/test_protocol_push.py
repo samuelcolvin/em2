@@ -6,6 +6,14 @@ from em2.core import ActionModel, ActionTypes
 from .conftest import Factory
 
 
+async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_server):
+    await factory.create_user()
+    conv = await factory.create_conv(participants=[{'email': 'whatever@example.org'}], publish=True)
+    assert 4 == await db_conn.fetchval('select count(*) from actions')
+    await worker.run_check(max_burst_jobs=2)
+    assert await worker.run_check()
+
+
 async def test_publish_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_server):
     await factory.create_user()
     conv = await factory.create_conv(participants=[{'email': 'whatever@example.net'}], publish=True)
