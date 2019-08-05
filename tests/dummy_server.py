@@ -11,7 +11,12 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 
 async def em2_routing(request):
-    return json_response({'node': f'http://{request.headers["host"]}/foobar/'})
+    return json_response({'node': f'http://{request.headers["host"]}/em2_push/'})
+
+
+async def em2_push(request):
+    request.app['log'].append({'body': await request.text(), 'signature': request.headers['signature']})
+    return Response(status=200)
 
 
 async def ses_endpoint_url(request):
@@ -112,6 +117,7 @@ async def get_image(request):
 
 routes = [
     web.get('/route/', em2_routing),
+    web.post('/em2_push/', em2_push),
     web.post('/ses_endpoint_url/', ses_endpoint_url),
     web.get('/sns_signing_url.pem', sns_signing_endpoint),
     web.route('*', '/s3_endpoint_url/{bucket}/{key:.*}', s3_endpoint),

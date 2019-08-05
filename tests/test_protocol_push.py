@@ -1,17 +1,42 @@
+import json
+
+import nacl.encoding
+import nacl.signing
 from arq import Worker
-from pytest_toolbox.comparison import AnyInt, RegexStr
+from atoolbox.test_utils import DummyServer
+from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
 from em2.core import ActionModel, ActionTypes
+from em2.settings import Settings
 
 from .conftest import Factory
 
 
-async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_server):
+async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_server: DummyServer, settings: Settings):
     await factory.create_user()
     conv = await factory.create_conv(participants=[{'email': 'whatever@example.org'}], publish=True)
     assert 4 == await db_conn.fetchval('select count(*) from actions')
     await worker.run_check(max_burst_jobs=2)
     assert await worker.run_check()
+
+    assert len(dummy_server.log) == 3
+    data = dummy_server.log.pop()
+    actions = json.loads(data['body'])['actions']
+    assert dummy_server.log == ['GET route', 'POST em2_push']
+    assert len(actions) == 4
+    assert actions[0]['act'] == 'participant:add'
+    assert actions[1]['act'] == 'participant:add'
+    assert actions[2]['act'] == 'message:add'
+    assert actions[3]['act'] == 'conv:publish'
+    assert actions[0]['conv'] == conv.key
+
+    ts, sig = data['signature'].split(',')
+    assert ts == CloseToNow()
+
+    signing_key = nacl.signing.SigningKey(seed=settings.signing_secret_key, encoder=nacl.encoding.HexEncoder)
+
+    to_sign = f'POST {dummy_server.server_name}/em2_push/?domain=localhost {ts}\n{data["body"]}'.encode()
+    signing_key.verify_key.verify(to_sign, bytes.fromhex(sig))
 
 
 async def test_publish_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_server):

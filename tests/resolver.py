@@ -17,8 +17,8 @@ class TestDNSResolver(DNSResolver):
         super().__init__(nameservers, loop, **kwargs)
 
     async def query(self, host: str, qtype: str):
-        if (host, qtype) == ('em2-platform.example.org', 'CNAME'):
-            origin = re.sub('^https?://', '', self._dummy_server.server_name)
+        if (host, qtype) == ('em2-routing.example.org', 'CNAME'):
+            origin = re.sub('^http://', '', self._dummy_server.server_name)
             # including prt and path here are a big corruption of dns, but helpful in tests
             return DNSResult(origin)
         else:

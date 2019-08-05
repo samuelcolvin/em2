@@ -7,6 +7,8 @@ from email.message import EmailMessage
 from io import BytesIO
 from typing import List, Optional
 
+import nacl.encoding
+import nacl.signing
 import pytest
 from aiohttp import ClientSession, ClientTimeout
 from aiohttp.test_utils import teardown_test_loop
@@ -300,6 +302,7 @@ async def _fix_worker_ctx(redis, settings, db_conn, dummy_server):
         client_session=session,
         resolver=TestDNSResolver(dummy_server),
         redis=redis,
+        signing_key=nacl.signing.SigningKey(seed=settings.signing_secret_key, encoder=nacl.encoding.HexEncoder),
     )
     ctx.update(smtp_handler=LogSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
 
@@ -324,7 +327,11 @@ async def _fix_worker(redis, worker_ctx):
 async def _fix_ses_worker(redis, settings, db_conn, dummy_server):
     session = ClientSession(timeout=ClientTimeout(total=10))
     ctx = dict(
-        settings=settings, pg=DummyPgPool(db_conn), client_session=session, resolver=TestDNSResolver(dummy_server)
+        settings=settings,
+        pg=DummyPgPool(db_conn),
+        client_session=session,
+        resolver=TestDNSResolver(dummy_server),
+        signing_key=nacl.signing.SigningKey(seed=settings.signing_secret_key, encoder=nacl.encoding.HexEncoder),
     )
     ctx.update(smtp_handler=SesSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
     worker = Worker(functions=worker_settings['functions'], redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)

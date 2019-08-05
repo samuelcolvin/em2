@@ -2,26 +2,28 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Type
-from urllib.parse import urlencode
 
 import aiodns
-from aiohttp import ClientConnectionError, ClientError, ClientSession
+from aiohttp import ClientError, ClientSession
 from arq import ArqRedis
 from async_timeout import timeout
 from asyncpg.pool import Pool
 from atoolbox import RequestError
 from atoolbox.json_tools import lenient_json
 from cryptography.fernet import Fernet
+from nacl.signing import SigningKey
 from pydantic import BaseModel, UrlStr, ValidationError
+from yarl import URL
 
 from em2.core import ActionTypes, UserTypes
 from em2.settings import Settings
 from em2.utils.web import full_url, internal_request_headers
 
 logger = logging.getLogger('em2.push')
-# could try another subdomain with a random part incase people are using em2-platform
-em2_subdomain = 'em2-platform'
+# could try another subdomain with a random part incase people are using em2-routing
+em2_subdomain = 'em2-routing'
 RETRY = 'RT'
 SMTP = 'SMTP'
 
@@ -34,7 +36,6 @@ class HttpError(RuntimeError):
 class ResponseSummary:
     status: int
     headers: Dict[str, str]
-    data: Any
     model: Optional[BaseModel]
 
 
@@ -48,8 +49,6 @@ async def push_actions(ctx, actions_data: str, users: List[Tuple[str, UserTypes]
 
 
 class Pusher:
-    __slots__ = 'settings', 'job_try', 'auth_fernet', 'session', 'pg', 'resolver', 'redis', 'pg', 'local_check_url'
-
     def __init__(self, ctx):
         self.settings: Settings = ctx['settings']
         self.job_try = ctx['job_try']
@@ -59,6 +58,7 @@ class Pusher:
         self.resolver: aiodns.DNSResolver = ctx['resolver']
         self.redis: ArqRedis = ctx['redis']
         self.local_check_url = full_url(self.settings, 'auth', '/check/')
+        self.signing_key: SigningKey = ctx['signing_key']
 
     async def split_destinations(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
         results = await asyncio.gather(*[self.resolve_user(*u) for u in users])
@@ -84,7 +84,7 @@ class Pusher:
                 await self.redis.enqueue_job('smtp_send', actions)
         if em2_nodes:
             logger.info('%d em2 nodes to push action to', len(em2_nodes))
-            await self.em2_send(actions, em2_nodes)
+            await self.em2_send(actions_data, em2_nodes)
         return f'retry={len(retry_users)} smtp={len(smtp_addresses)} em2={len(em2_nodes)}'
 
     async def resolve_user(self, email: str, current_user_type: UserTypes):
@@ -136,8 +136,16 @@ class Pusher:
             await self.pg.execute('update users set user_type=$1, v=null where email=$2', user_type, email)
         return node, email
 
-    async def em2_send(self, actions: List[Dict[str, Any]], em2_nodes: Set[str]):
-        debug(actions, em2_nodes)
+    async def em2_send(self, actions: str, em2_nodes: Set[str]):
+        actions_b = actions.encode()
+        await asyncio.gather(*[self.em2_send_node(actions_b, n) for n in em2_nodes])
+
+    async def em2_send_node(self, actions: bytes, em2_node: str):
+        try:
+            await self.post(em2_node, data=actions, params={'domain': self.settings.domain})
+        except HttpError:
+            # TODO retry
+            raise
 
     async def cname_query(self, domain: str) -> str:
         domain_key = f'dns-cname:{domain}'
@@ -158,47 +166,62 @@ class Pusher:
 
     async def get(
         self,
-        url,
+        url: str,
         *,
         params: Dict[str, Any] = None,
         data: Any = None,
-        headers: Dict[str, str] = None,
         model: Type[BaseModel] = None,
         expected_statuses: Sequence[int] = (200,),
     ):
-        return await self._em2_request('GET', url, params, data, headers, model, expected_statuses)
+        return await self._em2_request('GET', url, params, data, model, expected_statuses)
 
     async def post(
         self,
-        url,
+        url: str,
         *,
-        params: Dict[str, Any] = None,
         data: Any = None,
-        headers: Dict[str, str] = None,
+        params: Dict[str, Any] = None,
         model: Type[BaseModel] = None,
         expected_statuses: Sequence[int] = (200,),
     ):
-        return await self._em2_request('POST', url, params, data, headers, model, expected_statuses)
+        return await self._em2_request('POST', url, params, data, model, expected_statuses)
 
-    async def _em2_request(self, method, url, params, data, headers, model, expected_statuses) -> ResponseSummary:
+    async def _em2_request(
+        self,
+        method: str,
+        url: str,
+        params: Optional[Dict[str, Any]],
+        data: Any,
+        model: Type[BaseModel],
+        expected_statuses: Sequence[int],
+    ) -> ResponseSummary:
         response_headers = response_data = None
-        if data:
-            data_ = json.dumps(data)
+        if isinstance(data, bytes):
+            data_ = data
+        elif data:
+            data_ = json.dumps(data).encode()
         else:
             data_ = None
 
+        url_ = URL(url)
         if params:
-            url = url + '?' + urlencode(params)
+            url_ = url_.with_query(params)
+
+        ts = datetime.utcnow().isoformat()
+        to_sign = f'{method} {url_} {ts}\n'.encode() + (data_ or b'-')
+        headers = {'Signature': ts + ',' + self.signing_key.sign(to_sign).signature.hex()}
 
         try:
-            async with self.session.request(method, url, data=data_, headers=headers) as r:
+            async with self.session.request(method, url_, data=data_, headers=headers) as r:
                 response_data = await r.text()
                 response_headers = dict(r.headers)
 
                 if r.status in expected_statuses:
-                    d = await r.json()
-                    m = model.parse_obj(d) if model else None
-                    return ResponseSummary(r.status, response_headers, d, m)
+                    d, m = None, None
+                    if model:
+                        d = await r.json()
+                        m = model.parse_obj(d)
+                    return ResponseSummary(r.status, response_headers, m)
 
         except (ClientError, OSError, asyncio.TimeoutError, ValidationError) as e:
             exc = f'{e.__class__.__name__}: {e}'

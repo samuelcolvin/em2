@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     internal_auth_key: constr(min_length=40, max_length=100) = secrets.token_urlsafe()
 
     # em2 feature settings:
+    signing_secret_key: constr(min_length=64, max_length=64) = b'1' * 64
     message_lock_duration: int = 3600  # how many seconds a lock holds for
 
     smtp_handler = 'em2.protocol.smtp.LogSmtpHandler'
