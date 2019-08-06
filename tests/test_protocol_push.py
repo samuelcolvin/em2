@@ -21,22 +21,57 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
 
     assert len(dummy_server.log) == 3
     data = dummy_server.log.pop()
-    actions = json.loads(data['body'])['actions']
-    assert dummy_server.log == ['GET route', 'POST em2_push']
-    assert len(actions) == 4
-    assert actions[0]['act'] == 'participant:add'
-    assert actions[1]['act'] == 'participant:add'
-    assert actions[2]['act'] == 'message:add'
-    assert actions[3]['act'] == 'conv:publish'
-    assert actions[0]['conv'] == conv.key
+    assert dummy_server.log == ['GET route', 'POST em2/push']
 
     ts, sig = data['signature'].split(',')
     assert ts == CloseToNow()
 
     signing_key = nacl.signing.SigningKey(seed=settings.signing_secret_key, encoder=nacl.encoding.HexEncoder)
 
-    to_sign = f'POST {dummy_server.server_name}/em2_push/?domain=localhost {ts}\n{data["body"]}'.encode()
+    to_sign = f'POST {dummy_server.server_name}/em2/push/?domain=localhost {ts}\n{data["body"]}'.encode()
     signing_key.verify_key.verify(to_sign, bytes.fromhex(sig))
+
+    body = json.loads(data['body'])
+    assert body == {
+        'platform': 'em2.localhost',
+        'actions': [
+            {
+                'id': 1,
+                'act': 'participant:add',
+                'ts': CloseToNow(),
+                'actor': 'testing-1@example.com',
+                'participant': 'testing-1@example.com',
+                'conv': conv.key,
+            },
+            {
+                'id': 2,
+                'act': 'participant:add',
+                'ts': CloseToNow(),
+                'actor': 'testing-1@example.com',
+                'participant': 'whatever@example.org',
+                'conv': conv.key,
+            },
+            {
+                'id': 3,
+                'act': 'message:add',
+                'ts': CloseToNow(),
+                'actor': 'testing-1@example.com',
+                'body': 'Test Message',
+                'extra_body': False,
+                'msg_format': 'markdown',
+                'conv': conv.key,
+            },
+            {
+                'id': 4,
+                'act': 'conv:publish',
+                'ts': CloseToNow(),
+                'actor': 'testing-1@example.com',
+                'body': 'Test Subject',
+                'extra_body': False,
+                'conv': conv.key,
+            },
+        ],
+    }
 
 
 async def test_publish_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_server):

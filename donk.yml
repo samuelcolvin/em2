@@ -109,8 +109,6 @@ generate-signing-key:
   run:
     - import nacl.encoding
     - import nacl.signing
-    - secret_key = nacl.signing.SigningKey.generate()
-    - "print('\\nexport em2_signing_secret_key=' + secret_key.encode(encoder=nacl.encoding.HexEncoder).decode())"
-    - verify_key = secret_key.verify_key.encode(encoder=nacl.encoding.HexEncoder).decode()
-    - "print('\\npublic signing key DNS record:', repr('em2 v=1 ' + verify_key) + '\\n')"
+    - secret_key = nacl.signing.SigningKey.generate().encode(encoder=nacl.encoding.HexEncoder).decode()
+    - 'print("\nexport em2_signing_secret_key=" + secret_key + "\n")'
   ex: python3

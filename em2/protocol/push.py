@@ -39,10 +39,6 @@ class ResponseSummary:
     model: Optional[BaseModel]
 
 
-class RouteModel(BaseModel):
-    node: UrlStr
-
-
 async def push_actions(ctx, actions_data: str, users: List[Tuple[str, UserTypes]]):
     pusher = Pusher(ctx)
     return await pusher.split_destinations(actions_data, users)
@@ -55,10 +51,9 @@ class Pusher:
         self.auth_fernet = Fernet(self.settings.auth_key)
         self.session: ClientSession = ctx['client_session']
         self.pg: Pool = ctx['pg']
-        self.resolver: aiodns.DNSResolver = ctx['resolver']
         self.redis: ArqRedis = ctx['redis']
         self.local_check_url = full_url(self.settings, 'auth', '/check/')
-        self.signing_key: SigningKey = ctx['signing_key']
+        self.em2 = Em2Comms(self.settings, self.session, ctx['signing_key'], self.redis, ctx['resolver'])
 
     async def split_destinations(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
         results = await asyncio.gather(*[self.resolve_user(*u) for u in users])
@@ -84,7 +79,7 @@ class Pusher:
                 await self.redis.enqueue_job('smtp_send', actions)
         if em2_nodes:
             logger.info('%d em2 nodes to push action to', len(em2_nodes))
-            await self.em2_send(actions_data, em2_nodes)
+            await self.em2_send(actions, em2_nodes)
         return f'retry={len(retry_users)} smtp={len(smtp_addresses)} em2={len(em2_nodes)}'
 
     async def resolve_user(self, email: str, current_user_type: UserTypes):
@@ -102,31 +97,15 @@ class Pusher:
                 await self.pg.execute("update users set user_type='local' where email=$1", email)
                 return
 
-        user_node_key = f'user-node:{email}'
-        if current_user_type != UserTypes.new:
-            # new users can't be cached
-            v = await self.redis.get(user_node_key)
-            if v:
-                # user em2 node is cached, use that
-                return v, email
+        try:
+            em2_node = await self.em2.get_em2_platform(email)
+        except HttpError:
+            # domain has an em2 platform, but request failed, try again later
+            return RETRY, email
 
-        domain = email.rsplit('@', 1)[1]
-        sub_domain = f'{em2_subdomain}.{domain}'
-        em2_domain = await self.cname_query(sub_domain)
-
-        if em2_domain:
-            # domain has an em2 platform
+        if em2_node:
+            node = em2_node
             user_type = UserTypes.remote_em2
-            scheme = 'http' if self.settings.testing else 'https'
-            try:
-                r = await self.get(f'{scheme}://{em2_domain}/route/', params={'email': email}, model=RouteModel)
-            except HttpError:
-                # domain has an em2 platform, but request failed, try again later
-                node = RETRY
-            else:
-                node = r.model.node
-                # 31_104_000 is one year, got a valid em2 node, assume it'll last for a long time
-                await self.redis.setex(user_node_key, 31_104_000, node)
         else:
             # looks like domain doesn't support em2, smtp
             node = SMTP
@@ -136,16 +115,60 @@ class Pusher:
             await self.pg.execute('update users set user_type=$1, v=null where email=$2', user_type, email)
         return node, email
 
-    async def em2_send(self, actions: str, em2_nodes: Set[str]):
-        actions_b = actions.encode()
-        await asyncio.gather(*[self.em2_send_node(actions_b, n) for n in em2_nodes])
+    async def em2_send(self, actions: Dict[str, Any], em2_nodes: Set[str]):
+        data = json.dumps({'platform': 'em2.' + self.settings.domain, 'actions': actions}).encode()
+        await asyncio.gather(*[self.em2_send_node(data, n) for n in em2_nodes])
 
-    async def em2_send_node(self, actions: bytes, em2_node: str):
+    async def em2_send_node(self, data: bytes, em2_node: str):
         try:
-            await self.post(em2_node, data=actions, params={'domain': self.settings.domain})
+            await self.em2.post(em2_node + '/push/', data=data, params={'domain': self.settings.domain})
         except HttpError:
             # TODO retry
             raise
+
+
+class RouteModel(BaseModel):
+    node: UrlStr
+
+
+class Em2Comms:
+    __slots__ = 'settings', 'session', 'signing_key', 'redis', 'resolver'
+
+    def __init__(
+        self,
+        settings: Settings,
+        session: ClientSession,
+        signing_key: SigningKey,
+        redis: ArqRedis,
+        resolver: aiodns.DNSResolver,
+    ):
+        self.settings = settings
+        self.session = session
+        self.signing_key = signing_key
+        self.redis = redis
+        self.resolver = resolver
+
+    async def get_em2_platform(self, email) -> Optional[str]:
+        user_node_key = f'user-node:{email}'
+        v = await self.redis.get(user_node_key)
+        if v:
+            # user em2 node is cached, use that
+            return v
+
+        domain = email.rsplit('@', 1)[1]
+        sub_domain = f'{em2_subdomain}.{domain}'
+        em2_domain = await self.cname_query(sub_domain)
+
+        if not em2_domain:
+            return
+
+        scheme = 'http' if self.settings.testing else 'https'
+        r = await self.get(f'{scheme}://{em2_domain}/route/', sign=False, params={'email': email}, model=RouteModel)
+
+        node = r.model.node.rstrip('/')
+        # 31_104_000 is one year, got a valid em2 node, assume it'll last for a long time
+        await self.redis.setex(user_node_key, 31_104_000, node)
+        return node
 
     async def cname_query(self, domain: str) -> str:
         domain_key = f'dns-cname:{domain}'
@@ -168,28 +191,31 @@ class Pusher:
         self,
         url: str,
         *,
+        sign: bool = True,
         params: Dict[str, Any] = None,
         data: Any = None,
         model: Type[BaseModel] = None,
         expected_statuses: Sequence[int] = (200,),
     ):
-        return await self._em2_request('GET', url, params, data, model, expected_statuses)
+        return await self._em2_request('GET', url, sign, params, data, model, expected_statuses)
 
     async def post(
         self,
         url: str,
         *,
+        sign: bool = True,
         data: Any = None,
         params: Dict[str, Any] = None,
         model: Type[BaseModel] = None,
         expected_statuses: Sequence[int] = (200,),
     ):
-        return await self._em2_request('POST', url, params, data, model, expected_statuses)
+        return await self._em2_request('POST', url, sign, params, data, model, expected_statuses)
 
     async def _em2_request(
         self,
         method: str,
         url: str,
+        sign: bool,
         params: Optional[Dict[str, Any]],
         data: Any,
         model: Type[BaseModel],
@@ -207,9 +233,12 @@ class Pusher:
         if params:
             url_ = url_.with_query(params)
 
-        ts = datetime.utcnow().isoformat()
-        to_sign = f'{method} {url_} {ts}\n'.encode() + (data_ or b'-')
-        headers = {'Signature': ts + ',' + self.signing_key.sign(to_sign).signature.hex()}
+        if sign:
+            ts = datetime.utcnow().isoformat()
+            to_sign = f'{method} {url_} {ts}\n'.encode() + (data_ or b'-')
+            headers = {'Signature': ts + ',' + self.signing_key.sign(to_sign).signature.hex()}
+        else:
+            headers = None
 
         try:
             async with self.session.request(method, url_, data=data_, headers=headers) as r:
