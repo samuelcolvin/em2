@@ -189,7 +189,6 @@ async def test_conv_actions(cli, factory: Factory, db_conn):
     assert obj == [
         {
             'id': 1,
-            'conv': conv.key,
             'act': 'participant:add',
             'ts': CloseToNow(),
             'actor': 'testing-1@example.com',
@@ -197,21 +196,13 @@ async def test_conv_actions(cli, factory: Factory, db_conn):
         },
         {
             'id': 2,
-            'conv': conv.key,
             'act': 'message:add',
             'ts': CloseToNow(),
             'body': 'Test Message',
             'msg_format': 'markdown',
             'actor': 'testing-1@example.com',
         },
-        {
-            'id': 3,
-            'conv': conv.key,
-            'act': 'conv:create',
-            'ts': CloseToNow(),
-            'body': 'Test Subject',
-            'actor': 'testing-1@example.com',
-        },
+        {'id': 3, 'act': 'conv:create', 'ts': CloseToNow(), 'body': 'Test Subject', 'actor': 'testing-1@example.com'},
     ]
 
 
@@ -228,7 +219,6 @@ async def test_act(cli, factory: Factory):
     assert len(obj) == 4
     assert obj[-1] == {
         'id': 4,
-        'conv': conv.key,
         'act': 'message:add',
         'ts': CloseToNow(),
         'actor': 'testing-1@example.com',
@@ -353,6 +343,7 @@ async def test_ws_create(cli, factory: Factory, db_conn):
         'user_v': 3,
         'user_id': user.id,
         'user_email': user.email,
+        'conversation': conv.key,
         'actions': [
             {
                 'id': 1,
@@ -360,7 +351,6 @@ async def test_ws_create(cli, factory: Factory, db_conn):
                 'ts': CloseToNow(),
                 'actor': 'testing-1@example.com',
                 'participant': 'testing-1@example.com',
-                'conv': conv.key,
             },
             {
                 'id': 2,
@@ -370,7 +360,6 @@ async def test_ws_create(cli, factory: Factory, db_conn):
                 'body': 'Test Message',
                 'extra_body': False,
                 'msg_format': 'markdown',
-                'conv': conv.key,
             },
             {
                 'id': 3,
@@ -379,7 +368,6 @@ async def test_ws_create(cli, factory: Factory, db_conn):
                 'actor': 'testing-1@example.com',
                 'body': 'Test Subject',
                 'extra_body': False,
-                'conv': conv.key,
             },
         ],
         'conv_details': {
@@ -416,6 +404,7 @@ async def test_ws_add_msg(cli, factory: Factory, db_conn):
         'user_v': 3,
         'user_id': user.id,
         'user_email': user.email,
+        'conversation': conv.key,
         'actions': [
             {
                 'id': 4,
@@ -425,7 +414,6 @@ async def test_ws_add_msg(cli, factory: Factory, db_conn):
                 'body': 'this is another message',
                 'extra_body': False,
                 'msg_format': 'markdown',
-                'conv': conv.key,
             }
         ],
         'conv_details': {

@@ -117,7 +117,7 @@ async def get_image(request):
 
 routes = [
     web.get('/route/', em2_routing),
-    web.post('/em2/push/', em2_push),
+    web.post('/em2/v1/push/', em2_push),
     web.post('/ses_endpoint_url/', ses_endpoint_url),
     web.get('/sns_signing_url.pem', sns_signing_endpoint),
     web.route('*', '/s3_endpoint_url/{bucket}/{key:.*}', s3_endpoint),

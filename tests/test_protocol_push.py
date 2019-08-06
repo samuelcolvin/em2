@@ -21,18 +21,19 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
 
     assert len(dummy_server.log) == 3
     data = dummy_server.log.pop()
-    assert dummy_server.log == ['GET route', 'POST em2/push']
+    assert dummy_server.log == ['GET route', 'POST em2/v1/push']
 
     ts, sig = data['signature'].split(',')
     assert ts == CloseToNow()
 
     signing_key = nacl.signing.SigningKey(seed=settings.signing_secret_key, encoder=nacl.encoding.HexEncoder)
 
-    to_sign = f'POST {dummy_server.server_name}/em2/push/?domain=localhost {ts}\n{data["body"]}'.encode()
+    to_sign = f'POST {dummy_server.server_name}/em2/v1/push/?domain=localhost {ts}\n{data["body"]}'.encode()
     signing_key.verify_key.verify(to_sign, bytes.fromhex(sig))
 
     body = json.loads(data['body'])
     assert body == {
+        'conversation': conv.key,
         'platform': 'em2.localhost',
         'actions': [
             {
@@ -41,7 +42,6 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
                 'ts': CloseToNow(),
                 'actor': 'testing-1@example.com',
                 'participant': 'testing-1@example.com',
-                'conv': conv.key,
             },
             {
                 'id': 2,
@@ -49,7 +49,6 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
                 'ts': CloseToNow(),
                 'actor': 'testing-1@example.com',
                 'participant': 'whatever@example.org',
-                'conv': conv.key,
             },
             {
                 'id': 3,
@@ -59,7 +58,6 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
                 'body': 'Test Message',
                 'extra_body': False,
                 'msg_format': 'markdown',
-                'conv': conv.key,
             },
             {
                 'id': 4,
@@ -68,7 +66,6 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
                 'actor': 'testing-1@example.com',
                 'body': 'Test Subject',
                 'extra_body': False,
-                'conv': conv.key,
             },
         ],
     }

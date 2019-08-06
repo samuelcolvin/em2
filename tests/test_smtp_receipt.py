@@ -119,7 +119,6 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
     assert data == [
         {
             'id': 1,
-            'conv': conv_key,
             'act': 'participant:add',
             'ts': '2032-01-01T12:00:00+00:00',
             'actor': 'sender@example.net',
@@ -127,7 +126,6 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
         },
         {
             'id': 2,
-            'conv': conv_key,
             'act': 'participant:add',
             'ts': '2032-01-01T12:00:00+00:00',
             'actor': 'sender@example.net',
@@ -135,7 +133,6 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
         },
         {
             'id': 3,
-            'conv': conv_key,
             'act': 'message:add',
             'ts': '2032-01-01T12:00:00+00:00',
             'actor': 'sender@example.net',
@@ -162,7 +159,6 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
         },
         {
             'id': 4,
-            'conv': conv_key,
             'act': 'conv:publish',
             'ts': '2032-01-01T12:00:00+00:00',
             'actor': 'sender@example.net',
@@ -354,7 +350,6 @@ async def test_reply_attachment(factory, conns, db_conn, create_email, send_to_r
     data = json.loads(await conv_actions_json(conns, factory.user.id, factory.conv.key))
     assert data[-1] == {
         'id': 5,
-        'conv': factory.conv.key,
         'act': 'message:add',
         'ts': '2032-01-01T12:00:00+00:00',
         'actor': 'sender@example.net',

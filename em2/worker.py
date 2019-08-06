@@ -1,9 +1,9 @@
 import asyncio
 from typing import Type
 
-import aiodns
 import nacl.encoding
 import nacl.signing
+from aiodns import DNSResolver
 from aiohttp import ClientSession, ClientTimeout
 from arq import Worker
 from buildpg import asyncpg
@@ -24,7 +24,7 @@ async def startup(ctx):
         settings=settings,
         pg=await asyncpg.create_pool_b(dsn=settings.pg_dsn),
         client_session=ClientSession(timeout=ClientTimeout(total=10)),
-        resolver=aiodns.DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
+        resolver=DNSResolver(nameservers=['1.1.1.1', '1.0.0.1']),
         signing_key=nacl.signing.SigningKey(seed=settings.signing_secret_key, encoder=nacl.encoding.HexEncoder),
     )
     smtp_handler_cls: Type[BaseSmtpHandler] = import_string(settings.smtp_handler)

@@ -29,9 +29,7 @@ class BaseSmtpHandler:
     async def send_message(self, *, e_from: str, to: Set[str], email_msg: EmailMessage) -> str:
         raise NotImplementedError()
 
-    async def send(self, actions: List[Dict[str, Any]]):  # noqa: 901
-        # conv and actor are all the same
-        conv_key = actions[0]['conv']
+    async def send(self, conv_key: str, actions: List[Dict[str, Any]]):  # noqa: 901
         conv_id = await self.pg.fetchval('select id from conversations where key=$1', conv_key)
         last_action_id = actions[-1]['id']
 

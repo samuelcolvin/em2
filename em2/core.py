@@ -164,10 +164,10 @@ async def update_conv_users(conns: Connections, conv_id: int) -> List[int]:
     return [r[0] for r in v]
 
 
-_prt_action_types = {a for a in ActionTypes if a.value.startswith('participant:')}
+participant_action_types = {a for a in ActionTypes if a.value.startswith('participant:')}
 _subject_action_types = {a for a in ActionTypes if a.value.startswith('subject:')}
 _msg_action_types = {a for a in ActionTypes if a.value.startswith('message:')}
-_follow_action_types = (
+follow_action_types = (
     (_msg_action_types - {ActionTypes.msg_add})
     | {ActionTypes.prt_modify, ActionTypes.prt_remove}
     | _subject_action_types
@@ -205,9 +205,9 @@ class ActionModel(BaseModel):
     @validator('participant', always=True)
     def check_participant(cls, v, values):
         act: ActionTypes = values.get('act')
-        if act and not v and act in _prt_action_types:
+        if act and not v and act in participant_action_types:
             raise ValueError('participant is required for participant actions')
-        if act and v and act not in _prt_action_types:
+        if act and v and act not in participant_action_types:
             raise ValueError('participant must be omitted except for participant actions')
         return v
 
@@ -223,7 +223,7 @@ class ActionModel(BaseModel):
     @validator('follows', always=True)
     def check_follows(cls, v, values):
         act: ActionTypes = values.get('act')
-        if act and v is None and act in _follow_action_types:
+        if act and v is None and act in follow_action_types:
             raise ValueError('follows is required for this action')
         return v
 
@@ -276,7 +276,7 @@ class _Act:
             raise JsonErrors.HTTPBadRequest(message="You can't act on conversations you've been removed from")
 
         changed_user_id = None
-        if action.act in _prt_action_types:
+        if action.act in participant_action_types:
             action_id, changed_user_id = await self._act_on_participant(action)
         elif action.act in _msg_action_types:
             action_id, action_pk = await self._act_on_message(action)
@@ -698,7 +698,7 @@ async def conv_actions_json(
             """
             select array_to_json(array_agg(json_strip_nulls(row_to_json(t))), true)
             from (
-              select a.id, c.key conv, a.act, a.ts, actor_user.email actor,
+              select a.id, a.act, a.ts, actor_user.email actor,
               a.body, a.msg_format, a.warnings,
               prt_user.email participant, follows_action.id follows, parent_action.id parent,
               (select array_agg(row_to_json(f))
