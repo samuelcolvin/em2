@@ -1,12 +1,11 @@
 import json
 
-import nacl.encoding
-import nacl.signing
 from arq import Worker
 from atoolbox.test_utils import DummyServer
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
 from em2.core import ActionModel, ActionTypes
+from em2.protocol.core import get_signing_key
 from em2.settings import Settings
 
 from .conftest import Factory
@@ -21,12 +20,12 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
 
     assert len(dummy_server.log) == 3
     data = dummy_server.log.pop()
-    assert dummy_server.log == ['GET route', 'POST em2/v1/push']
+    assert dummy_server.log == ['GET v1/route', 'POST em2/v1/push']
 
     ts, sig = data['signature'].split(',')
     assert ts == CloseToNow()
 
-    signing_key = nacl.signing.SigningKey(seed=settings.signing_secret_key, encoder=nacl.encoding.HexEncoder)
+    signing_key = get_signing_key(settings.signing_secret_key)
 
     to_sign = f'POST {dummy_server.server_name}/em2/v1/push/?domain=localhost {ts}\n{data["body"]}'.encode()
     signing_key.verify_key.verify(to_sign, bytes.fromhex(sig))

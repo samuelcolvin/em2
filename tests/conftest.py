@@ -7,8 +7,6 @@ from email.message import EmailMessage
 from io import BytesIO
 from typing import List, Optional
 
-import nacl.encoding
-import nacl.signing
 import pytest
 from aiohttp import ClientSession, ClientTimeout
 from aiohttp.test_utils import teardown_test_loop
@@ -24,6 +22,7 @@ from em2.auth.utils import mk_password
 from em2.background import push_multiple
 from em2.core import ActionModel, Connections, File, apply_actions
 from em2.main import create_app
+from em2.protocol.core import get_signing_key
 from em2.protocol.smtp import LogSmtpHandler, SesSmtpHandler
 from em2.settings import Settings
 from em2.utils.web import MakeUrl
@@ -69,6 +68,7 @@ def _fix_settings_session():
             'F632vcMyB9RxPMaxicdqPiLg45GIk9oeEtm1kQjHQe7ikWxPFAm7uxkB'
         ),
         vapid_sub_email='vapid-reports@example.com',
+        signing_secret_key=b'4' * 64,
     )
 
 
@@ -130,15 +130,11 @@ async def redis(loop, settings):
     await redis.wait_closed()
 
 
-async def pre_startup_app(app):
-    app['pg'] = DummyPgPool(app['test_conn'])
-
-
 @pytest.fixture(name='cli')
-async def _fix_cli(settings, db_conn, aiohttp_client, redis, loop):
+async def _fix_cli(settings, db_conn, aiohttp_client, redis, loop, dummy_server):
     app = await create_app(settings=settings)
-    app['test_conn'] = db_conn
-    app.on_startup.insert(0, pre_startup_app)
+    app['pg'] = DummyPgPool(db_conn)
+    app['protocol_app']['resolver'] = TestDNSResolver(dummy_server)
     cli = await aiohttp_client(app)
     settings.local_port = cli.server.port
 
@@ -302,7 +298,7 @@ async def _fix_worker_ctx(redis, settings, db_conn, dummy_server):
         client_session=session,
         resolver=TestDNSResolver(dummy_server),
         redis=redis,
-        signing_key=nacl.signing.SigningKey(seed=settings.signing_secret_key, encoder=nacl.encoding.HexEncoder),
+        signing_key=get_signing_key(settings.signing_secret_key),
     )
     ctx.update(smtp_handler=LogSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
 
@@ -331,7 +327,7 @@ async def _fix_ses_worker(redis, settings, db_conn, dummy_server):
         pg=DummyPgPool(db_conn),
         client_session=session,
         resolver=TestDNSResolver(dummy_server),
-        signing_key=nacl.signing.SigningKey(seed=settings.signing_secret_key, encoder=nacl.encoding.HexEncoder),
+        signing_key=get_signing_key(settings.signing_secret_key),
     )
     ctx.update(smtp_handler=SesSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
     worker = Worker(functions=worker_settings['functions'], redis_pool=redis, burst=True, poll_delay=0.01, ctx=ctx)

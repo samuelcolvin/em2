@@ -1,17 +1,20 @@
 import asyncio
+import binascii
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Dict, Optional, Sequence, Type
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Sequence, Type
 
 import aiodns
+import nacl.encoding
 from aiohttp import ClientError, ClientSession
 from arq import ArqRedis
 from async_timeout import timeout
 from atoolbox.json_tools import lenient_json
+from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey
-from pydantic import BaseModel, UrlStr, ValidationError
+from pydantic import BaseModel, PositiveInt, UrlStr, ValidationError, constr
 from yarl import URL
 
 from em2.settings import Settings
@@ -25,6 +28,14 @@ class HttpError(RuntimeError):
     pass
 
 
+class InvalidSignature(RuntimeError):
+    pass
+
+
+def get_signing_key(signing_secret_key) -> SigningKey:
+    return SigningKey(seed=signing_secret_key, encoder=nacl.encoding.HexEncoder)
+
+
 @dataclass
 class ResponseSummary:
     status: int
@@ -34,6 +45,14 @@ class ResponseSummary:
 
 class RouteModel(BaseModel):
     node: UrlStr
+
+
+class VerificationKeysModel(BaseModel):
+    class KeyModel(BaseModel):
+        key: constr(min_length=64, max_length=64)
+        ttl: PositiveInt
+
+    keys: List[KeyModel]
 
 
 class Em2Comms:
@@ -53,6 +72,54 @@ class Em2Comms:
         self.redis = redis
         self.resolver = resolver
 
+    async def check_signature(self, email, request) -> None:  # noqa: C901 (ignore complexity)
+        try:
+            sig = request.headers['Signature']
+        except KeyError:
+            raise InvalidSignature('"Signature" header not found')
+
+        try:
+            ts_str, signature = sig.split(',', 1)
+            ts = datetime.strptime(ts_str, '%Y-%m-%dT%H:%M:%S.%f')
+            if len(signature) != 128:
+                raise ValueError
+            signature = bytes.fromhex(signature)
+        except ValueError:
+            raise InvalidSignature('Invalid "Signature" header format')
+
+        now = datetime.utcnow()
+        if not now - timedelta(seconds=30) < ts < now + timedelta(seconds=5):
+            raise InvalidSignature('Signature expired')
+
+        node = await self.get_em2_platform(email)
+        if not node:
+            raise InvalidSignature(f'em2 platform not found for {email!r}')
+
+        data = await request.read()
+        body = body_to_sign(request.method, request.url, ts_str, data)
+
+        signing_verify_cache_key = f'node-signing-verify:{node}'
+        signing_verify_key = await self.redis.get(signing_verify_cache_key)
+        error = None
+        if signing_verify_key:
+            error = check_signature(signing_verify_key, signature, body)
+            if not error:
+                return
+
+        url = node + '/v1/signing/verification/'
+        try:
+            r = await self.get(url, sign=False, model=VerificationKeysModel)
+        except HttpError:
+            raise InvalidSignature(f'error getting signature from {url!r}')
+
+        for m in r.model.keys:
+            error = check_signature(m.key, signature, body)
+            if not error:
+                await self.redis.setex(signing_verify_cache_key, m.ttl, m.key)
+                return
+
+        raise InvalidSignature(error or 'No signature verification keys found')
+
     async def get_em2_platform(self, email) -> Optional[str]:
         user_node_key = f'user-node:{email}'
         v = await self.redis.get(user_node_key)
@@ -68,7 +135,7 @@ class Em2Comms:
             return
 
         scheme = 'http' if self.settings.testing else 'https'
-        r = await self.get(f'{scheme}://{em2_domain}/route/', sign=False, params={'email': email}, model=RouteModel)
+        r = await self.get(f'{scheme}://{em2_domain}/v1/route/', sign=False, params={'email': email}, model=RouteModel)
 
         node = r.model.node.rstrip('/')
         # 31_104_000 is one year, got a valid em2 node, assume it'll last for a long time
@@ -140,7 +207,7 @@ class Em2Comms:
 
         if sign:
             ts = datetime.utcnow().isoformat()
-            to_sign = f'{method} {url_} {ts}\n'.encode() + (data_ or b'-')
+            to_sign = body_to_sign(method, url_, ts, data_)
             headers = {'Signature': ts + ',' + self.signing_key.sign(to_sign).signature.hex()}
         else:
             headers = None
@@ -179,3 +246,18 @@ class Em2Comms:
             },
         )
         raise HttpError(f'error on {method} to {url}, {exc}')
+
+
+def body_to_sign(method: str, url: URL, ts: str, data: Optional[bytes]) -> bytes:
+    return f'{method} {url} {ts}\n'.encode() + (data or b'-')
+
+
+def check_signature(signing_verify_key: str, signature: bytes, body: bytes) -> str:
+    try:
+        verify_key = nacl.signing.VerifyKey(signing_verify_key, encoder=nacl.encoding.HexEncoder)
+    except binascii.Error:
+        return 'Invalid signature verification key'
+    try:
+        verify_key.verify(body, signature)
+    except BadSignatureError:
+        return 'Invalid signature'
