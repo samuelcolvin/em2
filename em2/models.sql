@@ -125,15 +125,16 @@ create or replace function action_insert() returns trigger as $$
     old_details_ json;
     creator_ varchar(255);
     details_ json;
+    new_id_ int;
     subject_ats ActionTypes[] = array['conv:publish', 'conv:create', 'subject:modify'];
     add_del_msg_ats ActionTypes[] = array['message:add', 'message:delete'];
     meta_ats ActionTypes[] = array['seen','subject:release','subject:lock','message:lock','message:release'];
   begin
     if new.act=any(meta_ats) then
       update conversations
-        set last_action_id=last_action_id + 1
+        set last_action_id=case when new.id is null then last_action_id + 1 else new.id end
         where id=new.conv
-        returning last_action_id into new.id;
+        returning last_action_id into new_id_;
     else
       select details, u.email into old_details_, creator_
       from conversations c
@@ -150,14 +151,19 @@ create or replace function action_insert() returns trigger as $$
         'msgs', (
           select count(*) filter (where act='message:add') - count(*) filter (where act='message:delete')
           from actions where conv=new.conv and act=any(add_del_msg_ats)
-        ) + case when new.act='message:add' then 1
-                 when new.act='message:delete' then -1
-                 else 0 end
+        ) + case new.act when 'message:add' then 1
+                         when 'message:delete' then -1
+                         else 0 end
       );
       update conversations
-        set updated_ts=new.ts, details=details_, last_action_id=last_action_id + 1
+        set updated_ts=new.ts, details=details_,
+            last_action_id=case when new.id is null then last_action_id + 1 else new.id end
         where id=new.conv
-        returning last_action_id into new.id;
+        returning last_action_id into new_id_;
+    end if;
+
+    if new.id is null then
+      new.id := new_id_;
     end if;
 
     return new;

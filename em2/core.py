@@ -5,7 +5,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, unique
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import AbstractSet, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from atoolbox import JsonErrors
 from buildpg import MultipleValues, V, Values
@@ -73,7 +73,7 @@ async def get_create_user(conns: Connections, email: str, user_type: UserTypes =
     return user_id
 
 
-async def get_create_multiple_users(conns: Connections, emails: Set[str]) -> Dict[str, int]:
+async def get_create_multiple_users(conns: Connections, emails: AbstractSet[str]) -> Dict[str, int]:
     """
     like get_create_user but for multiple users.
     """
@@ -789,23 +789,12 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
     return {'subject': subject, 'created': created, 'messages': msg_list, 'participants': participants}
 
 
-class CreateConvModel(BaseModel):
-    subject: constr(max_length=255, strip_whitespace=True)
-    message: constr(max_length=10000, strip_whitespace=True)
-    msg_format: MsgFormat = MsgFormat.markdown
-    publish = False
-
-    class Participants(BaseModel):
-        email: EmailStr
-        name: str = None
-
-    participants: List[Participants] = []
-
-    @validator('participants', whole=True)
-    def check_participants_count(cls, v):
-        if len(v) > max_participants:
-            raise ValueError(f'no more than {max_participants} participants permitted')
-        return v
+@dataclass
+class ConvCreateMessage:
+    body: str
+    msg_format: MsgFormat
+    action_id: Optional[int] = None
+    files: Optional[List[File]] = None
 
 
 async def create_conv(
@@ -813,14 +802,36 @@ async def create_conv(
     conns: Connections,
     creator_email: str,
     creator_id: int,
-    conv: CreateConvModel,
+    subject: str,
+    publish: bool,
+    messages: List[ConvCreateMessage],
+    participants: Dict[str, Optional[int]],
+    publish_action_id: Optional[int] = None,
     ts: Optional[datetime] = None,
     spam: bool = False,
     warnings: Dict[str, str] = None,
-    files: Optional[List[File]] = None,
 ) -> Tuple[int, str]:
+    """
+    Create a new conversation, this is used:
+    * locally when someone creates a conversation
+    * upon receiving an SMTP message not associate with an existing conversation
+    * upon receiving a new conversation view em2-push
+
+    :param conns:
+    :param creator_email:
+    :param creator_id:
+    :param subject:
+    :param publish:
+    :param messages:
+    :param participants: lookup from email address of participants to
+    :param publish_action_id: optional id of the action ID
+    :param ts: optional timestamp
+    :param spam: whether conversation is spam
+    :param warnings: warnings about the conversation
+    :return: tuple conversation id and key
+    """
     ts = ts or utcnow()
-    conv_key = generate_conv_key(creator_email, ts, conv.subject) if conv.publish else draft_conv_key()
+    conv_key = generate_conv_key(creator_email, ts, subject) if publish else draft_conv_key()
     async with conns.main.transaction():
         conv_id = await conns.main.fetchval(
             """
@@ -831,15 +842,14 @@ async def create_conv(
             """,
             conv_key,
             creator_id,
-            ts if conv.publish else None,
+            ts if publish else None,
             ts,
         )
         if conv_id is None:
             raise JsonErrors.HTTPConflict(message='key conflicts with existing conversation')
 
         # TODO currently only email is used
-        participants = set(p.email for p in conv.participants)
-        part_users = await get_create_multiple_users(conns, participants)
+        part_users = await get_create_multiple_users(conns, participants.keys())
 
         await conns.main.execute(
             'insert into participants (conv, user_id, seen, inbox) (select $1, $2, true, null)', conv_id, creator_id
@@ -863,36 +873,43 @@ async def create_conv(
             ts,
             user_ids,
         )
-        add_action_pk = await conns.main.fetchval(
-            """
-            insert into actions (conv, act          , actor, ts, body, preview, msg_format, warnings)
-            values              ($1  , 'message:add', $2   , $3, $4  , $5     , $6        , $7)
-            returning pk
-            """,
-            conv_id,
-            creator_id,
-            ts,
-            conv.message,
-            message_preview(conv.message, conv.msg_format),
-            conv.msg_format,
-            json.dumps(warnings) if warnings else None,
+        warnings_ = json.dumps(warnings) if warnings else None
+        values = [
+            Values(
+                conv=conv_id,
+                id=m.action_id,
+                act=ActionTypes.msg_add,
+                actor=creator_id,
+                ts=ts,
+                body=m.body,
+                preview=message_preview(m.body, m.msg_format),
+                msg_format=m.msg_format,
+                warnings=warnings_,
+            )
+            for m in messages
+        ]
+        msg_action_pks = await conns.main.fetch_b(
+            'insert into actions (:values__names) values :values returning pk', values=MultipleValues(*values)
         )
+        files = [(r[0], m.files) for r, m in zip(msg_action_pks, messages) if m.files]
+
         await conns.main.execute(
             """
-            insert into actions (conv, act, actor, ts, body)
-            values              ($1  , $2 , $3   , $4, $5)
+            insert into actions (conv, act, actor, ts, body, id)
+            values              ($1  , $2 , $3   , $4, $5  , $6)
             """,
             conv_id,
-            ActionTypes.conv_publish if conv.publish else ActionTypes.conv_create,
+            ActionTypes.conv_publish if publish else ActionTypes.conv_create,
             creator_id,
             ts,
-            conv.subject,
+            subject,
+            publish_action_id,
         )
         await update_conv_users(conns, conv_id)
-        if files:
-            await create_files(conns, files, conv_id, add_action_pk)
+        for action_pk, files in files:
+            await create_files(conns, files, conv_id, action_pk)
 
-    if not conv.publish:
+    if not publish:
         updates = (UpdateFlag(creator_id, [(ConvFlags.draft, 1), (ConvFlags.all, 1)]),)
     elif spam:
         updates = (
@@ -915,8 +932,9 @@ async def create_conv(
         creator_email=creator_email,
         creator_id=creator_id,
         users=part_users,
-        conv=conv,
-        files=files,
+        subject=subject,
+        publish=publish,
+        messages=messages,
     )
     return conv_id, conv_key
 

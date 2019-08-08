@@ -5,14 +5,14 @@ from typing import Any, Dict, List, Tuple
 
 from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
 from buildpg import SetValues, V, funcs
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, EmailStr, constr, validator
 
 from em2.background import push_all, push_multiple
 from em2.core import (
     ActionModel,
     ActionTypes,
+    ConvCreateMessage,
     ConvFlags,
-    CreateConvModel,
     File,
     UpdateFlag,
     apply_actions,
@@ -23,10 +23,12 @@ from em2.core import (
     get_conv_for_user,
     get_flag_counts,
     get_label_counts,
+    max_participants,
     update_conv_flags,
     update_conv_users,
 )
 from em2.search import search, search_publish_conv
+from em2.utils.core import MsgFormat
 from em2.utils.datetime import utcnow
 from em2.utils.db import or404
 from em2.utils.storage import S3, StorageNotFound, parse_storage_uri
@@ -158,11 +160,33 @@ class ConvDetails(View):
 
 
 class ConvCreate(ExecView):
-    Model = CreateConvModel
+    class Model(BaseModel):
+        subject: constr(max_length=255, strip_whitespace=True)
+        message: constr(max_length=10000, strip_whitespace=True)
+        msg_format: MsgFormat = MsgFormat.markdown
+        publish = False
 
-    async def execute(self, conv: CreateConvModel):
+        class Participant(BaseModel):
+            email: EmailStr
+            name: str = None
+
+        participants: List[Participant] = []
+
+        @validator('participants', whole=True)
+        def check_participants_count(cls, v):
+            if len(v) > max_participants:
+                raise ValueError(f'no more than {max_participants} participants permitted')
+            return v
+
+    async def execute(self, conv: Model):
         conv_id, conv_key = await create_conv(
-            conns=self.conns, creator_email=self.session.email, creator_id=self.session.user_id, conv=conv
+            conns=self.conns,
+            creator_email=self.session.email,
+            creator_id=self.session.user_id,
+            subject=conv.subject,
+            publish=conv.publish,
+            messages=[ConvCreateMessage(body=conv.message, msg_format=conv.msg_format)],
+            participants={p.email: None for p in conv.participants},
         )
 
         await push_all(self.conns, conv_id)

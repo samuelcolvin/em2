@@ -1,4 +1,5 @@
 import re
+from itertools import chain
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from buildpg import Empty, Func, V, funcs
@@ -7,7 +8,7 @@ from em2.utils.core import message_simplify
 from em2.utils.db import Connections
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .core import ActionModel, File, CreateConvModel  # noqa: F401
+    from .core import ActionModel, File, ConvCreateMessage  # noqa: F401
 
 __all__ = ['search_create_conv', 'search_publish_conv', 'search_update', 'search']
 
@@ -23,14 +24,15 @@ async def search_create_conv(
     creator_id: int,
     creator_email: str,
     users: Dict[str, int],
-    conv: 'CreateConvModel',
-    files: Optional[List['File']],
+    subject: str,
+    publish: bool,
+    messages: List['ConvCreateMessage'],
 ):
     addresses = _prepare_address(creator_email, *users.keys())
-    files = _prepare_files(files)
-    body = message_simplify(conv.message, conv.msg_format)
+    files = _prepare_files(list(chain(*(m.files for m in messages if m.files))))
+    body = message_simplify(' '.join(m.body for m in messages), messages[0].msg_format)
     user_ids = [creator_id]
-    if conv.publish:
+    if publish:
         user_ids += list(users.values())
 
     await conns.main.execute(
@@ -50,7 +52,7 @@ async def search_create_conv(
         conv_id,
         user_ids,
         creator_email,
-        conv.subject,
+        subject,
         addresses,
         files,
         body,
