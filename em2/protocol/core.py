@@ -20,8 +20,8 @@ from yarl import URL
 from em2.settings import Settings
 
 logger = logging.getLogger('em2.core')
-# could try another subdomain with a random part incase people are using em2-routing
-em2_subdomain = 'em2-routing'
+# could try another subdomain with a random part incase people are using em2-platform
+em2_subdomain = 'em2-platform'
 
 
 class HttpError(RuntimeError):

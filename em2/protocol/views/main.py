@@ -5,7 +5,7 @@ import nacl.encoding
 from atoolbox import ExecView, JsonErrors, json_response
 from pydantic import BaseModel, EmailStr, constr, validator
 
-from em2.core import ActionTypes, follow_action_types, participant_action_types
+from em2.core import ActionTypes, follow_action_types, generate_conv_key, participant_action_types
 from em2.protocol.core import Em2Comms, InvalidSignature
 from em2.utils.core import MsgFormat
 
@@ -72,9 +72,26 @@ class Em2Push(ExecView):
         actions: List[Action]
 
     async def execute(self, m: Model):
-        publish = next(a for a in m.actions if a.act == ActionTypes.conv_publish)
+        try:
+            publish = next(a for a in m.actions if a.act == ActionTypes.conv_publish)
+        except StopIteration:
+            raise NotImplementedError('TODO')
+        else:
+            await self.published_conv(publish, m)
+
+    async def published_conv(self, publish_action: Action, m: Model):
+        """
+        New conversation just published
+        """
+        if not all(a.actor == publish_action.actor for a in m.actions):
+            raise JsonErrors.HTTPBadRequest('publishing conversation, but multiple actors')
+
         em2: Em2Comms = self.app['em2']
         try:
-            await em2.check_signature(publish.actor, self.request)
+            await em2.check_signature(publish_action.actor, self.request)
         except InvalidSignature as e:
             raise JsonErrors.HTTPForbidden(e.args[0])
+
+        expected_key = generate_conv_key(publish_action.actor, publish_action.ts, publish_action.body)
+        if expected_key != m.conversation:
+            raise JsonErrors.HTTPBadRequest('invalid conversation key', details={'expected': expected_key})

@@ -16,8 +16,6 @@ from em2.utils.web import full_url, internal_request_headers
 from .core import Em2Comms, HttpError
 
 logger = logging.getLogger('em2.push')
-# could try another subdomain with a random part incase people are using em2-routing
-em2_subdomain = 'em2-routing'
 RETRY = 'RT'
 SMTP = 'SMTP'
 

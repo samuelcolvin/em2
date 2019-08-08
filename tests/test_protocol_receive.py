@@ -10,8 +10,9 @@ async def test_signing_verification(cli, url):
 
 
 async def test_push(cli, url, settings):
+    # key = generate_conv_key('actor@example.org', parse_datetime('2032-06-06T12:00:00.000000+00:00'), 'Test Subject')
     data = {
-        'conversation': 'this needs to be set',
+        'conversation': '5771d1016ac9515319a15f9ea4621b411a2eab8b781e88db9885a806ee12144c',
         'platform': 'em2.example.org',
         'actions': [
             {
