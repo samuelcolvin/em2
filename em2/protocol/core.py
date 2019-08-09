@@ -72,7 +72,7 @@ class Em2Comms:
         self.redis = redis
         self.resolver = resolver
 
-    async def check_signature(self, email, request) -> None:  # noqa: C901 (ignore complexity)
+    async def check_signature(self, platform, request) -> None:  # noqa: C901 (ignore complexity)
         try:
             sig = request.headers['Signature']
         except KeyError:
@@ -91,14 +91,10 @@ class Em2Comms:
         if not now - timedelta(seconds=30) < ts < now + timedelta(seconds=5):
             raise InvalidSignature('Signature expired')
 
-        node = await self.get_em2_platform(email)
-        if not node:
-            raise InvalidSignature(f'em2 platform not found for {email!r}')
-
         data = await request.read()
         body = body_to_sign(request.method, request.url, ts_str, data)
 
-        signing_verify_cache_key = f'node-signing-verify:{node}'
+        signing_verify_cache_key = f'node-signing-verify:{platform}'
         signing_verify_key = await self.redis.get(signing_verify_cache_key)
         error = None
         if signing_verify_key:
@@ -106,7 +102,7 @@ class Em2Comms:
             if not error:
                 return
 
-        url = node + '/v1/signing/verification/'
+        url = platform + '/v1/signing/verification/'
         try:
             r = await self.get(url, sign=False, model=VerificationKeysModel)
         except HttpError:
@@ -120,7 +116,7 @@ class Em2Comms:
 
         raise InvalidSignature(error or 'No signature verification keys found')
 
-    async def get_em2_platform(self, email) -> Optional[str]:
+    async def get_em2_node(self, email) -> Optional[str]:
         user_node_key = f'user-node:{email}'
         v = await self.redis.get(user_node_key)
         if v:

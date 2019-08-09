@@ -80,7 +80,7 @@ class Pusher:
                 return
 
         try:
-            em2_node = await self.em2.get_em2_platform(email)
+            em2_node = await self.em2.get_em2_node(email)
         except HttpError:
             # domain has an em2 platform, but request failed, try again later
             return RETRY, email

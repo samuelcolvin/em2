@@ -2,12 +2,22 @@ from datetime import datetime
 from typing import Any, List, Optional
 
 import nacl.encoding
-from atoolbox import ExecView, JsonErrors, json_response
-from pydantic import BaseModel, EmailStr, constr, validator
+from atoolbox import JsonErrors, json_response
+from pydantic import BaseModel, EmailStr, conint, constr, validator
 
-from em2.core import ActionTypes, follow_action_types, generate_conv_key, participant_action_types
-from em2.protocol.core import Em2Comms, InvalidSignature
+from em2.core import (
+    ActionTypes,
+    ConvCreateMessage,
+    UserTypes,
+    create_conv,
+    follow_action_types,
+    get_create_user,
+    participant_action_types,
+)
+from em2.protocol.core import InvalidSignature
 from em2.utils.core import MsgFormat
+
+from .utils import ExecView
 
 
 async def signing_verification(request):
@@ -26,7 +36,7 @@ with_body_actions = {ActionTypes.msg_add, ActionTypes.msg_modify, ActionTypes.su
 
 
 class Action(BaseModel):
-    id: int
+    id: conint(gt=0)  # TODO check that ID increments correctly
     act: ActionTypes
     ts: datetime
     actor: EmailStr
@@ -67,17 +77,21 @@ class Action(BaseModel):
 
 class Em2Push(ExecView):
     class Model(BaseModel):
-        platform: str
+        em2_node: str
         conversation: str
         actions: List[Action]
 
     async def execute(self, m: Model):
         try:
-            publish = next(a for a in m.actions if a.act == ActionTypes.conv_publish)
-        except StopIteration:
-            raise NotImplementedError('TODO')
+            await self.em2.check_signature(m.em2_node, self.request)
+        except InvalidSignature as e:
+            raise JsonErrors.HTTPForbidden(e.args[0])
+
+        last_action = m.actions[-1]
+        if last_action.act == ActionTypes.conv_publish:
+            await self.published_conv(last_action, m)
         else:
-            await self.published_conv(publish, m)
+            raise NotImplementedError('TODO')
 
     async def published_conv(self, publish_action: Action, m: Model):
         """
@@ -86,12 +100,32 @@ class Em2Push(ExecView):
         if not all(a.actor == publish_action.actor for a in m.actions):
             raise JsonErrors.HTTPBadRequest('publishing conversation, but multiple actors')
 
-        em2: Em2Comms = self.app['em2']
-        try:
-            await em2.check_signature(publish_action.actor, self.request)
-        except InvalidSignature as e:
-            raise JsonErrors.HTTPForbidden(e.args[0])
+        actor_email = publish_action.actor
+        actor_node = await self.em2.get_em2_node(actor_email)
+        if m.em2_node != actor_node:
+            raise JsonErrors.HTTPBadRequest(
+                'actor does not match em2 node', details={'actor_node': actor_node, 'request_node': m.em2_node}
+            )
 
-        expected_key = generate_conv_key(publish_action.actor, publish_action.ts, publish_action.body)
-        if expected_key != m.conversation:
-            raise JsonErrors.HTTPBadRequest('invalid conversation key', details={'expected': expected_key})
+        messages = []
+        participants = {}
+        for a in m.actions:
+            if a.act == ActionTypes.msg_add:
+                messages.append(
+                    ConvCreateMessage(body=a.body, msg_format=a.msg_format, action_id=a.id, parent=a.parent)
+                )
+            elif a.act == ActionTypes.prt_add and a.participant != actor_email:
+                participants[a.participant] = a.id
+
+        actor_id = await get_create_user(self.conns, actor_email, UserTypes.remote_em2)
+        await create_conv(
+            conns=self.conns,
+            creator_email=actor_email,
+            creator_id=actor_id,
+            subject=publish_action.body,
+            publish=True,
+            messages=messages,
+            participants=participants,
+            ts=publish_action.ts,
+            given_conv_key=m.conversation,
+        )

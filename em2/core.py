@@ -794,6 +794,7 @@ class ConvCreateMessage:
     body: str
     msg_format: MsgFormat
     action_id: Optional[int] = None
+    parent: Optional[int] = None
     files: Optional[List[File]] = None
 
 
@@ -808,6 +809,7 @@ async def create_conv(
     participants: Dict[str, Optional[int]],
     publish_action_id: Optional[int] = None,
     ts: Optional[datetime] = None,
+    given_conv_key: Optional[str] = None,
     spam: bool = False,
     warnings: Dict[str, str] = None,
 ) -> Tuple[int, str]:
@@ -817,21 +819,24 @@ async def create_conv(
     * upon receiving an SMTP message not associate with an existing conversation
     * upon receiving a new conversation view em2-push
 
-    :param conns:
-    :param creator_email:
-    :param creator_id:
-    :param subject:
-    :param publish:
-    :param messages:
-    :param participants: lookup from email address of participants to
+    :param conns: connections to use when creating conversation
+    :param creator_email: email address of user creating conversation
+    :param creator_id: id of that user
+    :param subject: subject of the new conversation
+    :param publish: whether the conversation should be (or has been) published
+    :param messages: list of messages for the conversation
+    :param participants: lookup from email address of participants to IDs of the actions used when adding that prt
     :param publish_action_id: optional id of the action ID
     :param ts: optional timestamp
+    :param given_conv_key: given conversation key, checked to confirm it matches generated conv key if given
     :param spam: whether conversation is spam
     :param warnings: warnings about the conversation
     :return: tuple conversation id and key
     """
     ts = ts or utcnow()
     conv_key = generate_conv_key(creator_email, ts, subject) if publish else draft_conv_key()
+    if given_conv_key is not None and given_conv_key != conv_key:
+        raise JsonErrors.HTTPBadRequest('invalid conversation key', details={'expected': conv_key})
     async with conns.main.transaction():
         conv_id = await conns.main.fetchval(
             """
@@ -848,30 +853,36 @@ async def create_conv(
         if conv_id is None:
             raise JsonErrors.HTTPConflict(message='key conflicts with existing conversation')
 
-        # TODO currently only email is used
-        part_users = await get_create_multiple_users(conns, participants.keys())
-
         await conns.main.execute(
             'insert into participants (conv, user_id, seen, inbox) (select $1, $2, true, null)', conv_id, creator_id
         )
-        other_user_ids = list(part_users.values())
-        await conns.main.execute(
-            'insert into participants (conv, user_id, spam) (select $1, unnest($2::int[]), $3)',
-            conv_id,
-            other_user_ids,
-            True if spam else None,
-        )
-        user_ids = [creator_id] + other_user_ids
+        if participants:
+            part_users = await get_create_multiple_users(conns, participants.keys())
+            other_user_emails, other_user_ids = zip(*part_users.items())
+            await conns.main.execute(
+                'insert into participants (conv, user_id, spam) (select $1, unnest($2::int[]), $3)',
+                conv_id,
+                other_user_ids,
+                True if spam else None,
+            )
+            user_ids = [creator_id] + list(other_user_ids)
+            action_ids = [1] + [participants[u_email] for u_email in other_user_emails]
+        else:
+            part_users = {}
+            other_user_ids = []
+            user_ids = [creator_id]
+            action_ids = []
         await conns.main.execute(
             """
-            insert into actions (conv, act              , actor, ts, participant_user) (
-            select               $1  , 'participant:add', $2   , $3, unnest($4::int[])
+            insert into actions (conv, act              , actor, ts, participant_user , id) (
+            select               $1  , 'participant:add', $2   , $3, unnest($4::int[]), unnest($5::int[])
             )
             """,
             conv_id,
             creator_id,
             ts,
             user_ids,
+            action_ids,
         )
         warnings_ = json.dumps(warnings) if warnings else None
         values = [
@@ -891,7 +902,6 @@ async def create_conv(
         msg_action_pks = await conns.main.fetch_b(
             'insert into actions (:values__names) values :values returning pk', values=MultipleValues(*values)
         )
-        files = [(r[0], m.files) for r, m in zip(msg_action_pks, messages) if m.files]
 
         await conns.main.execute(
             """
@@ -906,8 +916,21 @@ async def create_conv(
             publish_action_id,
         )
         await update_conv_users(conns, conv_id)
-        for action_pk, files in files:
-            await create_files(conns, files, conv_id, action_pk)
+        for r, m in zip(msg_action_pks, messages):
+            action_pk = r[0]
+            if m.files:
+                await create_files(conns, m.files, conv_id, action_pk)
+            if m.parent:
+                await conns.main.execute(
+                    """
+                    update actions set parent=pk from
+                      (select pk from actions where conv=$1 and id=$2) t
+                    where conv=$1 and pk=$3
+                    """,
+                    conv_id,
+                    m.parent,
+                    action_pk,
+                )
 
     if not publish:
         updates = (UpdateFlag(creator_id, [(ConvFlags.draft, 1), (ConvFlags.all, 1)]),)
