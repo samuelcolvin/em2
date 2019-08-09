@@ -42,13 +42,15 @@ create table conversations (
   updated_ts timestamptz not null,
   publish_ts timestamptz,
   last_action_id int not null default 0 check (last_action_id >= 0),
+  leader_node varchar (255),  -- null when this node is leader,
   details json
 );
 create index idx_conversations_key on conversations using gin (key gin_trgm_ops);
+create index idx_conversations_creator on conversations using btree (creator);
 create index idx_conversations_created_ts on conversations using btree (created_ts);
 create index idx_conversations_updated_ts on conversations using btree (updated_ts);
 create index idx_conversations_publish_ts on conversations using btree (publish_ts);
-create index idx_conversations_creator on conversations using btree (creator);
+create index idx_conversations_leader_node on conversations using btree (leader_node);
 
 create table participants (
   id bigserial primary key,

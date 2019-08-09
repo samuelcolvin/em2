@@ -28,6 +28,7 @@ async def test_create_conv(cli, factory: Factory, db_conn):
         'updated_ts': CloseToNow(),
         'publish_ts': None,
         'last_action_id': 3,  # add participant, add message, publish
+        'leader_node': None,
         'details': RegexStr(r'\{.*\}'),
     }
     assert json.loads(conv['details']) == {
@@ -77,6 +78,7 @@ async def test_create_conv_participants(cli, factory: Factory, db_conn):
         'updated_ts': CloseToNow(),
         'publish_ts': None,
         'last_action_id': 5,
+        'leader_node': None,
         'details': RegexStr(r'\{.*\}'),
     }
     assert json.loads(conv['details']) == {
@@ -118,6 +120,7 @@ async def test_create_conv_publish(cli, factory: Factory, db_conn):
         'updated_ts': CloseToNow(),
         'publish_ts': CloseToNow(),
         'last_action_id': 3,  # add participant, add message, publish
+        'leader_node': None,
         'details': RegexStr(r'\{.*\}'),
     }
     assert json.loads(conv['details']) == {

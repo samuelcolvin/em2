@@ -1,4 +1,8 @@
+import asyncio
+import logging
 from datetime import datetime
+from itertools import groupby
+from operator import attrgetter
 from typing import Any, List, Optional
 
 import nacl.encoding
@@ -9,8 +13,10 @@ from em2.core import (
     ActionTypes,
     ConvCreateMessage,
     UserTypes,
+    apply_actions,
     create_conv,
     follow_action_types,
+    get_create_multiple_users,
     get_create_user,
     participant_action_types,
 )
@@ -18,6 +24,8 @@ from em2.protocol.core import InvalidSignature
 from em2.utils.core import MsgFormat
 
 from .utils import ExecView
+
+logger = logging.getLogger('em2.protocol.views')
 
 
 async def signing_verification(request):
@@ -76,8 +84,19 @@ class Action(BaseModel):
 
 
 class Em2Push(ExecView):
+    """
+    Currently:
+    * 200 means ok
+    * 400 errors are permanent
+    * 401 errors might be temporary
+    * 470 specifically means retry with more information
+    * everything else should be retried
+
+    Need to formalise this.
+    """
+
     class Model(BaseModel):
-        em2_node: str
+        em2_node: constr(min_length=4)
         conversation: str
         actions: List[Action]
 
@@ -85,31 +104,33 @@ class Em2Push(ExecView):
         try:
             await self.em2.check_signature(m.em2_node, self.request)
         except InvalidSignature as e:
-            raise JsonErrors.HTTPForbidden(e.args[0])
+            msg = e.args[0]
+            logger.info('unauthorized em2 push msg="%s" em2-node="%s"', msg, m.em2_node)
+            raise JsonErrors.HTTPUnauthorized()
 
         last_action = m.actions[-1]
         if last_action.act == ActionTypes.conv_publish:
             await self.published_conv(last_action, m)
         else:
-            raise NotImplementedError('TODO')
+            await self.append_to_conversation(m)
 
     async def published_conv(self, publish_action: Action, m: Model):
         """
         New conversation just published
         """
-        if not all(a.actor == publish_action.actor for a in m.actions):
+        actions = [a for a in m.actions if a.id <= publish_action.id]
+        if not all(a.actor == publish_action.actor for a in actions):
             raise JsonErrors.HTTPBadRequest('publishing conversation, but multiple actors')
 
         actor_email = publish_action.actor
         actor_node = await self.em2.get_em2_node(actor_email)
         if m.em2_node != actor_node:
-            raise JsonErrors.HTTPBadRequest(
-                'actor does not match em2 node', details={'actor_node': actor_node, 'request_node': m.em2_node}
-            )
+            msg = 'actor does not have em2 node' if actor_node is None else 'actor does not match em2 node'
+            raise JsonErrors.HTTPBadRequest(msg)
 
         messages = []
         participants = {}
-        for a in m.actions:
+        for a in actions:
             if a.act == ActionTypes.msg_add:
                 messages.append(
                     ConvCreateMessage(body=a.body, msg_format=a.msg_format, action_id=a.id, parent=a.parent)
@@ -128,4 +149,44 @@ class Em2Push(ExecView):
             participants=participants,
             ts=publish_action.ts,
             given_conv_key=m.conversation,
+            leader_node=m.em2_node,
         )
+
+    async def append_to_conversation(self, m: Model):
+        actor_emails = {a.actor for a in m.actions}
+        nodes = set(await asyncio.gather(*[self.em2.get_em2_node(e) for e in actor_emails]))
+        if None in nodes:
+            raise JsonErrors.HTTPBadRequest("not all actors' have an em2 nodes")
+        if nodes != {m.em2_node}:
+            raise JsonErrors.HTTPBadRequest("not all actors' em2 node match request node")
+
+        publish_action = next((a for a in m.actions if a.act == ActionTypes.conv_publish), None)
+        r = await self.conns.main.fetchrow(
+            'select id, last_action_id, leader_node from conversations where key=$1', m.conversation
+        )
+        if not r:
+            if publish_action:
+                # conversation doesn't exist and we have the publish action, create the conversation, then apply
+                # extra actions
+                await self.published_conv(publish_action, m)
+                actions_to_apply = [a for a in m.actions if a.id > publish_action.id]
+                conv_ref = m.conversation
+            else:
+                # conversation doesn't exist and there's no publish_action, need the whole conversation
+                raise JsonErrors.HTTP470('full conversation required')  # TODO better error
+        else:
+            conv_ref, last_action_id, leader_node = r
+            if leader_node != m.em2_node:
+                raise JsonErrors.HTTPBadRequest('request em2 node does not match current em2 node')
+
+            if last_action_id + 1 < m.actions[0].id:
+                raise JsonErrors.HTTP470('full conversation required')  # TODO better error
+
+            actions_to_apply = [a for a in m.actions if a.id > last_action_id]
+            if not actions_to_apply:
+                raise JsonErrors.HTTPBadRequest('no new actions to apply')
+
+        actor_user_ids = await get_create_multiple_users(self.conns, actor_emails)
+        for actor_email, actions_gen in groupby(actions_to_apply, attrgetter('actor')):
+            # TODO files
+            await apply_actions(self.conns, actor_user_ids[actor_email], conv_ref, list(actions_gen))

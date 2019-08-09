@@ -810,6 +810,7 @@ async def create_conv(
     publish_action_id: Optional[int] = None,
     ts: Optional[datetime] = None,
     given_conv_key: Optional[str] = None,
+    leader_node: str = None,
     spam: bool = False,
     warnings: Dict[str, str] = None,
 ) -> Tuple[int, str]:
@@ -829,6 +830,7 @@ async def create_conv(
     :param publish_action_id: optional id of the action ID
     :param ts: optional timestamp
     :param given_conv_key: given conversation key, checked to confirm it matches generated conv key if given
+    :param leader_node: node of the leader of this conversation, black if this node
     :param spam: whether conversation is spam
     :param warnings: warnings about the conversation
     :return: tuple conversation id and key
@@ -840,8 +842,8 @@ async def create_conv(
     async with conns.main.transaction():
         conv_id = await conns.main.fetchval(
             """
-            insert into conversations (key, creator, publish_ts, created_ts, updated_ts)
-            values                    ($1,  $2     , $3        , $4        , $4        )
+            insert into conversations (key, creator, publish_ts, created_ts, updated_ts, leader_node)
+            values                    ($1,  $2     , $3        , $4        , $4        , $5         )
             on conflict (key) do nothing
             returning id
             """,
@@ -849,6 +851,7 @@ async def create_conv(
             creator_id,
             ts if publish else None,
             ts,
+            leader_node,
         )
         if conv_id is None:
             raise JsonErrors.HTTPConflict(message='key conflicts with existing conversation')

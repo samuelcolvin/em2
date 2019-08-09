@@ -16,9 +16,10 @@ async def test_push(cli, url, settings, dummy_server: DummyServer, db_conn):
     ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
     # key = generate_conv_key('actor@example.org', ts, 'Test Subject')
     conv_key = '5771d1016ac9515319a15f9ea4621b411a2eab8b781e88db9885a806ee12144c'
+    em2_node = dummy_server.server_name + '/em2'
     post_data = {
         'conversation': conv_key,
-        'em2_node': dummy_server.server_name + '/em2',
+        'em2_node': em2_node,
         'actions': [
             {
                 'id': 1,
@@ -69,12 +70,13 @@ async def test_push(cli, url, settings, dummy_server: DummyServer, db_conn):
     assert r.status == 200, await r.text()
 
     assert await db_conn.fetchval('select count(*) from conversations') == 1
-    conv_id, new_conv_key, creator, publish_ts, last_action_id = await db_conn.fetchrow(
-        'select id, key, creator, publish_ts, last_action_id from conversations'
+    conv_id, new_conv_key, creator, publish_ts, last_action_id, leader_node = await db_conn.fetchrow(
+        'select id, key, creator, publish_ts, last_action_id, leader_node from conversations'
     )
     assert new_conv_key == conv_key
     assert creator == await db_conn.fetchval('select id from users where email=$1', 'actor@example.org')
     assert publish_ts == ts
     assert last_action_id == 4
+    assert leader_node == em2_node
     actions_data = await db_conn.fetchval(push_sql_all, conv_id)
     assert json.loads(actions_data)['actions'] == post_data['actions']
