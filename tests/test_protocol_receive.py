@@ -228,7 +228,7 @@ async def test_failed_get_em2_node(cli, url, dummy_server: DummyServer, settings
     signing_key = get_signing_key(settings.signing_secret_key)
     sig = sign_ts + ',' + signing_key.sign(to_sign).signature.hex()
     r = await cli.post(path, data=data, headers={'Content-Type': 'application/json', 'Signature': sig})
-    assert r.status == 400, await r.text()
+    assert r.status == 401, await r.text()
 
     assert await r.json() == {'message': 'not all actors have an em2 nodes'}
     assert dummy_server.log == ['GET em2/v1/signing/verification']
