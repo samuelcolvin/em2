@@ -139,7 +139,7 @@ class Em2Push(ExecView):
                 participants[a.participant] = a.id
 
         actor_id = await get_create_user(self.conns, actor_email, UserTypes.remote_em2)
-        await create_conv(
+        conv_id, _ = await create_conv(
             conns=self.conns,
             creator_email=actor_email,
             creator_id=actor_id,
@@ -151,6 +151,7 @@ class Em2Push(ExecView):
             given_conv_key=m.conversation,
             leader_node=m.em2_node,
         )
+        return conv_id
 
     async def append_to_conversation(self, m: Model):
         actor_emails = {a.actor for a in m.actions}
@@ -168,14 +169,13 @@ class Em2Push(ExecView):
             if publish_action:
                 # conversation doesn't exist and we have the publish action, create the conversation, then apply
                 # extra actions
-                await self.published_conv(publish_action, m)
+                conv_id = await self.published_conv(publish_action, m)
                 actions_to_apply = [a for a in m.actions if a.id > publish_action.id]
-                conv_ref = m.conversation
             else:
                 # conversation doesn't exist and there's no publish_action, need the whole conversation
                 raise JsonErrors.HTTP470('full conversation required')  # TODO better error
         else:
-            conv_ref, last_action_id, leader_node = r
+            conv_id, last_action_id, leader_node = r
             if leader_node != m.em2_node:
                 raise JsonErrors.HTTPBadRequest('request em2 node does not match current em2 node')
 
@@ -189,4 +189,4 @@ class Em2Push(ExecView):
         actor_user_ids = await get_create_multiple_users(self.conns, actor_emails)
         for actor_email, actions_gen in groupby(actions_to_apply, attrgetter('actor')):
             # TODO files
-            await apply_actions(self.conns, actor_user_ids[actor_email], conv_ref, list(actions_gen))
+            await apply_actions(self.conns, actor_user_ids[actor_email], conv_id, list(actions_gen))

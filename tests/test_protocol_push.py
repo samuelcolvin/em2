@@ -4,7 +4,7 @@ from arq import Worker
 from atoolbox.test_utils import DummyServer
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
-from em2.core import ActionModel, ActionTypes
+from em2.core import Action, ActionTypes
 from em2.protocol.core import get_signing_key
 from em2.settings import Settings
 
@@ -111,7 +111,7 @@ async def test_add_msg_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
     await ses_worker.async_run()
     assert await ses_worker.run_check() == 3
 
-    action = ActionModel(act=ActionTypes.msg_add, body='This is **another** message')
+    action = Action(act=ActionTypes.msg_add, body='This is **another** message')
     assert [5] == await factory.act(user.id, conv.id, action)
 
     await ses_worker.async_run()
@@ -133,13 +133,13 @@ async def test_ignore_seen(factory: Factory, db_conn, ses_worker: Worker, dummy_
     await ses_worker.async_run()
     assert await ses_worker.run_check() == 3
 
-    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant='another@example.net'))
+    await factory.act(user.id, conv.id, Action(act=ActionTypes.prt_add, participant='another@example.net'))
     user2_id = await db_conn.fetchval('select id from users where email=$1', 'another@example.net')
 
     await ses_worker.async_run()
     assert await ses_worker.run_check() == 6
 
-    await factory.act(user2_id, conv.id, ActionModel(act=ActionTypes.seen))
+    await factory.act(user2_id, conv.id, Action(act=ActionTypes.seen))
 
     assert await ses_worker.run_check() == 8
 

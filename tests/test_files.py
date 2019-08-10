@@ -3,7 +3,7 @@ import hashlib
 
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
-from em2.core import ActionModel, ActionTypes
+from em2.core import Action, ActionTypes
 from em2.protocol.smtp.images import get_images
 from em2.ui.views.files import delete_stale_upload
 
@@ -58,7 +58,7 @@ async def test_get_file_link_not_permitted(cli, factory: Factory):
     user2 = await factory.create_user()
     conv = await factory.create_conv(publish=True, participants=[{'email': user2.email}])
 
-    await factory.act(user.id, conv.id, ActionModel(act=ActionTypes.prt_remove, participant=user2.email, follows=1))
+    await factory.act(user.id, conv.id, Action(act=ActionTypes.prt_remove, participant=user2.email, follows=1))
 
     q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
     url = factory.url('ui:upload-file', conv=conv.key, query=q, session_id=user2.session_id)

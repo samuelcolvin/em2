@@ -4,7 +4,10 @@ from datetime import datetime, timezone
 from atoolbox.test_utils import DummyServer
 
 from em2.background import push_sql_all
+from em2.core import construct_conv
 from em2.protocol.core import get_signing_key
+
+from .conftest import Em2TestClient
 
 
 async def test_signing_verification(cli, url):
@@ -80,3 +83,37 @@ async def test_push(cli, url, settings, dummy_server: DummyServer, db_conn):
     assert leader_node == em2_node
     actions_data = await db_conn.fetchval(push_sql_all, conv_id)
     assert json.loads(actions_data)['actions'] == post_data['actions']
+
+
+async def test_append_to_conv(em2_cli: Em2TestClient, url, conns, dummy_server):
+    await em2_cli.create_conv()
+
+    assert await conns.main.fetchval('select count(*) from conversations') == 1
+
+    conv_key = await conns.main.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    data = {
+        'conversation': conv_key,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'another message'}],
+    }
+    await em2_cli.post_json(url('protocol:em2-push'), data=data)
+
+    assert await conns.main.fetchval('select count(*) from conversations') == 1
+    user_id = await conns.main.fetchval('select id from users where email=$1', 'recipient@example.com')
+    conv = await construct_conv(conns, user_id, conv_key)
+    assert conv == {
+        'subject': 'Test Subject',
+        'created': '2032-06-06T12:00:00+00:00',
+        'messages': [
+            {
+                'ref': 3,
+                'body': 'test message',
+                'created': '2032-06-06T12:00:00+00:00',
+                'format': 'markdown',
+                'active': True,
+            },
+            {'ref': 5, 'body': 'another message', 'created': ts, 'format': 'markdown', 'active': True},
+        ],
+        'participants': {'actor@example.org': {'id': 1}, 'recipient@example.com': {'id': 2}},
+    }

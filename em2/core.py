@@ -9,7 +9,6 @@ from typing import AbstractSet, Any, Dict, Iterable, List, Optional, Set, Tuple,
 
 from atoolbox import JsonErrors
 from buildpg import MultipleValues, V, Values
-from pydantic import BaseModel, EmailStr, constr, validator
 
 from .search import search_create_conv, search_update
 from .utils.core import MsgFormat, message_preview
@@ -184,50 +183,6 @@ max_participants = 64
 with_body_actions = {ActionTypes.msg_add, ActionTypes.msg_modify, ActionTypes.subject_modify}
 
 
-class ActionModel(BaseModel):
-    """
-    Representation of an action to perform.
-    """
-
-    act: ActionTypes
-    participant: Optional[EmailStr] = None
-    body: Optional[constr(min_length=1, max_length=10000, strip_whitespace=True)] = None
-    follows: Optional[int] = None
-    parent: Optional[int] = None
-    msg_format: MsgFormat = MsgFormat.markdown
-
-    @validator('act')
-    def check_act(cls, v):
-        if v in {ActionTypes.conv_publish, ActionTypes.conv_create}:
-            raise ValueError('Action not permitted')
-        return v
-
-    @validator('participant', always=True)
-    def check_participant(cls, v, values):
-        act: ActionTypes = values.get('act')
-        if act and not v and act in participant_action_types:
-            raise ValueError('participant is required for participant actions')
-        if act and v and act not in participant_action_types:
-            raise ValueError('participant must be omitted except for participant actions')
-        return v
-
-    @validator('body', always=True)
-    def check_body(cls, v, values):
-        act: ActionTypes = values.get('act')
-        if act and v is None and act in with_body_actions:
-            raise ValueError('body is required for message:add, message:modify and subject:modify')
-        if act and v is not None and act not in with_body_actions:
-            raise ValueError('body must be omitted except for message:add, message:modify and subject:modify')
-        return v
-
-    @validator('follows', always=True)
-    def check_follows(cls, v, values):
-        act: ActionTypes = values.get('act')
-        if act and v is None and act in follow_action_types:
-            raise ValueError('follows is required for this action')
-        return v
-
-
 @dataclass
 class File:
     hash: str
@@ -238,6 +193,21 @@ class File:
     size: int
     content: Optional[bytes] = None
     storage: Optional[str] = None
+
+
+@dataclass
+class Action:
+    act: ActionTypes
+    id: Optional[int] = None
+    ts: datetime = None
+    body: str = None
+    extra_body: bool = False
+    participant: Optional[str] = None
+    msg_format: MsgFormat = MsgFormat.markdown
+    follows: Optional[int] = None
+    parent: Optional[int] = None
+    files: List[File] = None
+    # TODO: warnings
 
 
 class _Act:
@@ -267,7 +237,7 @@ class _Act:
         )
         return self.conv_id, creator
 
-    async def run(self, action: ActionModel, files: Optional[List[File]]) -> Tuple[Optional[int], Optional[int]]:
+    async def run(self, action: Action, files: Optional[List[File]]) -> Tuple[Optional[int], Optional[int]]:
         if action.act is ActionTypes.seen:
             return await self._seen(), None
 
@@ -326,7 +296,7 @@ class _Act:
             self.actor_user_id,
         )
 
-    async def _act_on_participant(self, action: ActionModel) -> Tuple[int, int]:
+    async def _act_on_participant(self, action: Action) -> Tuple[int, int]:
         follows_pk = None
         if action.act == ActionTypes.prt_add:
             prts_count = await self.conns.main.fetchval('select count(*) from participants where conv=$1', self.conv_id)
@@ -384,10 +354,12 @@ class _Act:
 
         action_id = await self.conns.main.fetchval(
             """
-            insert into actions (conv, act, actor, follows, participant_user)
-            values              ($1  , $2 , $3   , $4     , $5)
+            insert into actions (id, ts                 , conv, act, actor, follows, participant_user)
+            values              ($1, coalesce($2, now()), $3  , $4 , $5   , $6     , $7)
             returning id
             """,
+            action.id,
+            action.ts,
             self.conv_id,
             action.act,
             self.actor_user_id,
@@ -407,7 +379,7 @@ class _Act:
             )
         return action_id, prt_user_id
 
-    async def _act_on_message(self, action: ActionModel) -> Tuple[int, int]:
+    async def _act_on_message(self, action: Action) -> Tuple[int, int]:
         if action.act == ActionTypes.msg_add:
             parent_pk = None
             if action.parent:
@@ -424,10 +396,14 @@ class _Act:
             # checks that no message in the hierarchy has been deleted
             return await self.conns.main.fetchrow(
                 """
-                insert into actions (conv, act          , actor, body, preview, parent, msg_format, warnings)
-                values              ($1  , 'message:add', $2   , $3  , $4     , $5    , $6        , $7)
+                insert into actions
+                  (id, ts                 , conv, act          , actor, body, preview, parent, msg_format, warnings)
+                values
+                  ($1, coalesce($2, now()), $3  , 'message:add', $4   , $5  , $6     , $7    , $8        , $9)
                 returning id, pk
                 """,
+                action.id,
+                action.ts,
                 self.conv_id,
                 self.actor_user_id,
                 action.body,
@@ -460,10 +436,12 @@ class _Act:
 
         return await self.conns.main.fetchrow(
             """
-            insert into actions (conv, actor, act, body, preview, follows)
-            values              ($1  , $2   , $3 , $4  , $5     , $6)
+            insert into actions (id, ts                 , conv, actor, act, body, preview, follows)
+            values              ($1, coalesce($2, now()), $3  , $4   , $5 , $6  , $7     , $8)
             returning id, pk
             """,
+            action.id,
+            action.ts,
             self.conv_id,
             self.actor_user_id,
             action.act,
@@ -472,7 +450,7 @@ class _Act:
             follows_pk,
         )
 
-    async def _act_on_subject(self, action: ActionModel) -> int:
+    async def _act_on_subject(self, action: Action) -> int:
         follow_types = _subject_action_types | {ActionTypes.conv_create, ActionTypes.conv_publish}
         follows_pk, follows_act, follows_actor, follows_age = await self._get_follows(action, follow_types)
 
@@ -491,10 +469,12 @@ class _Act:
 
         return await self.conns.main.fetchval(
             """
-            insert into actions (conv, actor, act, body, follows)
-            values              ($1  , $2   , $3 , $4  , $5)
+            insert into actions (id, ts                 , conv, actor, act, body, follows)
+            values              ($1, coalesce($2, now()), $3  , $4   , $5 , $6  , $7)
             returning id
             """,
+            action.id,
+            action.ts,
             self.conv_id,
             self.actor_user_id,
             action.act,
@@ -502,7 +482,7 @@ class _Act:
             follows_pk,
         )
 
-    async def _get_follows(self, action: ActionModel, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
+    async def _get_follows(self, action: Action, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
         follows_pk, follows_act, follows_actor, follows_age = await or404(
             self.conns.main.fetchrow(
                 """
@@ -543,7 +523,7 @@ async def apply_actions(
     conns: Connections,
     actor_user_id: int,
     conv_ref: StrInt,
-    actions: List[ActionModel],
+    actions: List[Action],
     spam: bool = False,
     warnings: Dict[str, str] = None,
     files: Optional[List[File]] = None,
@@ -553,7 +533,7 @@ async def apply_actions(
 
     Should be used for both remote platforms adding events and local users adding actions.
     """
-    actions_with_ids: List[Tuple[int, Optional[int], ActionModel]] = []
+    actions_with_ids: List[Tuple[int, Optional[int], Action]] = []
     act_cls = _Act(conns, actor_user_id, spam, warnings)
     decrement_seen_id = None
     from_deleted, from_archive, already_inbox = [], [], []

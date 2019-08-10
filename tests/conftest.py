@@ -3,13 +3,14 @@ import base64
 import json
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from io import BytesIO
 from typing import List, Optional
 
 import pytest
 from aiohttp import ClientSession, ClientTimeout
-from aiohttp.test_utils import teardown_test_loop
+from aiohttp.test_utils import TestClient, teardown_test_loop
 from aioredis import create_redis
 from arq import ArqRedis, Worker
 from atoolbox.db.helpers import DummyPgPool
@@ -20,7 +21,7 @@ from PIL import Image, ImageDraw
 
 from em2.auth.utils import mk_password
 from em2.background import push_multiple
-from em2.core import ActionModel, Connections, File, apply_actions
+from em2.core import Action, Connections, File, apply_actions, generate_conv_key
 from em2.main import create_app
 from em2.protocol.core import get_signing_key
 from em2.protocol.smtp import LogSmtpHandler, SesSmtpHandler
@@ -130,21 +131,14 @@ async def redis(loop, settings):
     await redis.wait_closed()
 
 
-@pytest.fixture(name='cli')
-async def _fix_cli(settings, db_conn, aiohttp_client, redis, loop, dummy_server):
-    app = await create_app(settings=settings)
-    app['pg'] = DummyPgPool(db_conn)
-    app['protocol_app']['resolver'] = TestDNSResolver(dummy_server)
-    cli = await aiohttp_client(app)
-    settings.local_port = cli.server.port
-
-    async def post_json(url, data=None, *, origin=None, status=200):
-        if isinstance(data, (dict, list)):
+class UserTestClient(TestClient):
+    async def post_json(self, path, data=None, *, origin=None, status=200):
+        if not isinstance(data, (str, bytes)):
             data = json.dumps(data)
 
-        r = await cli.post(
-            url,
-            data=data or '{}',
+        r = await self.post(
+            path,
+            data=data,
             headers={
                 'Content-Type': 'application/json',
                 'Referer': 'http://localhost:3000/dummy-referer/',
@@ -155,18 +149,85 @@ async def _fix_cli(settings, db_conn, aiohttp_client, redis, loop, dummy_server)
             assert r.status == status, await r.text()
         return r
 
-    async def get_json(url, *, status=200, **kwargs):
-        r = await cli.get(url, **kwargs)
+    async def get_json(self, path, *, status=200, **kwargs):
+        r = await self.get(path, **kwargs)
         assert r.status == status, await r.text()
         return await r.json()
 
-    cli.post_json = post_json
-    cli.get_json = get_json
-    return cli
+
+@pytest.fixture(name='cli')
+async def _fix_cli(settings, db_conn, aiohttp_server, redis, dummy_server):
+    app = await create_app(settings=settings)
+    app['pg'] = DummyPgPool(db_conn)
+    app['protocol_app']['resolver'] = TestDNSResolver(dummy_server)
+    server = await aiohttp_server(app)
+    settings.local_port = server.port
+    cli = UserTestClient(server)
+
+    yield cli
+
+    await cli.close()
+
+
+class Em2TestClient(TestClient):
+    def __init__(self, *args, settings, dummy_server, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._settings: Settings = settings
+        self._dummy_server: DummyServer = dummy_server
+
+    async def post_json(self, path, data, *, status=200):
+        if not isinstance(data, (str, bytes)):
+            data = json.dumps(data)
+
+        sign_ts = datetime.utcnow().isoformat()
+        to_sign = f'POST http://127.0.0.1:{self.server.port}{path} {sign_ts}\n{data}'.encode()
+        signing_key = get_signing_key(self._settings.signing_secret_key)
+        r = await self.post(
+            path,
+            data=data,
+            headers={
+                'Content-Type': 'application/json',
+                'Signature': sign_ts + ',' + signing_key.sign(to_sign).signature.hex(),
+            },
+        )
+        if status:
+            assert r.status == status, await r.text()
+        return r
+
+    async def create_conv(
+        self, actor='actor@example.org', subject='Test Subject', recipient='recipient@example.com', msg='test message'
+    ):
+        ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
+        conv_key = generate_conv_key(actor, ts, subject)
+        em2_node = self._dummy_server.server_name + '/em2'
+        ts_str = ts.isoformat()
+        data = {
+            'conversation': conv_key,
+            'em2_node': em2_node,
+            'actions': [
+                {'id': 1, 'act': 'participant:add', 'ts': ts_str, 'actor': actor, 'participant': actor},
+                {'id': 2, 'act': 'participant:add', 'ts': ts_str, 'actor': actor, 'participant': recipient},
+                {'id': 3, 'act': 'message:add', 'ts': ts_str, 'actor': actor, 'body': msg},
+                {'id': 4, 'act': 'conv:publish', 'ts': ts_str, 'actor': actor, 'body': subject},
+            ],
+        }
+        url_func = MakeUrl(self.app).get_path
+        r = await self.post_json(url_func('protocol:em2-push'), data)
+        assert r.status == 200, await r.text()
+        return r
+
+
+@pytest.fixture(name='em2_cli')
+async def _fix_em2_cli(settings, aiohttp_client, cli: UserTestClient, dummy_server):
+    cli = Em2TestClient(cli.server, settings=settings, dummy_server=dummy_server)
+
+    yield cli
+
+    await cli.close()
 
 
 @pytest.fixture(name='url')
-def _fix_url(cli):
+def _fix_url(cli: UserTestClient):
     return MakeUrl(cli.server.app).get_path
 
 
@@ -275,7 +336,7 @@ class Factory:
         )
 
     async def act(
-        self, actor_user_id: int, conv_id: int, action: ActionModel, files: Optional[List[File]] = None
+        self, actor_user_id: int, conv_id: int, action: Action, files: Optional[List[File]] = None
     ) -> List[int]:
         conv_id, action_ids = await apply_actions(self.conns, actor_user_id, conv_id, [action], files=files)
 
