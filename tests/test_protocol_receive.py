@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timezone
 
+import pytest
 from atoolbox.test_utils import DummyServer
 
 from em2.background import push_sql_all
@@ -117,3 +118,117 @@ async def test_append_to_conv(em2_cli: Em2TestClient, url, conns, dummy_server):
         ],
         'participants': {'actor@example.org': {'id': 1}, 'recipient@example.com': {'id': 2}},
     }
+
+
+async def test_no_signature(em2_cli, url, dummy_server: DummyServer):
+    a = 'actor@example.org'
+    post_data = {
+        'conversation': '1' * 20,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}],
+    }
+    data = json.dumps(post_data)
+    r = await em2_cli.post(url('protocol:em2-push'), data=data, headers={'Content-Type': 'application/json'})
+    assert r.status == 401, await r.text()
+    assert await r.json() == {'message': '"Signature" header not found'}
+
+
+@pytest.mark.parametrize(
+    'sig,message',
+    [
+        ('x', 'Invalid "Signature" header format'),
+        ('foo,bar', 'Invalid "Signature" header format'),
+        ('2010-06-01T00:00:00.000000,aaa', 'Invalid "Signature" header format'),
+        ('2010-06-01T00:00:00.000000,' + 'x' * 128, 'Invalid "Signature" header format'),
+        ('2010-06-01T00:00:00.000000,' + '1' * 128, 'Signature expired'),
+    ],
+)
+async def test_invalid_signature_format(em2_cli, url, dummy_server: DummyServer, sig, message):
+    a = 'actor@example.org'
+    post_data = {
+        'conversation': '1' * 20,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}],
+    }
+    data = json.dumps(post_data)
+    r = await em2_cli.post(
+        url('protocol:em2-push'), data=data, headers={'Content-Type': 'application/json', 'Signature': sig}
+    )
+    assert r.status == 401, await r.text()
+    assert await r.json() == {'message': message}
+
+
+async def test_invalid_signature(em2_cli, url, dummy_server: DummyServer, settings):
+    a = 'actor@example.org'
+    post_data = {
+        'conversation': '1' * 20,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}],
+    }
+    data = json.dumps(post_data)
+    sig = datetime.utcnow().isoformat() + ',' + '1' * 128
+    r = await em2_cli.post(
+        url('protocol:em2-push'), data=data, headers={'Content-Type': 'application/json', 'Signature': sig}
+    )
+    assert r.status == 401, await r.text()
+    assert await r.json() == {'message': 'Invalid signature'}
+
+
+async def test_valid_signature_repeat(em2_cli, url, dummy_server: DummyServer, settings):
+    a = 'actor@example.org'
+    post_data = {
+        'conversation': '1' * 20,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}],
+    }
+    data = json.dumps(post_data)
+    path = url('protocol:em2-push')
+    for i in range(3):
+        # actual data above is not valid
+        r = await em2_cli.post_json(path, data, status=470)
+        assert await r.json() == {'message': 'full conversation required'}
+
+    # both verification and routing requests should have been cached
+    assert dummy_server.log == ['GET em2/v1/signing/verification', 'GET v1/route']
+
+
+async def test_failed_verification_request(cli, url, dummy_server: DummyServer, settings):
+    a = 'actor@example.org'
+    post_data = {
+        'conversation': '1' * 20,
+        'em2_node': dummy_server.server_name + '/does-not-exist',
+        'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}],
+    }
+    data = json.dumps(post_data)
+    path = url('protocol:em2-push')
+    sign_ts = datetime.utcnow().isoformat()
+    to_sign = f'POST http://127.0.0.1:{cli.server.port}{path} {sign_ts}\n{data}'.encode()
+    signing_key = get_signing_key(settings.signing_secret_key)
+    sig = sign_ts + ',' + signing_key.sign(to_sign).signature.hex()
+    r = await cli.post(path, data=data, headers={'Content-Type': 'application/json', 'Signature': sig})
+    assert r.status == 401, await r.text()
+    assert await r.json() == {
+        'message': f"error getting signature from '{dummy_server.server_name}/does-not-exist/v1/signing/verification/'"
+    }
+
+    assert dummy_server.log == ['GET does-not-exist/v1/signing/verification']
+
+
+async def test_failed_get_em2_node(cli, url, dummy_server: DummyServer, settings):
+    a = 'actor@error.com'
+    post_data = {
+        'conversation': '1' * 20,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}],
+    }
+    data = json.dumps(post_data)
+    path = url('protocol:em2-push')
+    sign_ts = datetime.utcnow().isoformat()
+    to_sign = f'POST http://127.0.0.1:{cli.server.port}{path} {sign_ts}\n{data}'.encode()
+    signing_key = get_signing_key(settings.signing_secret_key)
+    sig = sign_ts + ',' + signing_key.sign(to_sign).signature.hex()
+    r = await cli.post(path, data=data, headers={'Content-Type': 'application/json', 'Signature': sig})
+    assert r.status == 400, await r.text()
+
+    assert await r.json() == {'message': 'not all actors have an em2 nodes'}
+    assert dummy_server.log == ['GET em2/v1/signing/verification']

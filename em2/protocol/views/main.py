@@ -20,7 +20,7 @@ from em2.core import (
     get_create_user,
     participant_action_types,
 )
-from em2.protocol.core import InvalidSignature
+from em2.protocol.core import HttpError, InvalidSignature
 from em2.utils.core import MsgFormat
 
 from .utils import ExecView
@@ -106,7 +106,7 @@ class Em2Push(ExecView):
         except InvalidSignature as e:
             msg = e.args[0]
             logger.info('unauthorized em2 push msg="%s" em2-node="%s"', msg, m.em2_node)
-            raise JsonErrors.HTTPUnauthorized()
+            raise JsonErrors.HTTPUnauthorized(msg)
 
         last_action = m.actions[-1]
         if last_action.act == ActionTypes.conv_publish:
@@ -155,11 +155,17 @@ class Em2Push(ExecView):
 
     async def append_to_conversation(self, m: Model):
         actor_emails = {a.actor for a in m.actions}
-        nodes = set(await asyncio.gather(*[self.em2.get_em2_node(e) for e in actor_emails]))
+        try:
+            nodes = set(await asyncio.gather(*[self.em2.get_em2_node(e) for e in actor_emails]))
+        except HttpError:
+            # TODO give more details on the errors
+            raise JsonErrors.HTTPBadRequest('not all actors have an em2 nodes')
+
         if None in nodes:
-            raise JsonErrors.HTTPBadRequest("not all actors' have an em2 nodes")
+            # TODO give more details on the problems
+            raise JsonErrors.HTTPBadRequest('not all actors have an em2 nodes')
         if nodes != {m.em2_node}:
-            raise JsonErrors.HTTPBadRequest("not all actors' em2 node match request node")
+            raise JsonErrors.HTTPBadRequest("not all actors' em2 nodes match request node")
 
         publish_action = next((a for a in m.actions if a.act == ActionTypes.conv_publish), None)
         r = await self.conns.main.fetchrow(
