@@ -474,8 +474,8 @@ async def test_removed_get_list(factory: Factory, cli):
     conv = await factory.create_conv(publish=True)
 
     user2 = await factory.create_user()
-    await factory.act(user1.id, conv.id, Action(act=ActionTypes.prt_add, participant=user2.email))
-    await factory.act(user1.id, conv.id, Action(act=ActionTypes.msg_add, body='This is a **test**'))
+    await factory.act(conv.id, Action(actor_id=user1.id, act=ActionTypes.prt_add, participant=user2.email))
+    await factory.act(conv.id, Action(actor_id=user1.id, act=ActionTypes.msg_add, body='This is a **test**'))
 
     obj = await cli.get_json(factory.url('ui:list', session_id=user2.session_id))
     assert obj['conversations'][0]['removed'] is False
@@ -486,8 +486,10 @@ async def test_removed_get_list(factory: Factory, cli):
     assert obj['last_action_id'] == 5
     assert obj['details']['prev'] == 'This is a test'
 
-    await factory.act(user1.id, conv.id, Action(act=ActionTypes.prt_remove, participant=user2.email, follows=4))
-    await factory.act(user1.id, conv.id, Action(act=ActionTypes.msg_add, body='different'))
+    await factory.act(
+        conv.id, Action(actor_id=user1.id, act=ActionTypes.prt_remove, participant=user2.email, follows=4)
+    )
+    await factory.act(conv.id, Action(actor_id=user1.id, act=ActionTypes.msg_add, body='different'))
 
     obj = await cli.get_json(factory.url('ui:list', session_id=user1.session_id))
     assert obj['conversations'][0]['removed'] is False

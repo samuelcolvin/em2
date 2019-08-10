@@ -198,6 +198,7 @@ class File:
 @dataclass
 class Action:
     act: ActionTypes
+    actor_id: int
     id: Optional[int] = None
     ts: datetime = None
     body: str = None
@@ -215,34 +216,38 @@ class _Act:
     See act() below for details.
     """
 
-    __slots__ = 'conns', 'actor_user_id', 'conv_id', 'new_user_ids', 'spam', 'warnings', 'last_action'
+    __slots__ = 'conns', 'conv_id', 'new_user_ids', 'spam', 'warnings'
 
-    def __init__(self, conns: Connections, actor_user_id: int, spam: bool, warnings: Dict[str, str]):
+    def __init__(self, conns: Connections, spam: bool, warnings: Dict[str, str]):
         self.conns = conns
-        self.actor_user_id = actor_user_id
         self.conv_id = None
         # ugly way of doing this, but less ugly than other approaches
         self.new_user_ids: Set[int] = set()
         self.spam = True if spam else None
-        self.warnings = json.dumps(warnings) if warnings else None
-        self.last_action = None
+        self.warnings = json.dumps(warnings) if warnings else None  # FIXME moved to action
 
-    async def prepare(self, conv_ref: StrInt) -> Tuple[int, int]:
-        self.conv_id, self.last_action = await get_conv_for_user(self.conns, self.actor_user_id, conv_ref)
+    async def prepare(self, conv_ref: StrInt, actor_id: int) -> Tuple[int, int, int]:
+        self.conv_id, last_action = await get_conv_for_user(self.conns, actor_id, conv_ref)
 
         # we must be in a transaction
-        # this is a hard check that conversations can only have on act applied at a time
+        # this is a hard check that conversations can only have one act applied at a time
         creator = await self.conns.main.fetchval(
             'select creator from conversations where id=$1 for no key update', self.conv_id
         )
-        return self.conv_id, creator
+        return last_action, self.conv_id, creator
 
-    async def run(self, action: Action, files: Optional[List[File]]) -> Tuple[Optional[int], Optional[int]]:
+    async def new_actor(self, actor_id: int):
+        _, last_action = await get_conv_for_user(self.conns, actor_id, self.conv_id)
+        return last_action
+
+    async def run(
+        self, action: Action, last_action: int, files: Optional[List[File]]
+    ) -> Tuple[Optional[int], Optional[int]]:
         if action.act is ActionTypes.seen:
-            return await self._seen(), None
+            return await self._seen(action), None
 
         # you can mark a conversation as seen when removed, but nothing else
-        if self.last_action:
+        if last_action:
             raise JsonErrors.HTTPBadRequest(message="You can't act on conversations you've been removed from")
 
         changed_user_id = None
@@ -259,7 +264,7 @@ class _Act:
 
         return action_id, changed_user_id
 
-    async def _seen(self) -> Optional[int]:
+    async def _seen(self, action: Action) -> Optional[int]:
         # could use "parent" to identify what was seen
         last_seen = await self.conns.main.fetchval(
             """
@@ -269,7 +274,7 @@ class _Act:
             limit 1
             """,
             self.conv_id,
-            self.actor_user_id,
+            action.actor_id,
         )
         if last_seen:
             last_real_action = await self.conns.main.fetchval(
@@ -293,7 +298,7 @@ class _Act:
             returning id
             """,
             self.conv_id,
-            self.actor_user_id,
+            action.actor_id,
         )
 
     async def _act_on_participant(self, action: Action) -> Tuple[int, int]:
@@ -349,7 +354,7 @@ class _Act:
                 raise NotImplementedError('"participant:modify" not yet implemented')
 
         # can't do anything to yourself
-        if prt_user_id == self.actor_user_id:
+        if prt_user_id == action.actor_id:
             raise JsonErrors.HTTPForbidden('You cannot modify your own participant')
 
         action_id = await self.conns.main.fetchval(
@@ -362,7 +367,7 @@ class _Act:
             action.ts,
             self.conv_id,
             action.act,
-            self.actor_user_id,
+            action.actor_id,
             follows_pk,
             prt_user_id,
         )
@@ -405,7 +410,7 @@ class _Act:
                 action.id,
                 action.ts,
                 self.conv_id,
-                self.actor_user_id,
+                action.actor_id,
                 action.body,
                 message_preview(action.body, action.msg_format),
                 parent_pk,
@@ -419,7 +424,7 @@ class _Act:
             if follows_act != ActionTypes.msg_delete:
                 raise JsonErrors.HTTPBadRequest('message:recover can only occur on a deleted message')
         elif action.act in {ActionTypes.msg_modify, ActionTypes.msg_release}:
-            if follows_act != ActionTypes.msg_lock or follows_actor != self.actor_user_id:
+            if follows_act != ActionTypes.msg_lock or follows_actor != action.actor_id:
                 # TODO lock maybe shouldn't be required when conversation is draft
                 raise JsonErrors.HTTPBadRequest(f'{action.act} must follow message:lock by the same user')
         else:
@@ -428,7 +433,7 @@ class _Act:
                 raise JsonErrors.HTTPBadRequest('only message:recover can occur on a deleted message')
             elif (
                 follows_act == ActionTypes.msg_lock
-                and follows_actor != self.actor_user_id
+                and follows_actor != action.actor_id
                 and follows_age <= self.conns.settings.message_lock_duration
             ):
                 details = {'loc_duration': self.conns.settings.message_lock_duration}
@@ -443,7 +448,7 @@ class _Act:
             action.id,
             action.ts,
             self.conv_id,
-            self.actor_user_id,
+            action.actor_id,
             action.act,
             action.body,
             message_preview(action.body, action.msg_format) if action.act == ActionTypes.msg_modify else None,
@@ -457,14 +462,14 @@ class _Act:
         if action.act == ActionTypes.subject_lock:
             if (
                 follows_act == ActionTypes.subject_lock
-                and follows_actor != self.actor_user_id
+                and follows_actor != action.actor_id
                 and follows_age <= self.conns.settings.message_lock_duration
             ):
                 details = {'loc_duration': self.conns.settings.message_lock_duration}
                 raise JsonErrors.HTTPConflict('subject not locked by you, action not possible', details=details)
         else:
             # modify and release
-            if follows_act != ActionTypes.subject_lock or follows_actor != self.actor_user_id:
+            if follows_act != ActionTypes.subject_lock or follows_actor != action.actor_id:
                 raise JsonErrors.HTTPBadRequest(f'{action.act} must follow subject:lock by the same user')
 
         return await self.conns.main.fetchval(
@@ -476,7 +481,7 @@ class _Act:
             action.id,
             action.ts,
             self.conv_id,
-            self.actor_user_id,
+            action.actor_id,
             action.act,
             action.body,
             follows_pk,
@@ -521,7 +526,6 @@ class ConvFlags(str, Enum):
 
 async def apply_actions(
     conns: Connections,
-    actor_user_id: int,
     conv_ref: StrInt,
     actions: List[Action],
     spam: bool = False,
@@ -534,16 +538,20 @@ async def apply_actions(
     Should be used for both remote platforms adding events and local users adding actions.
     """
     actions_with_ids: List[Tuple[int, Optional[int], Action]] = []
-    act_cls = _Act(conns, actor_user_id, spam, warnings)
+    act_cls = _Act(conns, spam, warnings)
     decrement_seen_id = None
     from_deleted, from_archive, already_inbox = [], [], []
     async with conns.main.transaction():
         # IMPORTANT must not do anything that could be slow (eg. networking) inside this transaction,
         # as the conv is locked for update from prepare onwards
-        conv_id, creator_id = await act_cls.prepare(conv_ref)
+        actor_user_id = actions[0].actor_id
+        last_action, conv_id, creator_id = await act_cls.prepare(conv_ref, actor_user_id)
 
         for action in actions:
-            action_id, changed_user_id = await act_cls.run(action, files)
+            if action.actor_id != actor_user_id:
+                actor_user_id = action.actor_id
+                last_action = await act_cls.new_actor(action.actor_id)
+            action_id, changed_user_id = await act_cls.run(action, last_action, files)
             if action_id:
                 actions_with_ids.append((action_id, changed_user_id, action))
 

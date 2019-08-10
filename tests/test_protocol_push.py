@@ -111,8 +111,8 @@ async def test_add_msg_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
     await ses_worker.async_run()
     assert await ses_worker.run_check() == 3
 
-    action = Action(act=ActionTypes.msg_add, body='This is **another** message')
-    assert [5] == await factory.act(user.id, conv.id, action)
+    action = Action(actor_id=user.id, act=ActionTypes.msg_add, body='This is **another** message')
+    assert [5] == await factory.act(conv.id, action)
 
     await ses_worker.async_run()
     assert await ses_worker.run_check() == 6
@@ -133,13 +133,13 @@ async def test_ignore_seen(factory: Factory, db_conn, ses_worker: Worker, dummy_
     await ses_worker.async_run()
     assert await ses_worker.run_check() == 3
 
-    await factory.act(user.id, conv.id, Action(act=ActionTypes.prt_add, participant='another@example.net'))
+    await factory.act(conv.id, Action(actor_id=user.id, act=ActionTypes.prt_add, participant='another@example.net'))
     user2_id = await db_conn.fetchval('select id from users where email=$1', 'another@example.net')
 
     await ses_worker.async_run()
     assert await ses_worker.run_check() == 6
 
-    await factory.act(user2_id, conv.id, Action(act=ActionTypes.seen))
+    await factory.act(conv.id, Action(actor_id=user2_id, act=ActionTypes.seen))
 
     assert await ses_worker.run_check() == 8
 

@@ -335,10 +335,8 @@ class Factory:
             'insert into labels (:values__names) values :values returning id', values=values
         )
 
-    async def act(
-        self, actor_user_id: int, conv_id: int, action: Action, files: Optional[List[File]] = None
-    ) -> List[int]:
-        conv_id, action_ids = await apply_actions(self.conns, actor_user_id, conv_id, [action], files=files)
+    async def act(self, conv_id: int, action: Action, files: Optional[List[File]] = None) -> List[int]:
+        conv_id, action_ids = await apply_actions(self.conns, conv_id, [action], files=files)
 
         if action_ids:
             await push_multiple(self.conns, conv_id, action_ids)

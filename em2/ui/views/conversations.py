@@ -239,9 +239,9 @@ class ActionModel(BaseModel):
             raise ValueError('follows is required for this action')
         return v
 
-    def as_raw_action(self) -> Action:
+    def as_raw_action(self, actor_id) -> Action:
         # technically unnecessary, could just cast
-        return Action(**self.dict())
+        return Action(actor_id=actor_id, **self.dict())
 
 
 class ConvAct(ExecView):
@@ -263,9 +263,8 @@ class ConvAct(ExecView):
             files = await self.get_files(conv_id, m.files)
         conv_id, action_ids = await apply_actions(
             conns=self.conns,
-            actor_user_id=self.session.user_id,
             conv_ref=self.request.match_info['conv'],
-            actions=[a.as_raw_action() for a in m.actions],
+            actions=[a.as_raw_action(self.session.user_id) for a in m.actions],
             files=files,
         )
 

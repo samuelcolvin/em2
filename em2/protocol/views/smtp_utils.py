@@ -128,8 +128,8 @@ class ProcessSMTP:
                 existing_prts = {r[0] for r in existing_prts}
                 if actor_email not in existing_prts:
                     # reply from different address, we need to add the new address to the conversation
-                    a = Action(act=ActionTypes.prt_add, participant=actor_email)
-                    _, all_action_ids = await apply_actions(self.conns, original_actor_id, conv_id, [a])
+                    a = Action(act=ActionTypes.prt_add, participant=actor_email, actor_id=original_actor_id)
+                    _, all_action_ids = await apply_actions(self.conns, conv_id, [a])
                     assert all_action_ids
                 else:
                     all_action_ids = []
@@ -137,18 +137,14 @@ class ProcessSMTP:
                 new_prts = recipients - existing_prts
 
                 msg_format = MsgFormat.html if is_html else MsgFormat.plain
-                actions = [Action(act=ActionTypes.msg_add, body=(body or '').strip(), msg_format=msg_format)]
+                actions = [
+                    Action(act=ActionTypes.msg_add, actor_id=actor_id, body=(body or '').strip(), msg_format=msg_format)
+                ]
 
-                actions += [Action(act=ActionTypes.prt_add, participant=addr) for addr in new_prts]
+                actions += [Action(act=ActionTypes.prt_add, actor_id=actor_id, participant=addr) for addr in new_prts]
 
                 _, action_ids = await apply_actions(
-                    conns=self.conns,
-                    actor_user_id=actor_id,
-                    conv_ref=conv_id,
-                    actions=actions,
-                    spam=spam,
-                    warnings=warnings,
-                    files=files,
+                    conns=self.conns, conv_ref=conv_id, actions=actions, spam=spam, warnings=warnings, files=files
                 )
                 assert action_ids
 

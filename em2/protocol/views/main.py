@@ -1,8 +1,6 @@
 import asyncio
 import logging
 from datetime import datetime
-from itertools import groupby
-from operator import attrgetter
 from typing import Any, List, Optional
 
 import nacl.encoding
@@ -10,6 +8,7 @@ from atoolbox import JsonErrors, json_response
 from pydantic import BaseModel, EmailStr, conint, constr, validator
 
 from em2.core import (
+    Action,
     ActionTypes,
     ConvCreateMessage,
     UserTypes,
@@ -44,7 +43,7 @@ with_body_actions = {ActionTypes.msg_add, ActionTypes.msg_modify, ActionTypes.su
 publish_action_types = {ActionTypes.msg_add, ActionTypes.prt_add, ActionTypes.conv_publish}
 
 
-class Action(BaseModel):
+class ActionModel(BaseModel):
     id: conint(gt=0)  # TODO check that ID increments correctly
     act: ActionTypes
     ts: datetime
@@ -99,7 +98,7 @@ class Em2Push(ExecView):
     class Model(BaseModel):
         em2_node: constr(min_length=4)
         conversation: str
-        actions: List[Action]
+        actions: List[ActionModel]
 
         @validator('actions', whole=True)
         def check_actions(cls, actions):
@@ -183,10 +182,11 @@ class Em2Push(ExecView):
 
             actor_emails = {a.actor for a in m.actions}
             actor_user_ids = await get_create_multiple_users(self.conns, actor_emails)
-            # TODO modify apply_actions to work with multiple actors.
-            for actor_email, actions_gen in groupby(actions_to_apply, attrgetter('actor')):
-                # TODO files
-                await apply_actions(self.conns, actor_user_ids[actor_email], conv_id, list(actions_gen))
+            actions = [
+                Action(actor_id=actor_user_ids[a.actor], **a.dict(exclude={'actor', 'warnings'}))
+                for a in actions_to_apply
+            ]
+            await apply_actions(self.conns, conv_id, actions)
 
     async def published_conv(self, publish_action: Action, m: Model):
         """
