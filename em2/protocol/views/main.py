@@ -173,28 +173,27 @@ class Em2Push(ExecView):
 
     async def execute_trans(self, m: Model) -> Tuple[Optional[int], bool, Optional[List[int]]]:
         publish_action = next((a for a in m.actions if a.act == ActionTypes.conv_publish), None)
-        conv_id, last_action_id, leader_node = None, None, None
         push_all_actions = False
         if publish_action:
             try:
-                conv_id, last_action_id, leader_node = await self.published_conv(publish_action, m)
+                await self.published_conv(publish_action, m)
                 push_all_actions = True
             except JsonErrors.HTTPConflict:
                 # conversation already exists, that's okay
                 pass
 
-        if not conv_id:
-            r = await self.conns.main.fetchrow(
-                'select id, last_action_id, leader_node from conversations where key=$1', m.conversation
-            )
-            if r:
-                conv_id, last_action_id, leader_node = r
+        # lock the conversation here so simultaneous requests executing the same action ids won't cause errors
+        r = await self.conns.main.fetchrow(
+            'select id, last_action_id, leader_node from conversations where key=$1 for no key update', m.conversation
+        )
+        if r:
+            conv_id, last_action_id, leader_node = r
 
-                if leader_node and leader_node != m.em2_node:
-                    raise JsonErrors.HTTPBadRequest('request em2 node does not match current em2 node')
-            else:
-                # conversation doesn't exist and there's no publish_action, need the whole conversation
-                raise JsonErrors.HTTP470('full conversation required')  # TODO better error
+            if leader_node and leader_node != m.em2_node:
+                raise JsonErrors.HTTPBadRequest('request em2 node does not match current em2 node')
+        else:
+            # conversation doesn't exist and there's no publish_action, need the whole conversation
+            raise JsonErrors.HTTP470('full conversation required')  # TODO better error
 
         actions_to_apply = [a for a in m.actions if a.id > last_action_id]
         push_transmit = leader_node is None
@@ -254,4 +253,3 @@ class Em2Push(ExecView):
             given_conv_key=m.conversation,
             leader_node=m.em2_node,
         )
-        return conv_id, publish_action.id, m.em2_node
