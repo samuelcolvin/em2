@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from operator import attrgetter
 
 import pytest
 from atoolbox.test_utils import DummyServer
@@ -8,7 +9,7 @@ from em2.background import push_sql_all
 from em2.core import construct_conv
 from em2.protocol.core import get_signing_key
 
-from .conftest import Em2TestClient
+from .conftest import Em2TestClient, Factory
 
 
 async def test_signing_verification(cli, url):
@@ -16,7 +17,7 @@ async def test_signing_verification(cli, url):
     assert obj == {'keys': [{'key': 'd759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48', 'ttl': 86400}]}
 
 
-async def test_push(em2_cli, url, settings, dummy_server: DummyServer, db_conn):
+async def test_push(em2_cli, url, settings, dummy_server: DummyServer, db_conn, redis):
     ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
     # key = generate_conv_key('actor@example.org', ts, 'Test Subject')
     conv_key = '5771d1016ac9515319a15f9ea4621b411a2eab8b781e88db9885a806ee12144c'
@@ -84,6 +85,52 @@ async def test_push(em2_cli, url, settings, dummy_server: DummyServer, db_conn):
     assert leader_node == em2_node
     actions_data = await db_conn.fetchval(push_sql_all, conv_id)
     assert json.loads(actions_data)['actions'] == post_data['actions']
+    jobs = await redis.queued_jobs()
+    assert len(jobs) == 1
+    assert jobs[0].function == 'web_push'
+    args = json.loads(jobs[0].args[0])
+    assert len(args.pop('actions')) == 4
+    u_id = await db_conn.fetchval('select id from users where email=$1', 'recipient@example.com')
+    assert args == {
+        'conversation': conv_key,
+        'participants': [{'user_id': u_id, 'user_v': 1, 'user_email': 'recipient@example.com'}],
+        'conv_details': {
+            'act': 'conv:publish',
+            'sub': 'Test Subject',
+            'email': 'actor@example.org',
+            'creator': 'actor@example.org',
+            'prev': 'Test Message',
+            'prts': 2,
+            'msgs': 1,
+        },
+    }
+
+
+async def test_self_leader(factory: Factory, em2_cli: Em2TestClient, url, conns, dummy_server, redis):
+    await factory.create_user()
+    conv = await factory.create_conv(publish=True, participants=[{'email': 'actor@example.org'}])
+
+    assert await conns.main.fetchval('select count(*) from actions') == 4
+
+    assert len(await redis.queued_jobs()) == 2
+
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    data = {
+        'conversation': conv.key,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'another message'}],
+    }
+    await em2_cli.post_json(url('protocol:em2-push'), data=data)
+
+    assert await conns.main.fetchval('select count(*) from actions') == 5
+
+    jobs = sorted(list(await redis.queued_jobs())[2:], key=attrgetter('function'))
+    assert len(jobs) == 2
+    assert jobs[0].function == 'push_actions'
+    assert jobs[1].function == 'web_push'
+    arg = json.loads(jobs[0].args[0])
+    assert arg['conversation'] == conv.key
+    assert len(arg['actions']) == 1
 
 
 async def test_append_to_conv(em2_cli: Em2TestClient, url, conns, dummy_server):
