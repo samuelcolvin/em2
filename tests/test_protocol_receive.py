@@ -234,7 +234,7 @@ async def test_valid_signature_repeat(em2_cli, url, dummy_server: DummyServer, s
     path = url('protocol:em2-push')
     for i in range(3):
         # actual data above is not valid
-        r = await em2_cli.post_json(path, data, status=470)
+        r = await em2_cli.post_json(path, data, expected_status=470)
         assert await r.json() == {'message': 'full conversation required'}
 
     # both verification and routing requests should have been cached
@@ -271,7 +271,7 @@ async def test_failed_get_em2_node(em2_cli, url, dummy_server: DummyServer):
         'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}],
     }
     data = json.dumps(post_data)
-    r = await em2_cli.post_json(url('protocol:em2-push'), data, status=401)
+    r = await em2_cli.post_json(url('protocol:em2-push'), data, expected_status=401)
     assert r.status == 401, await r.text()
 
     assert await r.json() == {'message': 'not all actors have an em2 nodes'}
@@ -289,7 +289,7 @@ async def test_participant_missing(em2_cli, url, dummy_server: DummyServer):
         ],
     }
     data = json.dumps(post_data)
-    r = await em2_cli.post_json(url('protocol:em2-push'), data, status=400)
+    r = await em2_cli.post_json(url('protocol:em2-push'), data, expected_status=400)
     assert await r.json() == {
         'message': 'Invalid Data',
         'details': [{'loc': ['actions', 'participant'], 'msg': 'field required', 'type': 'value_error.missing'}],
@@ -338,15 +338,83 @@ async def test_participant_missing(em2_cli, url, dummy_server: DummyServer):
         ),
         (
             [
-                {'id': 1, 'act': 'message:modify', 'ts': 123, 'actor': 'a1@ex.org', 'body': 'x'},
+                {'id': 1, 'act': 'message:add', 'ts': 123, 'actor': 'a1@ex.org', 'body': 'x'},
                 {'id': 2, 'act': 'conv:publish', 'ts': 123, 'actor': 'a2@ex.org', 'body': 'x'},
             ],
             'only a single actor should publish conversations',
+        ),
+        (
+            [
+                {'id': 1, 'act': 'message:modify', 'ts': 123, 'actor': 'a@ex.org', 'body': 'x'},
+                {'id': 2, 'act': 'conv:publish', 'ts': 123, 'actor': 'a@ex.org', 'body': 'x'},
+            ],
+            'when publishing, only \\"participant:add\\",',
         ),
     ],
 )
 async def test_push_invalid_data(em2_cli, url, dummy_server: DummyServer, actions, error):
     post_data = {'conversation': '1' * 20, 'em2_node': dummy_server.server_name + '/em2', 'actions': actions}
     data = json.dumps(post_data)
-    r = await em2_cli.post_json(url('protocol:em2-push'), data, status=400)
+    r = await em2_cli.post_json(url('protocol:em2-push'), data, expected_status=400)
+    # debug(await r.json())
     assert error in await r.text()
+
+
+async def test_create_conv_repeat(em2_cli: Em2TestClient, db_conn):
+    await em2_cli.create_conv()
+    assert await db_conn.fetchval('select count(*) from conversations') == 1
+    assert await db_conn.fetchval('select count(*) from actions') == 4
+    await em2_cli.create_conv()
+    assert await db_conn.fetchval('select count(*) from conversations') == 1
+    assert await db_conn.fetchval('select count(*) from actions') == 4
+
+
+async def test_wrong_node(em2_cli: Em2TestClient, db_conn):
+    await em2_cli.create_conv()
+    await db_conn.execute("update conversations set leader_node='foobar.com'")
+
+    r = await em2_cli.create_conv(expected_status=400)
+    assert await r.json() == {'message': 'request em2 node does not match current em2 node'}
+    assert await db_conn.fetchval('select count(*) from conversations') == 1
+
+
+async def test_missing_actions(em2_cli: Em2TestClient, url, conns, dummy_server):
+    await em2_cli.create_conv()
+
+    conv_key = await conns.main.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    data = {
+        'conversation': conv_key,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 6, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'another message'}],
+    }
+    r = await em2_cli.post_json(url('protocol:em2-push'), data=data, expected_status=470)
+    assert await r.json() == {'message': 'full conversation required'}
+
+
+async def test_non_em2_actor(em2_cli: Em2TestClient, url, conns, dummy_server):
+    await em2_cli.create_conv()
+
+    conv_key = await conns.main.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    data = {
+        'conversation': conv_key,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.com', 'body': 'another message'}],
+    }
+    r = await em2_cli.post_json(url('protocol:em2-push'), data=data, expected_status=401)
+    assert await r.json() == {'message': 'not all actors have an em2 nodes'}
+
+
+async def test_other_platform_em2_actor(em2_cli: Em2TestClient, url, conns, dummy_server):
+    await em2_cli.create_conv()
+
+    conv_key = await conns.main.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    data = {
+        'conversation': conv_key,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'diff@example.org', 'body': 'another message'}],
+    }
+    r = await em2_cli.post_json(url('protocol:em2-push'), data=data, expected_status=400)
+    assert await r.json() == {'message': "not all actors' em2 nodes match request node"}

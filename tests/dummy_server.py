@@ -14,7 +14,11 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 
 async def em2_routing(request):
-    return json_response(node=f'http://{request.headers["host"]}/em2')
+    email = request.query.get('email')
+    if email == 'diff@example.org':
+        return json_response(node=f'http://{request.headers["host"]}/different')
+    else:
+        return json_response(node=f'http://{request.headers["host"]}/em2')
 
 
 # b'4' * 64 from conftest settings

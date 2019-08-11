@@ -204,7 +204,7 @@ class Em2Push(ExecView):
             # TODO errors like 404 because the actor hasn't been added to the conversation should be improved here
             await apply_actions(self.conns, conv_id, actions)
 
-    async def published_conv(self, publish_action: Action, m: Model):
+    async def published_conv(self, publish_action: PublishModel, m: Model):
         """
         New conversation just published
         """

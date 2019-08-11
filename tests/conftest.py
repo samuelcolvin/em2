@@ -175,7 +175,7 @@ class Em2TestClient(TestClient):
         self._settings: Settings = settings
         self._dummy_server: DummyServer = dummy_server
 
-    async def post_json(self, path, data, *, status=200):
+    async def post_json(self, path, data, *, expected_status=200):
         if not isinstance(data, (str, bytes)):
             data = json.dumps(data)
 
@@ -190,16 +190,23 @@ class Em2TestClient(TestClient):
                 'Signature': sign_ts + ',' + signing_key.sign(to_sign).signature.hex(),
             },
         )
-        if status:
-            assert r.status == status, await r.text()
+        if expected_status:
+            assert r.status == expected_status, await r.text()
         return r
 
     async def create_conv(
-        self, actor='actor@example.org', subject='Test Subject', recipient='recipient@example.com', msg='test message'
+        self,
+        *,
+        em2_node=None,
+        actor='actor@example.org',
+        subject='Test Subject',
+        recipient='recipient@example.com',
+        msg='test message',
+        expected_status=200,
     ):
         ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
         conv_key = generate_conv_key(actor, ts, subject)
-        em2_node = self._dummy_server.server_name + '/em2'
+        em2_node = em2_node or self._dummy_server.server_name + '/em2'
         ts_str = ts.isoformat()
         data = {
             'conversation': conv_key,
@@ -212,9 +219,7 @@ class Em2TestClient(TestClient):
             ],
         }
         url_func = MakeUrl(self.app).get_path
-        r = await self.post_json(url_func('protocol:em2-push'), data)
-        assert r.status == 200, await r.text()
-        return r
+        return await self.post_json(url_func('protocol:em2-push'), data, expected_status=expected_status)
 
 
 @pytest.fixture(name='em2_cli')
