@@ -1,11 +1,12 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 
 import nacl.encoding
 from atoolbox import JsonErrors, json_response
-from pydantic import BaseModel, EmailStr, conint, constr, validator
+from pydantic import BaseModel, EmailStr, Extra, conint, constr, validator
+from typing_extensions import Literal
 
 from em2.core import (
     Action,
@@ -14,10 +15,8 @@ from em2.core import (
     UserTypes,
     apply_actions,
     create_conv,
-    follow_action_types,
     get_create_multiple_users,
     get_create_user,
-    participant_action_types,
 )
 from em2.protocol.core import HttpError, InvalidSignature
 from em2.utils.core import MsgFormat
@@ -43,44 +42,38 @@ with_body_actions = {ActionTypes.msg_add, ActionTypes.msg_modify, ActionTypes.su
 publish_action_types = {ActionTypes.msg_add, ActionTypes.prt_add, ActionTypes.conv_publish}
 
 
-class ActionModel(BaseModel):
-    id: conint(gt=0)  # TODO check that ID increments correctly
-    act: ActionTypes
+class ActionCore(BaseModel):
+    id: conint(gt=0)
     ts: datetime
     actor: EmailStr
-    body: Optional[constr(min_length=1, max_length=10000, strip_whitespace=True)] = None
+
+
+class ParticipantModel(ActionCore):
+    act: Literal[ActionTypes.prt_add, ActionTypes.prt_modify]
+    participant: EmailStr
+
+    class Config:
+        extra = Extra.forbid
+
+
+class MessageModel(ActionCore):
+    act: Literal[ActionTypes.msg_add, ActionTypes.msg_modify]
+    body: constr(min_length=1, max_length=10000, strip_whitespace=True)
     extra_body: bool = False
-    participant: Optional[EmailStr] = None
     msg_format: MsgFormat = MsgFormat.markdown
     follows: Optional[int] = None
     parent: Optional[int] = None
     warnings: Any = None  # TODO stricter type
     files: list = None  # TODO stricter type
 
-    @validator('participant', always=True)
-    def check_participant(cls, v, values):
-        act: ActionTypes = values.get('act')
-        if act and not v and act in participant_action_types:
-            raise ValueError('participant is required for participant actions')
-        if act and v and act not in participant_action_types:
-            raise ValueError('participant must be omitted except for participant actions')
-        return v
+    class Config:
+        extra = Extra.forbid
 
-    @validator('body', always=True)
-    def check_body(cls, v, values):
-        act: ActionTypes = values.get('act')
-        if act and v is None and act in with_body_actions:
-            raise ValueError('body is required for message:add, message:modify and subject:modify')
-        if act and v is not None and act not in with_body_actions:
-            raise ValueError('body must be omitted except for message:add, message:modify and subject:modify')
-        return v
 
-    @validator('follows', always=True)
-    def check_follows(cls, v, values):
-        act: ActionTypes = values.get('act')
-        if act and v is None and act in follow_action_types:
-            raise ValueError('follows is required for this action')
-        return v
+class PublishModel(ActionCore):
+    act: Literal[ActionTypes.conv_publish]
+    body: constr(min_length=1, max_length=1000, strip_whitespace=True)
+    # for now extra_body is allowed but ignored
 
 
 class Em2Push(ExecView):
@@ -98,7 +91,29 @@ class Em2Push(ExecView):
     class Model(BaseModel):
         em2_node: constr(min_length=4)
         conversation: str
-        actions: List[ActionModel]
+        actions: List[Union[ParticipantModel, MessageModel, PublishModel]]
+
+        @validator('actions', pre=True, whole=True)
+        def validate_actions(cls, actions):
+            if isinstance(actions, list):
+                return list(cls.action_gen(actions))
+            raise ValueError('actions must be a list')
+
+        @classmethod
+        def action_gen(cls, actions):
+            for i, action in enumerate(actions):
+                if isinstance(action, dict):
+                    act = action.get('act')
+                    if act in {ActionTypes.prt_add, ActionTypes.prt_modify}:
+                        yield ParticipantModel(**action)
+                        continue
+                    elif act in {ActionTypes.msg_add, ActionTypes.msg_modify}:
+                        yield MessageModel(**action)
+                        continue
+                    elif act == ActionTypes.conv_publish:
+                        yield PublishModel(**action)
+                        continue
+                raise ValueError(f'invalid action at index {i}')
 
         @validator('actions', whole=True)
         def check_actions(cls, actions):
@@ -186,6 +201,7 @@ class Em2Push(ExecView):
                 Action(actor_id=actor_user_ids[a.actor], **a.dict(exclude={'actor', 'warnings'}))
                 for a in actions_to_apply
             ]
+            # TODO errors like 404 because the actor hasn't been added to the conversation should be improved here
             await apply_actions(self.conns, conv_id, actions)
 
     async def published_conv(self, publish_action: Action, m: Model):
