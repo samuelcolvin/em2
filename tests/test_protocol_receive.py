@@ -418,3 +418,31 @@ async def test_other_platform_em2_actor(em2_cli: Em2TestClient, url, conns, dumm
     }
     r = await em2_cli.post_json(url('protocol:em2-push'), data=data, expected_status=400)
     assert await r.json() == {'message': "not all actors' em2 nodes match request node"}
+
+
+async def test_actor_not_in_conv(em2_cli: Em2TestClient, url, conns, dummy_server):
+    await em2_cli.create_conv()
+
+    conv_key = await conns.main.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    data = {
+        'conversation': conv_key,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'other@example.org', 'body': 'xx'}],
+    }
+    r = await em2_cli.post_json(url('protocol:em2-push'), data=data, expected_status=400)
+    assert await r.json() == {'message': 'actor does not have permission to update this conversation'}
+
+
+async def test_repeat_actions(em2_cli: Em2TestClient, url, conns, dummy_server):
+    await em2_cli.create_conv()
+
+    conv_key = await conns.main.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    data = {
+        'conversation': conv_key,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'another message'}],
+    }
+    await em2_cli.post_json(url('protocol:em2-push'), data=data)
+    await em2_cli.post_json(url('protocol:em2-push'), data=data)

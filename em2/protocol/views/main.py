@@ -1,13 +1,14 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import nacl.encoding
 from atoolbox import JsonErrors, json_response
 from pydantic import BaseModel, EmailStr, Extra, conint, constr, validator
 from typing_extensions import Literal
 
+from em2.background import push_all, push_multiple
 from em2.core import (
     Action,
     ActionTypes,
@@ -36,10 +37,6 @@ async def signing_verification(request):
             }
         ]
     )
-
-
-with_body_actions = {ActionTypes.msg_add, ActionTypes.msg_modify, ActionTypes.subject_modify, ActionTypes.conv_publish}
-publish_action_types = {ActionTypes.msg_add, ActionTypes.prt_add, ActionTypes.conv_publish}
 
 
 class ActionCore(BaseModel):
@@ -134,7 +131,7 @@ class Em2Push(ExecView):
                         break
                     elif a.actor != pub.actor:
                         raise ValueError('only a single actor should publish conversations')
-                    elif a.act not in publish_action_types:
+                    elif a.act not in {ActionTypes.msg_add, ActionTypes.prt_add, ActionTypes.conv_publish}:
                         raise ValueError(
                             'when publishing, only "participant:add", "message:add" and '
                             '"conv:publish" actions are permitted'
@@ -166,43 +163,65 @@ class Em2Push(ExecView):
 
         # TODO idempotency key
         async with self.conns.main.transaction():
-            await self.execute_trans(m)
+            conv_id, transmit, action_ids = await self.execute_trans(m)
 
-    async def execute_trans(self, m: Model):
+        if conv_id is not None:
+            if action_ids is None:
+                await push_all(self.conns, conv_id, transmit=transmit)
+            else:
+                await push_multiple(self.conns, conv_id, action_ids, transmit=transmit)
+
+    async def execute_trans(self, m: Model) -> Tuple[Optional[int], bool, Optional[List[int]]]:
         publish_action = next((a for a in m.actions if a.act == ActionTypes.conv_publish), None)
+        conv_id, last_action_id, leader_node = None, None, None
+        push_all_actions = False
         if publish_action:
             try:
-                await self.published_conv(publish_action, m)
+                conv_id, last_action_id, leader_node = await self.published_conv(publish_action, m)
+                push_all_actions = True
             except JsonErrors.HTTPConflict:
                 # conversation already exists, that's okay
                 pass
 
-        r = await self.conns.main.fetchrow(
-            'select id, last_action_id, leader_node from conversations where key=$1', m.conversation
-        )
-        if r:
-            conv_id, last_action_id, leader_node = r
+        if not conv_id:
+            r = await self.conns.main.fetchrow(
+                'select id, last_action_id, leader_node from conversations where key=$1', m.conversation
+            )
+            if r:
+                conv_id, last_action_id, leader_node = r
 
-            if leader_node != m.em2_node:
-                raise JsonErrors.HTTPBadRequest('request em2 node does not match current em2 node')
-        else:
-            # conversation doesn't exist and there's no publish_action, need the whole conversation
-            raise JsonErrors.HTTP470('full conversation required')  # TODO better error
-
-        actions_to_apply = [a for a in m.actions if a.id > last_action_id]
-
-        if actions_to_apply:
-            if last_action_id + 1 != actions_to_apply[0].id:
+                if leader_node and leader_node != m.em2_node:
+                    raise JsonErrors.HTTPBadRequest('request em2 node does not match current em2 node')
+            else:
+                # conversation doesn't exist and there's no publish_action, need the whole conversation
                 raise JsonErrors.HTTP470('full conversation required')  # TODO better error
 
-            actor_emails = {a.actor for a in m.actions}
-            actor_user_ids = await get_create_multiple_users(self.conns, actor_emails)
-            actions = [
-                Action(actor_id=actor_user_ids[a.actor], **a.dict(exclude={'actor', 'warnings'}))
-                for a in actions_to_apply
-            ]
-            # TODO errors like 404 because the actor hasn't been added to the conversation should be improved here
+        actions_to_apply = [a for a in m.actions if a.id > last_action_id]
+        push_transmit = leader_node is None
+        if not actions_to_apply:
+            if push_all_actions:
+                return conv_id, push_transmit, None
+            else:
+                return None, False, None
+
+        if last_action_id + 1 != actions_to_apply[0].id:
+            raise JsonErrors.HTTP470('full conversation required')  # TODO better error
+
+        actor_emails = {a.actor for a in m.actions}
+        actor_user_ids = await get_create_multiple_users(self.conns, actor_emails)
+        actions = [
+            Action(actor_id=actor_user_ids[a.actor], **a.dict(exclude={'actor', 'warnings'})) for a in actions_to_apply
+        ]
+
+        try:
             await apply_actions(self.conns, conv_id, actions)
+        except JsonErrors.HTTPNotFound:
+            # happens when an actor hasn't yet been added to the conversation, any other times?
+            # TODO any other errors?
+            raise JsonErrors.HTTPBadRequest('actor does not have permission to update this conversation')
+
+        action_ids = None if push_all_actions else [a.id for a in actions]
+        return conv_id, push_transmit, action_ids
 
     async def published_conv(self, publish_action: PublishModel, m: Model):
         """
@@ -235,4 +254,4 @@ class Em2Push(ExecView):
             given_conv_key=m.conversation,
             leader_node=m.em2_node,
         )
-        return conv_id
+        return conv_id, publish_action.id, m.em2_node

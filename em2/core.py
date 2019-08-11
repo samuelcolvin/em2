@@ -138,6 +138,7 @@ async def get_conv_for_user(
             conv_ref + '%',
         )
 
+    # TODO we should use a custom error here, not just 404: Conversation not found
     conv_id, publish_ts, creator, last_action = await or404(query, msg='Conversation not found')
 
     if not publish_ts and user_id != creator:
