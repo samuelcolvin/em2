@@ -340,7 +340,7 @@ class _Act:
         else:
             follows_pk, *_ = await self._get_follows(action, {ActionTypes.prt_add, ActionTypes.prt_modify})
             if action.act == ActionTypes.prt_remove:
-                prt_id, prt_user_id = await or404(
+                prt_id, prt_user_id = await or400(
                     self.conns.main.fetchrow(
                         """
                         select p.id, u.id from participants as p join users as u on p.user_id = u.id
@@ -349,7 +349,7 @@ class _Act:
                         self.conv_id,
                         action.participant,
                     ),
-                    msg='user not found on conversation',
+                    msg='participant not found on conversation',
                 )
             else:
                 raise NotImplementedError('"participant:modify" not yet implemented')

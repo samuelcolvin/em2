@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.message import EmailMessage
+from enum import Enum
 from io import BytesIO
 from typing import List, Optional
 
@@ -170,6 +171,14 @@ async def _fix_cli(settings, db_conn, aiohttp_server, redis, dummy_server):
     await cli.close()
 
 
+def em2_json_default(v):
+    if isinstance(v, Enum):
+        return v.value
+    if isinstance(v, datetime):
+        return v.isoformat()
+    raise TypeError(f'unable to serialize {type(v)}: {v!r}')
+
+
 class Em2TestClient(TestClient):
     def __init__(self, *args, settings, dummy_server, **kwargs):
         super().__init__(*args, **kwargs)
@@ -179,7 +188,7 @@ class Em2TestClient(TestClient):
 
     async def post_json(self, path, data, *, expected_status=200):
         if not isinstance(data, (str, bytes)):
-            data = json.dumps(data)
+            data = json.dumps(data, default=em2_json_default)
 
         sign_ts = datetime.utcnow().isoformat()
         to_sign = f'POST http://127.0.0.1:{self.server.port}{path} {sign_ts}\n{data}'.encode()

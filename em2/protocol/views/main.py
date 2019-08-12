@@ -49,19 +49,32 @@ class ActionCore(BaseModel):
 
 
 class ParticipantModel(ActionCore):
-    act: Literal[ActionTypes.prt_add, ActionTypes.prt_modify]
+    act: Literal[ActionTypes.prt_add]
     participant: EmailStr
 
 
+class ParticipantRemoveModel(ActionCore):
+    act: Literal[ActionTypes.prt_remove]
+    participant: EmailStr
+    follows: int
+
+
 class MessageModel(ActionCore):
-    act: Literal[ActionTypes.msg_add, ActionTypes.msg_modify]
     body: constr(min_length=1, max_length=10000, strip_whitespace=True)
     extra_body: bool = False
     msg_format: MsgFormat = MsgFormat.markdown
-    follows: Optional[int] = None
     parent: Optional[int] = None
+
+
+class MessageAddModel(MessageModel):
+    act: Literal[ActionTypes.msg_add]
     warnings: Any = None  # TODO stricter type
     files: list = None  # TODO stricter type
+
+
+class MessageModifyModel(MessageAddModel):
+    act: Literal[ActionTypes.msg_modify]
+    follows: int
 
 
 class PublishModel(ActionCore):
@@ -79,10 +92,11 @@ class SubjectModifyModel(ActionCore):
     follows: int
 
 
-lock_release_types = {a for a in ActionTypes if a.value.endswith((':lock', ':release'))}
+follow_only_types = {a for a in ActionTypes if a.value.endswith((':lock', ':release', ':delete'))}
+follow_only_types.add(ActionTypes.msg_delete)
 
 
-class LockReleaseModel(ActionCore):
+class FollowModel(ActionCore):
     act: ActionTypes  # Literal[*lock_release_types]
     follows: int
 
@@ -102,7 +116,17 @@ class Em2Push(ExecView):
     class Model(BaseModel):
         em2_node: constr(min_length=4)
         conversation: str
-        actions: List[Union[ParticipantModel, MessageModel, PublishModel, SubjectModifyModel, LockReleaseModel]]
+        actions: List[
+            Union[
+                ParticipantModel,
+                ParticipantRemoveModel,
+                MessageAddModel,
+                MessageModifyModel,
+                PublishModel,
+                SubjectModifyModel,
+                FollowModel,
+            ]
+        ]
 
         @validator('actions', pre=True, whole=True)
         def validate_actions(cls, actions):
@@ -117,17 +141,20 @@ class Em2Push(ExecView):
                     raise ValueError(f'invalid action at index {i}, not dict')
 
                 act = action.get('act')
-                if act in {ActionTypes.prt_add, ActionTypes.prt_modify}:
+                if act == ActionTypes.prt_add:
                     yield ParticipantModel(**action)
-                elif act in {ActionTypes.msg_add, ActionTypes.msg_modify}:
-                    yield MessageModel(**action)
+                elif act == ActionTypes.prt_remove:
+                    yield ParticipantRemoveModel(**action)
+                elif act == ActionTypes.msg_add:
+                    yield MessageAddModel(**action)
+                elif act == ActionTypes.msg_modify:
+                    yield MessageModifyModel(**action)
                 elif act == ActionTypes.conv_publish:
                     yield PublishModel(**action)
                 elif act == ActionTypes.subject_modify:
                     yield SubjectModifyModel(**action)
-                elif act in lock_release_types:
-                    # pass
-                    yield LockReleaseModel(**action)
+                elif act in follow_only_types:
+                    yield FollowModel(**action)
                 else:
                     raise ValueError(f'invalid action at index {i}, no support for act {act!r}')
 
