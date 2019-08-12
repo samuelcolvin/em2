@@ -294,3 +294,9 @@ create index idx_auth_sessions_user_id on auth_sessions using btree (user_id);
 create index idx_auth_sessions_active on auth_sessions using btree (active, last_active);
 
 -- todo add address book, domains, organisations and teams, perhaps new db/app.
+
+create or replace function or_now(v timestamptz) returns timestamptz as $$
+  begin
+    return coalesce(v, now());
+  end;
+$$ language plpgsql;

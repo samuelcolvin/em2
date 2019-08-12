@@ -360,8 +360,8 @@ class _Act:
 
         action_id = await self.conns.main.fetchval(
             """
-            insert into actions (id, ts                 , conv, act, actor, follows, participant_user)
-            values              ($1, coalesce($2, now()), $3  , $4 , $5   , $6     , $7)
+            insert into actions (id, ts        , conv, act, actor, follows, participant_user)
+            values              ($1, or_now($2), $3  , $4 , $5   , $6     , $7)
             returning id
             """,
             action.id,
@@ -403,9 +403,8 @@ class _Act:
             return await self.conns.main.fetchrow(
                 """
                 insert into actions
-                  (id, ts                 , conv, act          , actor, body, preview, parent, msg_format, warnings)
-                values
-                  ($1, coalesce($2, now()), $3  , 'message:add', $4   , $5  , $6     , $7    , $8        , $9)
+                        (id, ts       , conv, act          , actor, body, preview, parent, msg_format, warnings)
+                values ($1, or_now($2), $3  , 'message:add', $4   , $5  , $6     , $7    , $8        , $9)
                 returning id, pk
                 """,
                 action.id,
@@ -442,8 +441,8 @@ class _Act:
 
         return await self.conns.main.fetchrow(
             """
-            insert into actions (id, ts                 , conv, actor, act, body, preview, follows)
-            values              ($1, coalesce($2, now()), $3  , $4   , $5 , $6  , $7     , $8)
+            insert into actions (id, ts        , conv, actor, act, body, preview, follows)
+            values              ($1, or_now($2), $3  , $4   , $5 , $6  , $7     , $8)
             returning id, pk
             """,
             action.id,
@@ -475,8 +474,8 @@ class _Act:
 
         return await self.conns.main.fetchval(
             """
-            insert into actions (id, ts                 , conv, actor, act, body, follows)
-            values              ($1, coalesce($2, now()), $3  , $4   , $5 , $6  , $7)
+            insert into actions (id, ts        , conv, actor, act, body, follows)
+            values              ($1, or_now($2), $3  , $4   , $5 , $6  , $7)
             returning id
             """,
             action.id,
