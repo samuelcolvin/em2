@@ -13,7 +13,7 @@ from buildpg import MultipleValues, V, Values
 from .search import search_create_conv, search_update
 from .utils.core import MsgFormat, message_preview
 from .utils.datetime import to_unix_ms, utcnow
-from .utils.db import Connections, or404
+from .utils.db import Connections, or400, or404
 
 StrInt = Union[str, int]
 
@@ -340,7 +340,7 @@ class _Act:
         else:
             follows_pk, *_ = await self._get_follows(action, {ActionTypes.prt_add, ActionTypes.prt_modify})
             if action.act == ActionTypes.prt_remove:
-                prt_id, prt_user_id = await or404(
+                prt_id, prt_user_id = await or400(
                     self.conns.main.fetchrow(
                         """
                         select p.id, u.id from participants as p join users as u on p.user_id = u.id
@@ -349,7 +349,7 @@ class _Act:
                         self.conv_id,
                         action.participant,
                     ),
-                    msg='user not found on conversation',
+                    msg='participant not found on conversation',
                 )
             else:
                 raise NotImplementedError('"participant:modify" not yet implemented')
@@ -488,7 +488,7 @@ class _Act:
         )
 
     async def _get_follows(self, action: Action, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
-        follows_pk, follows_act, follows_actor, follows_age = await or404(
+        follows_pk, follows_act, follows_actor, follows_age = await or400(
             self.conns.main.fetchrow(
                 """
                 select pk, act, actor, extract(epoch from current_timestamp - ts)::int

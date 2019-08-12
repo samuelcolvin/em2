@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.message import EmailMessage
+from enum import Enum
 from io import BytesIO
 from typing import List, Optional
 
@@ -18,6 +19,7 @@ from atoolbox.test_utils import DummyServer, create_dummy_server
 from buildpg import Values
 from cryptography.fernet import Fernet
 from PIL import Image, ImageDraw
+from yarl import URL
 
 from em2.auth.utils import mk_password
 from em2.background import push_multiple
@@ -169,15 +171,24 @@ async def _fix_cli(settings, db_conn, aiohttp_server, redis, dummy_server):
     await cli.close()
 
 
+def em2_json_default(v):
+    if isinstance(v, Enum):
+        return v.value
+    if isinstance(v, datetime):
+        return v.isoformat()
+    raise TypeError(f'unable to serialize {type(v)}: {v!r}')
+
+
 class Em2TestClient(TestClient):
     def __init__(self, *args, settings, dummy_server, **kwargs):
         super().__init__(*args, **kwargs)
         self._settings: Settings = settings
         self._dummy_server: DummyServer = dummy_server
+        self._url_func = MakeUrl(self.app).get_path
 
     async def post_json(self, path, data, *, expected_status=200):
         if not isinstance(data, (str, bytes)):
-            data = json.dumps(data)
+            data = json.dumps(data, default=em2_json_default)
 
         sign_ts = datetime.utcnow().isoformat()
         to_sign = f'POST http://127.0.0.1:{self.server.port}{path} {sign_ts}\n{data}'.encode()
@@ -194,6 +205,11 @@ class Em2TestClient(TestClient):
             assert r.status == expected_status, await r.text()
         return r
 
+    async def push_actions(self, conv_key, actions, *, em2_node=None, expected_status=200):
+        em2_node = em2_node or self._dummy_server.server_name + '/em2'
+        data = {'conversation': conv_key, 'em2_node': em2_node, 'actions': actions}
+        return await self.post_json(self.url('protocol:em2-push'), data=data, expected_status=expected_status)
+
     async def create_conv(
         self,
         *,
@@ -206,20 +222,17 @@ class Em2TestClient(TestClient):
     ):
         ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
         conv_key = generate_conv_key(actor, ts, subject)
-        em2_node = em2_node or self._dummy_server.server_name + '/em2'
         ts_str = ts.isoformat()
-        data = {
-            'conversation': conv_key,
-            'em2_node': em2_node,
-            'actions': [
-                {'id': 1, 'act': 'participant:add', 'ts': ts_str, 'actor': actor, 'participant': actor},
-                {'id': 2, 'act': 'participant:add', 'ts': ts_str, 'actor': actor, 'participant': recipient},
-                {'id': 3, 'act': 'message:add', 'ts': ts_str, 'actor': actor, 'body': msg},
-                {'id': 4, 'act': 'conv:publish', 'ts': ts_str, 'actor': actor, 'body': subject},
-            ],
-        }
-        url_func = MakeUrl(self.app).get_path
-        return await self.post_json(url_func('protocol:em2-push'), data, expected_status=expected_status)
+        actions = [
+            {'id': 1, 'act': 'participant:add', 'ts': ts_str, 'actor': actor, 'participant': actor},
+            {'id': 2, 'act': 'participant:add', 'ts': ts_str, 'actor': actor, 'participant': recipient},
+            {'id': 3, 'act': 'message:add', 'ts': ts_str, 'actor': actor, 'body': msg},
+            {'id': 4, 'act': 'conv:publish', 'ts': ts_str, 'actor': actor, 'body': subject},
+        ]
+        return await self.push_actions(conv_key, actions, em2_node=em2_node, expected_status=expected_status)
+
+    def url(self, name: str, *, query=None, **kwargs) -> URL:
+        return self._url_func(name, query=query, **kwargs)
 
 
 @pytest.fixture(name='em2_cli')

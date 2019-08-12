@@ -44,33 +44,61 @@ class ActionCore(BaseModel):
     ts: datetime
     actor: EmailStr
 
-
-class ParticipantModel(ActionCore):
-    act: Literal[ActionTypes.prt_add, ActionTypes.prt_modify]
-    participant: EmailStr
-
     class Config:
         extra = Extra.forbid
+
+
+class ParticipantModel(ActionCore):
+    act: Literal[ActionTypes.prt_add]
+    participant: EmailStr
+
+
+class ParticipantRemoveModel(ActionCore):
+    act: Literal[ActionTypes.prt_remove]
+    participant: EmailStr
+    follows: int
 
 
 class MessageModel(ActionCore):
-    act: Literal[ActionTypes.msg_add, ActionTypes.msg_modify]
     body: constr(min_length=1, max_length=10000, strip_whitespace=True)
     extra_body: bool = False
     msg_format: MsgFormat = MsgFormat.markdown
-    follows: Optional[int] = None
     parent: Optional[int] = None
+
+
+class MessageAddModel(MessageModel):
+    act: Literal[ActionTypes.msg_add]
     warnings: Any = None  # TODO stricter type
     files: list = None  # TODO stricter type
 
-    class Config:
-        extra = Extra.forbid
+
+class MessageModifyModel(MessageAddModel):
+    act: Literal[ActionTypes.msg_modify]
+    follows: int
 
 
 class PublishModel(ActionCore):
     act: Literal[ActionTypes.conv_publish]
     body: constr(min_length=1, max_length=1000, strip_whitespace=True)
     # for now extra_body is allowed but ignored
+
+    class Config:
+        extra = Extra.ignore
+
+
+class SubjectModifyModel(ActionCore):
+    act: Literal[ActionTypes.subject_modify]
+    body: constr(min_length=1, max_length=1000, strip_whitespace=True)
+    follows: int
+
+
+follow_only_types = {a for a in ActionTypes if a.value.endswith((':lock', ':release', ':delete'))}
+follow_only_types.add(ActionTypes.msg_delete)
+
+
+class FollowModel(ActionCore):
+    act: ActionTypes  # Literal[*lock_release_types]
+    follows: int
 
 
 class Em2Push(ExecView):
@@ -88,7 +116,17 @@ class Em2Push(ExecView):
     class Model(BaseModel):
         em2_node: constr(min_length=4)
         conversation: str
-        actions: List[Union[ParticipantModel, MessageModel, PublishModel]]
+        actions: List[
+            Union[
+                ParticipantModel,
+                ParticipantRemoveModel,
+                MessageAddModel,
+                MessageModifyModel,
+                PublishModel,
+                SubjectModifyModel,
+                FollowModel,
+            ]
+        ]
 
         @validator('actions', pre=True, whole=True)
         def validate_actions(cls, actions):
@@ -99,18 +137,26 @@ class Em2Push(ExecView):
         @classmethod
         def action_gen(cls, actions):
             for i, action in enumerate(actions):
-                if isinstance(action, dict):
-                    act = action.get('act')
-                    if act in {ActionTypes.prt_add, ActionTypes.prt_modify}:
-                        yield ParticipantModel(**action)
-                        continue
-                    elif act in {ActionTypes.msg_add, ActionTypes.msg_modify}:
-                        yield MessageModel(**action)
-                        continue
-                    elif act == ActionTypes.conv_publish:
-                        yield PublishModel(**action)
-                        continue
-                raise ValueError(f'invalid action at index {i}')
+                if not isinstance(action, dict):
+                    raise ValueError(f'invalid action at index {i}, not dict')
+
+                act = action.get('act')
+                if act == ActionTypes.prt_add:
+                    yield ParticipantModel(**action)
+                elif act == ActionTypes.prt_remove:
+                    yield ParticipantRemoveModel(**action)
+                elif act == ActionTypes.msg_add:
+                    yield MessageAddModel(**action)
+                elif act == ActionTypes.msg_modify:
+                    yield MessageModifyModel(**action)
+                elif act == ActionTypes.conv_publish:
+                    yield PublishModel(**action)
+                elif act == ActionTypes.subject_modify:
+                    yield SubjectModifyModel(**action)
+                elif act in follow_only_types:
+                    yield FollowModel(**action)
+                else:
+                    raise ValueError(f'invalid action at index {i}, no support for act {act!r}')
 
         @validator('actions', whole=True)
         def check_actions(cls, actions):
