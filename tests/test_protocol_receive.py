@@ -17,7 +17,7 @@ async def test_signing_verification(cli, url):
     assert obj == {'keys': [{'key': 'd759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48', 'ttl': 86400}]}
 
 
-async def test_push(em2_cli, url, settings, dummy_server: DummyServer, db_conn, redis):
+async def test_push(em2_cli, settings, dummy_server: DummyServer, db_conn, redis):
     ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
     # key = generate_conv_key('actor@example.org', ts, 'Test Subject')
     conv_key = '5771d1016ac9515319a15f9ea4621b411a2eab8b781e88db9885a806ee12144c'
@@ -60,7 +60,7 @@ async def test_push(em2_cli, url, settings, dummy_server: DummyServer, db_conn, 
         ],
     }
     data = json.dumps(post_data)
-    path = url('protocol:em2-push')
+    path = em2_cli.url('protocol:em2-push')
     sign_ts = datetime.utcnow().isoformat()
     to_sign = f'POST http://127.0.0.1:{em2_cli.server.port}{path} {sign_ts}\n{data}'.encode()
     signing_key = get_signing_key(settings.signing_secret_key)
@@ -159,7 +159,7 @@ async def test_append_to_conv(em2_cli: Em2TestClient, conns):
     }
 
 
-async def test_create_append(em2_cli, url, dummy_server: DummyServer, conns):
+async def test_create_append(em2_cli, conns):
     ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
     # key = generate_conv_key('actor@example.org', ts, 'Test Subject')
     conv_key = '5771d1016ac9515319a15f9ea4621b411a2eab8b781e88db9885a806ee12144c'
@@ -203,7 +203,7 @@ async def test_create_append(em2_cli, url, dummy_server: DummyServer, conns):
     }
 
 
-async def test_no_signature(em2_cli, url, dummy_server: DummyServer):
+async def test_no_signature(em2_cli, dummy_server: DummyServer):
     a = 'actor@example.org'
     post_data = {
         'conversation': '1' * 20,
@@ -211,7 +211,7 @@ async def test_no_signature(em2_cli, url, dummy_server: DummyServer):
         'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}],
     }
     data = json.dumps(post_data)
-    r = await em2_cli.post(url('protocol:em2-push'), data=data, headers={'Content-Type': 'application/json'})
+    r = await em2_cli.post(em2_cli.url('protocol:em2-push'), data=data, headers={'Content-Type': 'application/json'})
     assert r.status == 401, await r.text()
     assert await r.json() == {'message': '"Signature" header not found'}
 
@@ -226,7 +226,7 @@ async def test_no_signature(em2_cli, url, dummy_server: DummyServer):
         ('2010-06-01T00:00:00.000000,' + '1' * 128, 'Signature expired'),
     ],
 )
-async def test_invalid_signature_format(em2_cli, url, dummy_server: DummyServer, sig, message):
+async def test_invalid_signature_format(em2_cli, dummy_server: DummyServer, sig, message):
     a = 'actor@example.org'
     post_data = {
         'conversation': '1' * 20,
@@ -235,13 +235,13 @@ async def test_invalid_signature_format(em2_cli, url, dummy_server: DummyServer,
     }
     data = json.dumps(post_data)
     r = await em2_cli.post(
-        url('protocol:em2-push'), data=data, headers={'Content-Type': 'application/json', 'Signature': sig}
+        em2_cli.url('protocol:em2-push'), data=data, headers={'Content-Type': 'application/json', 'Signature': sig}
     )
     assert r.status == 401, await r.text()
     assert await r.json() == {'message': message}
 
 
-async def test_invalid_signature(em2_cli, url, dummy_server: DummyServer):
+async def test_invalid_signature(em2_cli, dummy_server: DummyServer):
     a = 'actor@example.org'
     post_data = {
         'conversation': '1' * 20,
@@ -251,7 +251,7 @@ async def test_invalid_signature(em2_cli, url, dummy_server: DummyServer):
     data = json.dumps(post_data)
     sig = datetime.utcnow().isoformat() + ',' + '1' * 128
     r = await em2_cli.post(
-        url('protocol:em2-push'), data=data, headers={'Content-Type': 'application/json', 'Signature': sig}
+        em2_cli.url('protocol:em2-push'), data=data, headers={'Content-Type': 'application/json', 'Signature': sig}
     )
     assert r.status == 401, await r.text()
     assert await r.json() == {'message': 'Invalid signature'}
@@ -270,7 +270,7 @@ async def test_valid_signature_repeat(em2_cli, dummy_server: DummyServer):
     assert dummy_server.log == ['GET em2/v1/signing/verification', 'GET v1/route']
 
 
-async def test_failed_verification_request(cli, url, dummy_server: DummyServer, settings):
+async def test_failed_verification_request(em2_cli, dummy_server: DummyServer, settings):
     a = 'actor@example.org'
     post_data = {
         'conversation': '1' * 20,
@@ -278,12 +278,12 @@ async def test_failed_verification_request(cli, url, dummy_server: DummyServer, 
         'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}],
     }
     data = json.dumps(post_data)
-    path = url('protocol:em2-push')
+    path = em2_cli.url('protocol:em2-push')
     sign_ts = datetime.utcnow().isoformat()
-    to_sign = f'POST http://127.0.0.1:{cli.server.port}{path} {sign_ts}\n{data}'.encode()
+    to_sign = f'POST http://127.0.0.1:{em2_cli.server.port}{path} {sign_ts}\n{data}'.encode()
     signing_key = get_signing_key(settings.signing_secret_key)
     sig = sign_ts + ',' + signing_key.sign(to_sign).signature.hex()
-    r = await cli.post(path, data=data, headers={'Content-Type': 'application/json', 'Signature': sig})
+    r = await em2_cli.post(path, data=data, headers={'Content-Type': 'application/json', 'Signature': sig})
     assert r.status == 401, await r.text()
     assert await r.json() == {
         'message': f"error getting signature from '{dummy_server.server_name}/does-not-exist/v1/signing/verification/'"
