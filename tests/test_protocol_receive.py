@@ -481,6 +481,20 @@ async def test_actor_not_in_conv(em2_cli: Em2TestClient, url, conns, dummy_serve
     assert await r.json() == {'message': 'actor does not have permission to update this conversation'}
 
 
+async def test_follows_wrong(em2_cli: Em2TestClient, url, conns, dummy_server):
+    await em2_cli.create_conv()
+    conv_key = await conns.main.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    a = 'actor@example.org'
+    data = {
+        'conversation': conv_key,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [{'id': 5, 'act': 'subject:lock', 'ts': ts, 'actor': a, 'follows': 123}],
+    }
+    r = await em2_cli.post_json(url('protocol:em2-push'), data=data, expected_status=400)
+    assert await r.json() == {'message': '"follows" action not found'}
+
+
 async def test_repeat_actions(em2_cli: Em2TestClient, url, conns, dummy_server):
     await em2_cli.create_conv()
 
@@ -493,3 +507,39 @@ async def test_repeat_actions(em2_cli: Em2TestClient, url, conns, dummy_server):
     }
     await em2_cli.post_json(url('protocol:em2-push'), data=data)
     await em2_cli.post_json(url('protocol:em2-push'), data=data)
+
+
+async def test_edit_subject(em2_cli: Em2TestClient, url, conns, dummy_server):
+    await em2_cli.create_conv()
+    conv_key = await conns.main.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    a = 'actor@example.org'
+    data = {
+        'conversation': conv_key,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [
+            {'id': 5, 'act': 'subject:lock', 'ts': ts, 'actor': a, 'follows': 4},
+            {'id': 6, 'act': 'subject:modify', 'ts': ts, 'actor': a, 'follows': 5, 'body': 'new'},
+        ],
+    }
+    await em2_cli.post_json(url('protocol:em2-push'), data=data)
+    conv = await construct_conv(conns, await conns.main.fetchval('select id from users where email=$1', a), conv_key)
+    assert conv['subject'] == 'new'
+
+
+async def test_lock_release_subject(em2_cli: Em2TestClient, url, conns, dummy_server):
+    await em2_cli.create_conv(subject='the subject')
+    conv_key = await conns.main.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    a = 'actor@example.org'
+    data = {
+        'conversation': conv_key,
+        'em2_node': dummy_server.server_name + '/em2',
+        'actions': [
+            {'id': 5, 'act': 'subject:lock', 'ts': ts, 'actor': a, 'follows': 4},
+            {'id': 6, 'act': 'subject:release', 'ts': ts, 'actor': a, 'follows': 5},
+        ],
+    }
+    await em2_cli.post_json(url('protocol:em2-push'), data=data)
+    conv = await construct_conv(conns, await conns.main.fetchval('select id from users where email=$1', a), conv_key)
+    assert conv['subject'] == 'the subject'

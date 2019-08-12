@@ -13,7 +13,7 @@ from buildpg import MultipleValues, V, Values
 from .search import search_create_conv, search_update
 from .utils.core import MsgFormat, message_preview
 from .utils.datetime import to_unix_ms, utcnow
-from .utils.db import Connections, or404
+from .utils.db import Connections, or400, or404
 
 StrInt = Union[str, int]
 
@@ -488,7 +488,7 @@ class _Act:
         )
 
     async def _get_follows(self, action: Action, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
-        follows_pk, follows_act, follows_actor, follows_age = await or404(
+        follows_pk, follows_act, follows_actor, follows_age = await or400(
             self.conns.main.fetchrow(
                 """
                 select pk, act, actor, extract(epoch from current_timestamp - ts)::int
