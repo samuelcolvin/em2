@@ -5,7 +5,7 @@ import pytest
 from aiohttp import WSMsgType
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
-from em2.core import ActionModel, ActionTypes, construct_conv
+from em2.core import Action, ActionTypes, construct_conv
 
 from .conftest import Factory
 
@@ -28,6 +28,7 @@ async def test_create_conv(cli, factory: Factory, db_conn):
         'updated_ts': CloseToNow(),
         'publish_ts': None,
         'last_action_id': 3,  # add participant, add message, publish
+        'leader_node': None,
         'details': RegexStr(r'\{.*\}'),
     }
     assert json.loads(conv['details']) == {
@@ -77,6 +78,7 @@ async def test_create_conv_participants(cli, factory: Factory, db_conn):
         'updated_ts': CloseToNow(),
         'publish_ts': None,
         'last_action_id': 5,
+        'leader_node': None,
         'details': RegexStr(r'\{.*\}'),
     }
     assert json.loads(conv['details']) == {
@@ -118,6 +120,7 @@ async def test_create_conv_publish(cli, factory: Factory, db_conn):
         'updated_ts': CloseToNow(),
         'publish_ts': CloseToNow(),
         'last_action_id': 3,  # add participant, add message, publish
+        'leader_node': None,
         'details': RegexStr(r'\{.*\}'),
     }
     assert json.loads(conv['details']) == {
@@ -189,7 +192,6 @@ async def test_conv_actions(cli, factory: Factory, db_conn):
     assert obj == [
         {
             'id': 1,
-            'conv': conv.key,
             'act': 'participant:add',
             'ts': CloseToNow(),
             'actor': 'testing-1@example.com',
@@ -197,21 +199,13 @@ async def test_conv_actions(cli, factory: Factory, db_conn):
         },
         {
             'id': 2,
-            'conv': conv.key,
             'act': 'message:add',
             'ts': CloseToNow(),
             'body': 'Test Message',
             'msg_format': 'markdown',
             'actor': 'testing-1@example.com',
         },
-        {
-            'id': 3,
-            'conv': conv.key,
-            'act': 'conv:create',
-            'ts': CloseToNow(),
-            'body': 'Test Subject',
-            'actor': 'testing-1@example.com',
-        },
+        {'id': 3, 'act': 'conv:create', 'ts': CloseToNow(), 'body': 'Test Subject', 'actor': 'testing-1@example.com'},
     ]
 
 
@@ -228,7 +222,6 @@ async def test_act(cli, factory: Factory):
     assert len(obj) == 4
     assert obj[-1] == {
         'id': 4,
-        'conv': conv.key,
         'act': 'message:add',
         'ts': CloseToNow(),
         'actor': 'testing-1@example.com',
@@ -353,6 +346,7 @@ async def test_ws_create(cli, factory: Factory, db_conn):
         'user_v': 3,
         'user_id': user.id,
         'user_email': user.email,
+        'conversation': conv.key,
         'actions': [
             {
                 'id': 1,
@@ -360,7 +354,6 @@ async def test_ws_create(cli, factory: Factory, db_conn):
                 'ts': CloseToNow(),
                 'actor': 'testing-1@example.com',
                 'participant': 'testing-1@example.com',
-                'conv': conv.key,
             },
             {
                 'id': 2,
@@ -370,7 +363,6 @@ async def test_ws_create(cli, factory: Factory, db_conn):
                 'body': 'Test Message',
                 'extra_body': False,
                 'msg_format': 'markdown',
-                'conv': conv.key,
             },
             {
                 'id': 3,
@@ -379,7 +371,6 @@ async def test_ws_create(cli, factory: Factory, db_conn):
                 'actor': 'testing-1@example.com',
                 'body': 'Test Subject',
                 'extra_body': False,
-                'conv': conv.key,
             },
         ],
         'conv_details': {
@@ -416,6 +407,7 @@ async def test_ws_add_msg(cli, factory: Factory, db_conn):
         'user_v': 3,
         'user_id': user.id,
         'user_email': user.email,
+        'conversation': conv.key,
         'actions': [
             {
                 'id': 4,
@@ -425,7 +417,6 @@ async def test_ws_add_msg(cli, factory: Factory, db_conn):
                 'body': 'this is another message',
                 'extra_body': False,
                 'msg_format': 'markdown',
-                'conv': conv.key,
             }
         ],
         'conv_details': {
@@ -483,8 +474,8 @@ async def test_removed_get_list(factory: Factory, cli):
     conv = await factory.create_conv(publish=True)
 
     user2 = await factory.create_user()
-    await factory.act(user1.id, conv.id, ActionModel(act=ActionTypes.prt_add, participant=user2.email))
-    await factory.act(user1.id, conv.id, ActionModel(act=ActionTypes.msg_add, body='This is a **test**'))
+    await factory.act(conv.id, Action(actor_id=user1.id, act=ActionTypes.prt_add, participant=user2.email))
+    await factory.act(conv.id, Action(actor_id=user1.id, act=ActionTypes.msg_add, body='This is a **test**'))
 
     obj = await cli.get_json(factory.url('ui:list', session_id=user2.session_id))
     assert obj['conversations'][0]['removed'] is False
@@ -495,8 +486,10 @@ async def test_removed_get_list(factory: Factory, cli):
     assert obj['last_action_id'] == 5
     assert obj['details']['prev'] == 'This is a test'
 
-    await factory.act(user1.id, conv.id, ActionModel(act=ActionTypes.prt_remove, participant=user2.email, follows=4))
-    await factory.act(user1.id, conv.id, ActionModel(act=ActionTypes.msg_add, body='different'))
+    await factory.act(
+        conv.id, Action(actor_id=user1.id, act=ActionTypes.prt_remove, participant=user2.email, follows=4)
+    )
+    await factory.act(conv.id, Action(actor_id=user1.id, act=ActionTypes.msg_add, body='different'))
 
     obj = await cli.get_json(factory.url('ui:list', session_id=user1.session_id))
     assert obj['conversations'][0]['removed'] is False

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     auth_key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa='
 
     domain: str = 'localhost'  # currently used as a proxy for development mode, should probably be changed
+    testing: bool = False  # used only in unit test eg, to use http not https for the em2 protocol
     any_origin: bool = False  # WARNING: this is dangerous, only use when testing
     local_port: Optional[int] = 8000
     commit: str = 'unknown'
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
     internal_auth_key: constr(min_length=40, max_length=100) = secrets.token_urlsafe()
 
     # em2 feature settings:
+    signing_secret_key: constr(min_length=64, max_length=64) = b'1' * 64
     message_lock_duration: int = 3600  # how many seconds a lock holds for
 
     smtp_handler = 'em2.protocol.smtp.LogSmtpHandler'

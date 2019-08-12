@@ -1,32 +1,37 @@
 import asyncio
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
 from buildpg import SetValues, V, funcs
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, EmailStr, constr, validator
 
 from em2.background import push_all, push_multiple
 from em2.core import (
-    ActionModel,
+    Action,
     ActionTypes,
+    ConvCreateMessage,
     ConvFlags,
-    CreateConvModel,
     File,
     UpdateFlag,
     apply_actions,
     construct_conv,
     conv_actions_json,
     create_conv,
+    follow_action_types,
     generate_conv_key,
     get_conv_for_user,
     get_flag_counts,
     get_label_counts,
+    max_participants,
+    participant_action_types,
     update_conv_flags,
     update_conv_users,
+    with_body_actions,
 )
 from em2.search import search, search_publish_conv
+from em2.utils.core import MsgFormat
 from em2.utils.datetime import utcnow
 from em2.utils.db import or404
 from em2.utils.storage import S3, StorageNotFound, parse_storage_uri
@@ -158,15 +163,85 @@ class ConvDetails(View):
 
 
 class ConvCreate(ExecView):
-    Model = CreateConvModel
+    class Model(BaseModel):
+        subject: constr(max_length=255, strip_whitespace=True)
+        message: constr(max_length=10000, strip_whitespace=True)
+        msg_format: MsgFormat = MsgFormat.markdown
+        publish = False
 
-    async def execute(self, conv: CreateConvModel):
+        class Participant(BaseModel):
+            email: EmailStr
+            name: str = None
+
+        participants: List[Participant] = []
+
+        @validator('participants', whole=True)
+        def check_participants_count(cls, v):
+            if len(v) > max_participants:
+                raise ValueError(f'no more than {max_participants} participants permitted')
+            return v
+
+    async def execute(self, conv: Model):
         conv_id, conv_key = await create_conv(
-            conns=self.conns, creator_email=self.session.email, creator_id=self.session.user_id, conv=conv
+            conns=self.conns,
+            creator_email=self.session.email,
+            creator_id=self.session.user_id,
+            subject=conv.subject,
+            publish=conv.publish,
+            messages=[ConvCreateMessage(body=conv.message, msg_format=conv.msg_format)],
+            participants={p.email: None for p in conv.participants},
         )
 
         await push_all(self.conns, conv_id)
         return dict(key=conv_key, status_=201)
+
+
+class ActionModel(BaseModel):
+    """
+    Representation of an action to perform.
+    """
+
+    act: ActionTypes
+    participant: Optional[EmailStr] = None
+    body: Optional[constr(min_length=1, max_length=10000, strip_whitespace=True)] = None
+    follows: Optional[int] = None
+    parent: Optional[int] = None
+    msg_format: MsgFormat = MsgFormat.markdown
+
+    @validator('act')
+    def check_act(cls, v):
+        if v in {ActionTypes.conv_publish, ActionTypes.conv_create}:
+            raise ValueError('Action not permitted')
+        return v
+
+    @validator('participant', always=True)
+    def check_participant(cls, v, values):
+        act: ActionTypes = values.get('act')
+        if act and not v and act in participant_action_types:
+            raise ValueError('participant is required for participant actions')
+        if act and v and act not in participant_action_types:
+            raise ValueError('participant must be omitted except for participant actions')
+        return v
+
+    @validator('body', always=True)
+    def check_body(cls, v, values):
+        act: ActionTypes = values.get('act')
+        if act and v is None and act in with_body_actions:
+            raise ValueError('body is required for message:add, message:modify and subject:modify')
+        if act and v is not None and act not in with_body_actions:
+            raise ValueError('body must be omitted except for message:add, message:modify and subject:modify')
+        return v
+
+    @validator('follows', always=True)
+    def check_follows(cls, v, values):
+        act: ActionTypes = values.get('act')
+        if act and v is None and act in follow_action_types:
+            raise ValueError('follows is required for this action')
+        return v
+
+    def as_raw_action(self, actor_id) -> Action:
+        # technically unnecessary, could just cast
+        return Action(actor_id=actor_id, **self.dict())
 
 
 class ConvAct(ExecView):
@@ -188,9 +263,8 @@ class ConvAct(ExecView):
             files = await self.get_files(conv_id, m.files)
         conv_id, action_ids = await apply_actions(
             conns=self.conns,
-            actor_user_id=self.session.user_id,
             conv_ref=self.request.match_info['conv'],
-            actions=m.actions,
+            actions=[a.as_raw_action(self.session.user_id) for a in m.actions],
             files=files,
         )
 

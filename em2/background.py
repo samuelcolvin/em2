@@ -127,7 +127,8 @@ async def _push_remote(conns: Connections, conv_id: int, actions_data: str):
 
 push_sql_template = """
 select json_build_object(
-  'actions', actions
+  'actions', actions,
+  'conversation', conversation
 )
 from (
   select array_to_json(array_agg(json_strip_nulls(row_to_json(t)))) as actions
@@ -137,7 +138,6 @@ from (
     case when a.body is null then null else length(a.body) > 1024 end extra_body,
     a.msg_format, a.warnings,
     prt_user.email participant, follows_action.id follows, parent_action.id parent,
-    c.key as conv,
     (select array_agg(row_to_json(f))
       from (
         select content_disp, hash, content_id, name, content_type, size
@@ -156,7 +156,9 @@ from (
     left join actions as parent_action on a.parent = parent_action.pk
     {}
   ) as t
-) as actions
+) actions, (
+  select key conversation from conversations where id=$1
+) conversation
 """
 
 push_sql_all = push_sql_template.format('where a.conv=$1 order by a.id')

@@ -42,13 +42,15 @@ create table conversations (
   updated_ts timestamptz not null,
   publish_ts timestamptz,
   last_action_id int not null default 0 check (last_action_id >= 0),
+  leader_node varchar (255),  -- null when this node is leader,
   details json
 );
 create index idx_conversations_key on conversations using gin (key gin_trgm_ops);
+create index idx_conversations_creator on conversations using btree (creator);
 create index idx_conversations_created_ts on conversations using btree (created_ts);
 create index idx_conversations_updated_ts on conversations using btree (updated_ts);
 create index idx_conversations_publish_ts on conversations using btree (publish_ts);
-create index idx_conversations_creator on conversations using btree (creator);
+create index idx_conversations_leader_node on conversations using btree (leader_node);
 
 create table participants (
   id bigserial primary key,
@@ -125,15 +127,16 @@ create or replace function action_insert() returns trigger as $$
     old_details_ json;
     creator_ varchar(255);
     details_ json;
+    new_id_ int;
     subject_ats ActionTypes[] = array['conv:publish', 'conv:create', 'subject:modify'];
     add_del_msg_ats ActionTypes[] = array['message:add', 'message:delete'];
     meta_ats ActionTypes[] = array['seen','subject:release','subject:lock','message:lock','message:release'];
   begin
     if new.act=any(meta_ats) then
       update conversations
-        set last_action_id=last_action_id + 1
+        set last_action_id=case when new.id is null then last_action_id + 1 else new.id end
         where id=new.conv
-        returning last_action_id into new.id;
+        returning last_action_id into new_id_;
     else
       select details, u.email into old_details_, creator_
       from conversations c
@@ -150,14 +153,19 @@ create or replace function action_insert() returns trigger as $$
         'msgs', (
           select count(*) filter (where act='message:add') - count(*) filter (where act='message:delete')
           from actions where conv=new.conv and act=any(add_del_msg_ats)
-        ) + case when new.act='message:add' then 1
-                 when new.act='message:delete' then -1
-                 else 0 end
+        ) + case new.act when 'message:add' then 1
+                         when 'message:delete' then -1
+                         else 0 end
       );
       update conversations
-        set updated_ts=new.ts, details=details_, last_action_id=last_action_id + 1
+        set updated_ts=new.ts, details=details_,
+            last_action_id=case when new.id is null then last_action_id + 1 else new.id end
         where id=new.conv
-        returning last_action_id into new.id;
+        returning last_action_id into new_id_;
+    end if;
+
+    if new.id is null then
+      new.id := new_id_;
     end if;
 
     return new;
@@ -286,3 +294,9 @@ create index idx_auth_sessions_user_id on auth_sessions using btree (user_id);
 create index idx_auth_sessions_active on auth_sessions using btree (active, last_active);
 
 -- todo add address book, domains, organisations and teams, perhaps new db/app.
+
+create or replace function or_now(v timestamptz) returns timestamptz as $$
+  begin
+    return coalesce(v, now());
+  end;
+$$ language plpgsql;

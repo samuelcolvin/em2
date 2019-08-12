@@ -1,45 +1,23 @@
 import asyncio
 import json
 import logging
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
-from urllib.parse import urlencode
+from typing import Any, Dict, List, Set, Tuple
 
-import aiodns
-from aiohttp import ClientConnectionError, ClientError, ClientSession
+from aiohttp import ClientSession
 from arq import ArqRedis
-from async_timeout import timeout
 from asyncpg.pool import Pool
 from atoolbox import RequestError
-from atoolbox.json_tools import lenient_json
 from cryptography.fernet import Fernet
-from pydantic import BaseModel, UrlStr
 
 from em2.core import ActionTypes, UserTypes
 from em2.settings import Settings
 from em2.utils.web import full_url, internal_request_headers
 
+from .core import Em2Comms, HttpError
+
 logger = logging.getLogger('em2.push')
-# could try another subdomain with a random part incase people are using em2-platform
-em2_subdomain = 'em2-platform'
 RETRY = 'RT'
 SMTP = 'SMTP'
-
-
-class HttpError(RuntimeError):
-    pass
-
-
-@dataclass
-class ResponseSummary:
-    status: int
-    headers: Dict[str, str]
-    data: Any
-    model: Optional[BaseModel]
-
-
-class RouteModel(BaseModel):
-    node: UrlStr
 
 
 async def push_actions(ctx, actions_data: str, users: List[Tuple[str, UserTypes]]):
@@ -48,17 +26,15 @@ async def push_actions(ctx, actions_data: str, users: List[Tuple[str, UserTypes]
 
 
 class Pusher:
-    __slots__ = 'settings', 'job_try', 'auth_fernet', 'session', 'pg', 'resolver', 'redis', 'pg', 'local_check_url'
-
     def __init__(self, ctx):
         self.settings: Settings = ctx['settings']
         self.job_try = ctx['job_try']
         self.auth_fernet = Fernet(self.settings.auth_key)
         self.session: ClientSession = ctx['client_session']
         self.pg: Pool = ctx['pg']
-        self.resolver: aiodns.DNSResolver = ctx['resolver']
         self.redis: ArqRedis = ctx['redis']
         self.local_check_url = full_url(self.settings, 'auth', '/check/')
+        self.em2 = Em2Comms(self.settings, self.session, ctx['signing_key'], self.redis, ctx['resolver'])
 
     async def split_destinations(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
         results = await asyncio.gather(*[self.resolve_user(*u) for u in users])
@@ -75,16 +51,17 @@ class Pusher:
             await self.redis.enqueue_job(
                 'push_actions', actions_data, retry_users, _job_try=self.job_try + 1, _defer_by=self.job_try * 10
             )
-        actions = json.loads(actions_data)['actions']
+        data = json.loads(actions_data)
+        conversation, actions = data['conversation'], data['actions']
         if smtp_addresses:
             logger.info('%d smtp emails to send', len(smtp_addresses))
             # "seen" actions don't get sent via SMTP
             # TODO anything else to skip here?
             if not all(a['act'] == ActionTypes.seen for a in actions):
-                await self.redis.enqueue_job('smtp_send', actions)
+                await self.redis.enqueue_job('smtp_send', conversation, actions)
         if em2_nodes:
             logger.info('%d em2 nodes to push action to', len(em2_nodes))
-            raise NotImplementedError('pushing to other em2 platforms not yet supported')
+            await self.em2_send(conversation, actions, em2_nodes)
         return f'retry={len(retry_users)} smtp={len(smtp_addresses)} em2={len(em2_nodes)}'
 
     async def resolve_user(self, email: str, current_user_type: UserTypes):
@@ -102,30 +79,15 @@ class Pusher:
                 await self.pg.execute("update users set user_type='local' where email=$1", email)
                 return
 
-        user_node_key = f'user-node:{email}'
-        if current_user_type != UserTypes.new:
-            # new users can't be cached
-            v = await self.redis.get(user_node_key)
-            if v:
-                # user em2 node is cached, use that
-                return v, email
+        try:
+            em2_node = await self.em2.get_em2_node(email)
+        except HttpError:
+            # domain has an em2 platform, but request failed, try again later
+            return RETRY, email
 
-        domain = email.rsplit('@', 1)[1]
-        sub_domain = f'{em2_subdomain}.{domain}'
-        domain_em2_platform = await self.cname_query(sub_domain)
-
-        if domain_em2_platform:
-            # domain has an em2 platform
+        if em2_node:
+            node = em2_node
             user_type = UserTypes.remote_em2
-            try:
-                r = await self.get(f'https://{domain_em2_platform}/route/', params={'email': email}, model=RouteModel)
-            except HttpError:
-                # domain has an em2 platform, but request failed, try again later
-                node = RETRY
-            else:
-                node = r.model.node
-                # 31_104_000 is one year, got a valid em2 node, assume it'll last for a long time
-                await self.redis.setex(user_node_key, 31_104_000, node)
         else:
             # looks like domain doesn't support em2, smtp
             node = SMTP
@@ -135,87 +97,15 @@ class Pusher:
             await self.pg.execute('update users set user_type=$1, v=null where email=$2', user_type, email)
         return node, email
 
-    async def cname_query(self, domain: str) -> str:
-        domain_key = f'dns-cname:{domain}'
-        ans = await self.redis.get(domain_key)
-        null = '-'
-        if ans:
-            return None if ans == null else ans
+    async def em2_send(self, conversation: str, actions: Dict[str, Any], em2_nodes: Set[str]):
+        data = json.dumps(
+            {'platform': 'em2.' + self.settings.domain, 'actions': actions, 'conversation': conversation}
+        ).encode()
+        await asyncio.gather(*[self.em2_send_node(data, n) for n in em2_nodes])
 
+    async def em2_send_node(self, data: bytes, em2_node: str):
         try:
-            with timeout(5):
-                v = await self.resolver.query(domain, 'CNAME')
-        except (aiodns.error.DNSError, ValueError, asyncio.TimeoutError) as e:
-            logger.debug('cname query error on %s, %s %s', domain, e.__class__.__name__, e)
-            await self.redis.setex(domain_key, 3600, null)
-        else:
-            await self.redis.setex(domain_key, 3600, v.cname)
-            return v.cname
-
-    async def get(
-        self,
-        url,
-        *,
-        params: Dict[str, Any] = None,
-        data: Any = None,
-        headers: Dict[str, str] = None,
-        model: Type[BaseModel] = None,
-        expected_statuses: Sequence[int] = (200,),
-    ):
-        return await self._request('GET', url, params, data, headers, model, expected_statuses)
-
-    async def post(
-        self,
-        url,
-        *,
-        params: Dict[str, Any] = None,
-        data: Any = None,
-        headers: Dict[str, str] = None,
-        model: Type[BaseModel] = None,
-        expected_statuses: Sequence[int] = (200,),
-    ):
-        return await self._request('POST', url, params, data, headers, model, expected_statuses)
-
-    async def _request(self, method, url, params, data, headers, model, expected_statuses) -> ResponseSummary:
-
-        response_headers = response_data = None
-        if data:
-            data_ = json.dumps(data)
-        else:
-            data_ = None
-
-        if params:
-            url = url + '?' + urlencode(params)
-
-        try:
-            async with self.session.request(method, url, data=data_, headers=headers) as r:
-                response_data = await r.text()
-                response_headers = dict(r.headers)
-
-                if r.status in expected_statuses:
-                    d = await r.json()
-                    m = model.parse_obj(d) if model else None
-                    return ResponseSummary(r.status, response_headers, d, m)
-
-        except (ClientError, ClientConnectionError, asyncio.TimeoutError, ValueError) as e:
-            exc = f'{e.__class__.__name__}: {e}'
-        else:
-            exc = f'bad response: {r.status}'
-
-        logger.warning(
-            'error on %s to %s, %s',
-            method,
-            url,
-            exc,
-            extra={
-                'data': {
-                    'method': method,
-                    'url': url,
-                    'request_data': data,
-                    'request_headers': headers,
-                    'response_headers': response_headers,
-                    'response_data': lenient_json(response_data),
-                }
-            },
-        )
-        raise HttpError(f'error on {method} to {url}, {exc}')
+            await self.em2.post(em2_node + '/v1/push/', data=data, params={'domain': self.settings.domain})
+        except HttpError:
+            # TODO retry
+            raise

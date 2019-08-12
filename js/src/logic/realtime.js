@@ -63,7 +63,8 @@ export default class RealTime {
 
     await this._main.session.db.actions.bulkPut(actions)
     const action = actions[actions.length - 1]
-    const conv = await this._main.session.db.conversations.get(action.conv)
+    // TODO is data.conversation right?
+    const conv = await this._main.session.db.conversations.get(data.conversation)
     const publish_action = actions.find(a => a.act === 'conv:publish')
 
     const other_actor = actions.some(a => a.actor !== this._main.session.current.email)

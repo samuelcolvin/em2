@@ -5,11 +5,10 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, unique
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import AbstractSet, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from atoolbox import JsonErrors
 from buildpg import MultipleValues, V, Values
-from pydantic import BaseModel, EmailStr, constr, validator
 
 from .search import search_create_conv, search_update
 from .utils.core import MsgFormat, message_preview
@@ -73,7 +72,7 @@ async def get_create_user(conns: Connections, email: str, user_type: UserTypes =
     return user_id
 
 
-async def get_create_multiple_users(conns: Connections, emails: Set[str]) -> Dict[str, int]:
+async def get_create_multiple_users(conns: Connections, emails: AbstractSet[str]) -> Dict[str, int]:
     """
     like get_create_user but for multiple users.
     """
@@ -139,6 +138,7 @@ async def get_conv_for_user(
             conv_ref + '%',
         )
 
+    # TODO we should use a custom error here, not just 404: Conversation not found
     conv_id, publish_ts, creator, last_action = await or404(query, msg='Conversation not found')
 
     if not publish_ts and user_id != creator:
@@ -164,10 +164,10 @@ async def update_conv_users(conns: Connections, conv_id: int) -> List[int]:
     return [r[0] for r in v]
 
 
-_prt_action_types = {a for a in ActionTypes if a.value.startswith('participant:')}
+participant_action_types = {a for a in ActionTypes if a.value.startswith('participant:')}
 _subject_action_types = {a for a in ActionTypes if a.value.startswith('subject:')}
 _msg_action_types = {a for a in ActionTypes if a.value.startswith('message:')}
-_follow_action_types = (
+follow_action_types = (
     (_msg_action_types - {ActionTypes.msg_add})
     | {ActionTypes.prt_modify, ActionTypes.prt_remove}
     | _subject_action_types
@@ -184,50 +184,6 @@ max_participants = 64
 with_body_actions = {ActionTypes.msg_add, ActionTypes.msg_modify, ActionTypes.subject_modify}
 
 
-class ActionModel(BaseModel):
-    """
-    Representation of an action to perform.
-    """
-
-    act: ActionTypes
-    participant: Optional[EmailStr] = None
-    body: Optional[constr(min_length=1, max_length=10000, strip_whitespace=True)] = None
-    follows: Optional[int] = None
-    parent: Optional[int] = None
-    msg_format: MsgFormat = MsgFormat.markdown
-
-    @validator('act')
-    def check_act(cls, v):
-        if v in {ActionTypes.conv_publish, ActionTypes.conv_create}:
-            raise ValueError('Action not permitted')
-        return v
-
-    @validator('participant', always=True)
-    def check_participant(cls, v, values):
-        act: ActionTypes = values.get('act')
-        if act and not v and act in _prt_action_types:
-            raise ValueError('participant is required for participant actions')
-        if act and v and act not in _prt_action_types:
-            raise ValueError('participant must be omitted except for participant actions')
-        return v
-
-    @validator('body', always=True)
-    def check_body(cls, v, values):
-        act: ActionTypes = values.get('act')
-        if act and v is None and act in with_body_actions:
-            raise ValueError('body is required for message:add, message:modify and subject:modify')
-        if act and v is not None and act not in with_body_actions:
-            raise ValueError('body must be omitted except for message:add, message:modify and subject:modify')
-        return v
-
-    @validator('follows', always=True)
-    def check_follows(cls, v, values):
-        act: ActionTypes = values.get('act')
-        if act and v is None and act in _follow_action_types:
-            raise ValueError('follows is required for this action')
-        return v
-
-
 @dataclass
 class File:
     hash: str
@@ -240,43 +196,63 @@ class File:
     storage: Optional[str] = None
 
 
+@dataclass
+class Action:
+    act: ActionTypes
+    actor_id: int
+    id: Optional[int] = None
+    ts: datetime = None
+    body: str = None
+    extra_body: bool = False
+    participant: Optional[str] = None
+    msg_format: MsgFormat = MsgFormat.markdown
+    follows: Optional[int] = None
+    parent: Optional[int] = None
+    files: List[File] = None
+    # TODO: warnings
+
+
 class _Act:
     """
     See act() below for details.
     """
 
-    __slots__ = 'conns', 'actor_user_id', 'conv_id', 'new_user_ids', 'spam', 'warnings', 'last_action'
+    __slots__ = 'conns', 'conv_id', 'new_user_ids', 'spam', 'warnings'
 
-    def __init__(self, conns: Connections, actor_user_id: int, spam: bool, warnings: Dict[str, str]):
+    def __init__(self, conns: Connections, spam: bool, warnings: Dict[str, str]):
         self.conns = conns
-        self.actor_user_id = actor_user_id
         self.conv_id = None
         # ugly way of doing this, but less ugly than other approaches
         self.new_user_ids: Set[int] = set()
         self.spam = True if spam else None
-        self.warnings = json.dumps(warnings) if warnings else None
-        self.last_action = None
+        self.warnings = json.dumps(warnings) if warnings else None  # FIXME moved to action
 
-    async def prepare(self, conv_ref: StrInt) -> Tuple[int, int]:
-        self.conv_id, self.last_action = await get_conv_for_user(self.conns, self.actor_user_id, conv_ref)
+    async def prepare(self, conv_ref: StrInt, actor_id: int) -> Tuple[int, int, int]:
+        self.conv_id, last_action = await get_conv_for_user(self.conns, actor_id, conv_ref)
 
         # we must be in a transaction
-        # this is a hard check that conversations can only have on act applied at a time
+        # this is a hard check that conversations can only have one act applied at a time
         creator = await self.conns.main.fetchval(
             'select creator from conversations where id=$1 for no key update', self.conv_id
         )
-        return self.conv_id, creator
+        return last_action, self.conv_id, creator
 
-    async def run(self, action: ActionModel, files: Optional[List[File]]) -> Tuple[Optional[int], Optional[int]]:
+    async def new_actor(self, actor_id: int):
+        _, last_action = await get_conv_for_user(self.conns, actor_id, self.conv_id)
+        return last_action
+
+    async def run(
+        self, action: Action, last_action: int, files: Optional[List[File]]
+    ) -> Tuple[Optional[int], Optional[int]]:
         if action.act is ActionTypes.seen:
-            return await self._seen(), None
+            return await self._seen(action), None
 
         # you can mark a conversation as seen when removed, but nothing else
-        if self.last_action:
+        if last_action:
             raise JsonErrors.HTTPBadRequest(message="You can't act on conversations you've been removed from")
 
         changed_user_id = None
-        if action.act in _prt_action_types:
+        if action.act in participant_action_types:
             action_id, changed_user_id = await self._act_on_participant(action)
         elif action.act in _msg_action_types:
             action_id, action_pk = await self._act_on_message(action)
@@ -289,7 +265,7 @@ class _Act:
 
         return action_id, changed_user_id
 
-    async def _seen(self) -> Optional[int]:
+    async def _seen(self, action: Action) -> Optional[int]:
         # could use "parent" to identify what was seen
         last_seen = await self.conns.main.fetchval(
             """
@@ -299,7 +275,7 @@ class _Act:
             limit 1
             """,
             self.conv_id,
-            self.actor_user_id,
+            action.actor_id,
         )
         if last_seen:
             last_real_action = await self.conns.main.fetchval(
@@ -323,10 +299,10 @@ class _Act:
             returning id
             """,
             self.conv_id,
-            self.actor_user_id,
+            action.actor_id,
         )
 
-    async def _act_on_participant(self, action: ActionModel) -> Tuple[int, int]:
+    async def _act_on_participant(self, action: Action) -> Tuple[int, int]:
         follows_pk = None
         if action.act == ActionTypes.prt_add:
             prts_count = await self.conns.main.fetchval('select count(*) from participants where conv=$1', self.conv_id)
@@ -379,18 +355,20 @@ class _Act:
                 raise NotImplementedError('"participant:modify" not yet implemented')
 
         # can't do anything to yourself
-        if prt_user_id == self.actor_user_id:
+        if prt_user_id == action.actor_id:
             raise JsonErrors.HTTPForbidden('You cannot modify your own participant')
 
         action_id = await self.conns.main.fetchval(
             """
-            insert into actions (conv, act, actor, follows, participant_user)
-            values              ($1  , $2 , $3   , $4     , $5)
+            insert into actions (id, ts        , conv, act, actor, follows, participant_user)
+            values              ($1, or_now($2), $3  , $4 , $5   , $6     , $7)
             returning id
             """,
+            action.id,
+            action.ts,
             self.conv_id,
             action.act,
-            self.actor_user_id,
+            action.actor_id,
             follows_pk,
             prt_user_id,
         )
@@ -407,7 +385,7 @@ class _Act:
             )
         return action_id, prt_user_id
 
-    async def _act_on_message(self, action: ActionModel) -> Tuple[int, int]:
+    async def _act_on_message(self, action: Action) -> Tuple[int, int]:
         if action.act == ActionTypes.msg_add:
             parent_pk = None
             if action.parent:
@@ -424,12 +402,15 @@ class _Act:
             # checks that no message in the hierarchy has been deleted
             return await self.conns.main.fetchrow(
                 """
-                insert into actions (conv, act          , actor, body, preview, parent, msg_format, warnings)
-                values              ($1  , 'message:add', $2   , $3  , $4     , $5    , $6        , $7)
+                insert into actions
+                        (id, ts       , conv, act          , actor, body, preview, parent, msg_format, warnings)
+                values ($1, or_now($2), $3  , 'message:add', $4   , $5  , $6     , $7    , $8        , $9)
                 returning id, pk
                 """,
+                action.id,
+                action.ts,
                 self.conv_id,
-                self.actor_user_id,
+                action.actor_id,
                 action.body,
                 message_preview(action.body, action.msg_format),
                 parent_pk,
@@ -443,7 +424,7 @@ class _Act:
             if follows_act != ActionTypes.msg_delete:
                 raise JsonErrors.HTTPBadRequest('message:recover can only occur on a deleted message')
         elif action.act in {ActionTypes.msg_modify, ActionTypes.msg_release}:
-            if follows_act != ActionTypes.msg_lock or follows_actor != self.actor_user_id:
+            if follows_act != ActionTypes.msg_lock or follows_actor != action.actor_id:
                 # TODO lock maybe shouldn't be required when conversation is draft
                 raise JsonErrors.HTTPBadRequest(f'{action.act} must follow message:lock by the same user')
         else:
@@ -452,7 +433,7 @@ class _Act:
                 raise JsonErrors.HTTPBadRequest('only message:recover can occur on a deleted message')
             elif (
                 follows_act == ActionTypes.msg_lock
-                and follows_actor != self.actor_user_id
+                and follows_actor != action.actor_id
                 and follows_age <= self.conns.settings.message_lock_duration
             ):
                 details = {'loc_duration': self.conns.settings.message_lock_duration}
@@ -460,49 +441,53 @@ class _Act:
 
         return await self.conns.main.fetchrow(
             """
-            insert into actions (conv, actor, act, body, preview, follows)
-            values              ($1  , $2   , $3 , $4  , $5     , $6)
+            insert into actions (id, ts        , conv, actor, act, body, preview, follows)
+            values              ($1, or_now($2), $3  , $4   , $5 , $6  , $7     , $8)
             returning id, pk
             """,
+            action.id,
+            action.ts,
             self.conv_id,
-            self.actor_user_id,
+            action.actor_id,
             action.act,
             action.body,
             message_preview(action.body, action.msg_format) if action.act == ActionTypes.msg_modify else None,
             follows_pk,
         )
 
-    async def _act_on_subject(self, action: ActionModel) -> int:
+    async def _act_on_subject(self, action: Action) -> int:
         follow_types = _subject_action_types | {ActionTypes.conv_create, ActionTypes.conv_publish}
         follows_pk, follows_act, follows_actor, follows_age = await self._get_follows(action, follow_types)
 
         if action.act == ActionTypes.subject_lock:
             if (
                 follows_act == ActionTypes.subject_lock
-                and follows_actor != self.actor_user_id
+                and follows_actor != action.actor_id
                 and follows_age <= self.conns.settings.message_lock_duration
             ):
                 details = {'loc_duration': self.conns.settings.message_lock_duration}
                 raise JsonErrors.HTTPConflict('subject not locked by you, action not possible', details=details)
         else:
             # modify and release
-            if follows_act != ActionTypes.subject_lock or follows_actor != self.actor_user_id:
+            if follows_act != ActionTypes.subject_lock or follows_actor != action.actor_id:
                 raise JsonErrors.HTTPBadRequest(f'{action.act} must follow subject:lock by the same user')
 
         return await self.conns.main.fetchval(
             """
-            insert into actions (conv, actor, act, body, follows)
-            values              ($1  , $2   , $3 , $4  , $5)
+            insert into actions (id, ts        , conv, actor, act, body, follows)
+            values              ($1, or_now($2), $3  , $4   , $5 , $6  , $7)
             returning id
             """,
+            action.id,
+            action.ts,
             self.conv_id,
-            self.actor_user_id,
+            action.actor_id,
             action.act,
             action.body,
             follows_pk,
         )
 
-    async def _get_follows(self, action: ActionModel, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
+    async def _get_follows(self, action: Action, permitted_acts: Set[ActionTypes]) -> Tuple[int, str, int, int]:
         follows_pk, follows_act, follows_actor, follows_age = await or404(
             self.conns.main.fetchrow(
                 """
@@ -541,9 +526,8 @@ class ConvFlags(str, Enum):
 
 async def apply_actions(
     conns: Connections,
-    actor_user_id: int,
     conv_ref: StrInt,
-    actions: List[ActionModel],
+    actions: List[Action],
     spam: bool = False,
     warnings: Dict[str, str] = None,
     files: Optional[List[File]] = None,
@@ -553,17 +537,21 @@ async def apply_actions(
 
     Should be used for both remote platforms adding events and local users adding actions.
     """
-    actions_with_ids: List[Tuple[int, Optional[int], ActionModel]] = []
-    act_cls = _Act(conns, actor_user_id, spam, warnings)
+    actions_with_ids: List[Tuple[int, Optional[int], Action]] = []
+    act_cls = _Act(conns, spam, warnings)
     decrement_seen_id = None
     from_deleted, from_archive, already_inbox = [], [], []
     async with conns.main.transaction():
         # IMPORTANT must not do anything that could be slow (eg. networking) inside this transaction,
         # as the conv is locked for update from prepare onwards
-        conv_id, creator_id = await act_cls.prepare(conv_ref)
+        actor_user_id = actions[0].actor_id
+        last_action, conv_id, creator_id = await act_cls.prepare(conv_ref, actor_user_id)
 
         for action in actions:
-            action_id, changed_user_id = await act_cls.run(action, files)
+            if action.actor_id != actor_user_id:
+                actor_user_id = action.actor_id
+                last_action = await act_cls.new_actor(action.actor_id)
+            action_id, changed_user_id = await act_cls.run(action, last_action, files)
             if action_id:
                 actions_with_ids.append((action_id, changed_user_id, action))
 
@@ -698,7 +686,7 @@ async def conv_actions_json(
             """
             select array_to_json(array_agg(json_strip_nulls(row_to_json(t))), true)
             from (
-              select a.id, c.key conv, a.act, a.ts, actor_user.email actor,
+              select a.id, a.act, a.ts, actor_user.email actor,
               a.body, a.msg_format, a.warnings,
               prt_user.email participant, follows_action.id follows, parent_action.id parent,
               (select array_agg(row_to_json(f))
@@ -789,23 +777,13 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
     return {'subject': subject, 'created': created, 'messages': msg_list, 'participants': participants}
 
 
-class CreateConvModel(BaseModel):
-    subject: constr(max_length=255, strip_whitespace=True)
-    message: constr(max_length=10000, strip_whitespace=True)
-    msg_format: MsgFormat = MsgFormat.markdown
-    publish = False
-
-    class Participants(BaseModel):
-        email: EmailStr
-        name: str = None
-
-    participants: List[Participants] = []
-
-    @validator('participants', whole=True)
-    def check_participants_count(cls, v):
-        if len(v) > max_participants:
-            raise ValueError(f'no more than {max_participants} participants permitted')
-        return v
+@dataclass
+class ConvCreateMessage:
+    body: str
+    msg_format: MsgFormat
+    action_id: Optional[int] = None
+    parent: Optional[int] = None
+    files: Optional[List[File]] = None
 
 
 async def create_conv(
@@ -813,86 +791,139 @@ async def create_conv(
     conns: Connections,
     creator_email: str,
     creator_id: int,
-    conv: CreateConvModel,
+    subject: str,
+    publish: bool,
+    messages: List[ConvCreateMessage],
+    participants: Dict[str, Optional[int]],
+    publish_action_id: Optional[int] = None,
     ts: Optional[datetime] = None,
+    given_conv_key: Optional[str] = None,
+    leader_node: str = None,
     spam: bool = False,
     warnings: Dict[str, str] = None,
-    files: Optional[List[File]] = None,
 ) -> Tuple[int, str]:
+    """
+    Create a new conversation, this is used:
+    * locally when someone creates a conversation
+    * upon receiving an SMTP message not associate with an existing conversation
+    * upon receiving a new conversation view em2-push
+
+    :param conns: connections to use when creating conversation
+    :param creator_email: email address of user creating conversation
+    :param creator_id: id of that user
+    :param subject: subject of the new conversation
+    :param publish: whether the conversation should be (or has been) published
+    :param messages: list of messages for the conversation
+    :param participants: lookup from email address of participants to IDs of the actions used when adding that prt
+    :param publish_action_id: optional id of the action ID
+    :param ts: optional timestamp
+    :param given_conv_key: given conversation key, checked to confirm it matches generated conv key if given
+    :param leader_node: node of the leader of this conversation, black if this node
+    :param spam: whether conversation is spam
+    :param warnings: warnings about the conversation
+    :return: tuple conversation id and key
+    """
     ts = ts or utcnow()
-    conv_key = generate_conv_key(creator_email, ts, conv.subject) if conv.publish else draft_conv_key()
+    conv_key = generate_conv_key(creator_email, ts, subject) if publish else draft_conv_key()
+    if given_conv_key is not None and given_conv_key != conv_key:
+        raise JsonErrors.HTTPBadRequest('invalid conversation key', details={'expected': conv_key})
     async with conns.main.transaction():
         conv_id = await conns.main.fetchval(
             """
-            insert into conversations (key, creator, publish_ts, created_ts, updated_ts)
-            values                    ($1,  $2     , $3        , $4        , $4        )
+            insert into conversations (key, creator, publish_ts, created_ts, updated_ts, leader_node)
+            values                    ($1,  $2     , $3        , $4        , $4        , $5         )
             on conflict (key) do nothing
             returning id
             """,
             conv_key,
             creator_id,
-            ts if conv.publish else None,
+            ts if publish else None,
             ts,
+            leader_node,
         )
         if conv_id is None:
             raise JsonErrors.HTTPConflict(message='key conflicts with existing conversation')
 
-        # TODO currently only email is used
-        participants = set(p.email for p in conv.participants)
-        part_users = await get_create_multiple_users(conns, participants)
-
         await conns.main.execute(
             'insert into participants (conv, user_id, seen, inbox) (select $1, $2, true, null)', conv_id, creator_id
         )
-        other_user_ids = list(part_users.values())
-        await conns.main.execute(
-            'insert into participants (conv, user_id, spam) (select $1, unnest($2::int[]), $3)',
-            conv_id,
-            other_user_ids,
-            True if spam else None,
-        )
-        user_ids = [creator_id] + other_user_ids
+        if participants:
+            part_users = await get_create_multiple_users(conns, participants.keys())
+            other_user_emails, other_user_ids = zip(*part_users.items())
+            await conns.main.execute(
+                'insert into participants (conv, user_id, spam) (select $1, unnest($2::int[]), $3)',
+                conv_id,
+                other_user_ids,
+                True if spam else None,
+            )
+            user_ids = [creator_id] + list(other_user_ids)
+            action_ids = [1] + [participants[u_email] for u_email in other_user_emails]
+        else:
+            part_users = {}
+            other_user_ids = []
+            user_ids = [creator_id]
+            action_ids = []
         await conns.main.execute(
             """
-            insert into actions (conv, act              , actor, ts, participant_user) (
-            select               $1  , 'participant:add', $2   , $3, unnest($4::int[])
+            insert into actions (conv, act              , actor, ts, participant_user , id) (
+            select               $1  , 'participant:add', $2   , $3, unnest($4::int[]), unnest($5::int[])
             )
             """,
             conv_id,
             creator_id,
             ts,
             user_ids,
+            action_ids,
         )
-        add_action_pk = await conns.main.fetchval(
-            """
-            insert into actions (conv, act          , actor, ts, body, preview, msg_format, warnings)
-            values              ($1  , 'message:add', $2   , $3, $4  , $5     , $6        , $7)
-            returning pk
-            """,
-            conv_id,
-            creator_id,
-            ts,
-            conv.message,
-            message_preview(conv.message, conv.msg_format),
-            conv.msg_format,
-            json.dumps(warnings) if warnings else None,
+        warnings_ = json.dumps(warnings) if warnings else None
+        values = [
+            Values(
+                conv=conv_id,
+                id=m.action_id,
+                act=ActionTypes.msg_add,
+                actor=creator_id,
+                ts=ts,
+                body=m.body,
+                preview=message_preview(m.body, m.msg_format),
+                msg_format=m.msg_format,
+                warnings=warnings_,
+            )
+            for m in messages
+        ]
+        msg_action_pks = await conns.main.fetch_b(
+            'insert into actions (:values__names) values :values returning pk', values=MultipleValues(*values)
         )
+
         await conns.main.execute(
             """
-            insert into actions (conv, act, actor, ts, body)
-            values              ($1  , $2 , $3   , $4, $5)
+            insert into actions (conv, act, actor, ts, body, id)
+            values              ($1  , $2 , $3   , $4, $5  , $6)
             """,
             conv_id,
-            ActionTypes.conv_publish if conv.publish else ActionTypes.conv_create,
+            ActionTypes.conv_publish if publish else ActionTypes.conv_create,
             creator_id,
             ts,
-            conv.subject,
+            subject,
+            publish_action_id,
         )
         await update_conv_users(conns, conv_id)
-        if files:
-            await create_files(conns, files, conv_id, add_action_pk)
+        for r, m in zip(msg_action_pks, messages):
+            action_pk = r[0]
+            if m.files:
+                await create_files(conns, m.files, conv_id, action_pk)
+            if m.parent:
+                await conns.main.execute(
+                    """
+                    update actions set parent=pk from
+                      (select pk from actions where conv=$1 and id=$2) t
+                    where conv=$1 and pk=$3
+                    """,
+                    conv_id,
+                    m.parent,
+                    action_pk,
+                )
 
-    if not conv.publish:
+    if not publish:
         updates = (UpdateFlag(creator_id, [(ConvFlags.draft, 1), (ConvFlags.all, 1)]),)
     elif spam:
         updates = (
@@ -915,8 +946,9 @@ async def create_conv(
         creator_email=creator_email,
         creator_id=creator_id,
         users=part_users,
-        conv=conv,
-        files=files,
+        subject=subject,
+        publish=publish,
+        messages=messages,
     )
     return conv_id, conv_key
 

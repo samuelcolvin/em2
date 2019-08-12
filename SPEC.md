@@ -363,6 +363,8 @@ on that component
 
 Other actions shouldn't care at all what order they happen in
 
+When SMTP sends a conversation to two or more em2 nodes, the em2 node of the first recipient is the "leader".
+
 # Conversation Flags
 
 Flags are system labels

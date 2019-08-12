@@ -16,6 +16,6 @@ class LogSmtpHandler(BaseSmtpHandler):
         return 'log-smtp-' + secrets.token_hex(20)
 
 
-async def smtp_send(ctx, actions: List[Dict[str, Any]]):
+async def smtp_send(ctx, conversation: str, actions: List[Dict[str, Any]]):
     smtp_handler: BaseSmtpHandler = ctx['smtp_handler']
-    return await smtp_handler.send(actions)
+    return await smtp_handler.send(conversation, actions)

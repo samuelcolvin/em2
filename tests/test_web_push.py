@@ -108,6 +108,7 @@ async def test_push_action(cli, factory: Factory, redis, worker, dummy_server, w
     assert len(dummy_server.app['webpush']) == 2
     assert dummy_server.app['webpush'][0] == {'user_id': user.id, 'user_v': 2}
     assert dummy_server.app['webpush'][1] == {
+        'conversation': conv.key,
         'actions': [
             {
                 'id': AnyInt(),
@@ -117,7 +118,6 @@ async def test_push_action(cli, factory: Factory, redis, worker, dummy_server, w
                 'body': 'this is another message',
                 'extra_body': False,
                 'msg_format': 'markdown',
-                'conv': conv.key,
             }
         ],
         'conv_details': {

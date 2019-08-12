@@ -3,11 +3,37 @@ import json
 from email import message_from_bytes
 
 import http_ece
+import nacl.encoding
+import nacl.signing
 from aiohttp import web
 from aiohttp.hdrs import METH_GET, METH_HEAD
 from aiohttp.web_response import Response
+from atoolbox import json_response
 from cryptography.hazmat.backends import default_backend as cryptography_default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
+
+
+async def em2_routing(request):
+    email = request.query.get('email')
+    if email == 'diff@example.org':
+        return json_response(node=f'http://{request.headers["host"]}/different')
+    else:
+        return json_response(node=f'http://{request.headers["host"]}/em2')
+
+
+# b'4' * 64 from conftest settings
+signing_key = nacl.signing.SigningKey(seed=b'4' * 64, encoder=nacl.encoding.HexEncoder)
+
+
+async def signing_verification(request):
+    return json_response(
+        keys=[{'key': signing_key.verify_key.encode(encoder=nacl.encoding.HexEncoder).decode(), 'ttl': 30}]
+    )
+
+
+async def em2_push(request):
+    request.app['log'].append({'body': await request.text(), 'signature': request.headers['signature']})
+    return Response(status=200)
 
 
 async def ses_endpoint_url(request):
@@ -107,6 +133,9 @@ async def get_image(request):
 
 
 routes = [
+    web.get('/v1/route/', em2_routing),
+    web.get('/em2/v1/signing/verification/', signing_verification),
+    web.post('/em2/v1/push/', em2_push),
     web.post('/ses_endpoint_url/', ses_endpoint_url),
     web.get('/sns_signing_url.pem', sns_signing_endpoint),
     web.route('*', '/s3_endpoint_url/{bucket}/{key:.*}', s3_endpoint),

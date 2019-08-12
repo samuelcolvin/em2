@@ -1,4 +1,5 @@
 import re
+from itertools import chain
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from buildpg import Empty, Func, V, funcs
@@ -7,7 +8,7 @@ from em2.utils.core import message_simplify
 from em2.utils.db import Connections
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .core import ActionModel, File, CreateConvModel  # noqa: F401
+    from .core import Action, File, ConvCreateMessage  # noqa: F401
 
 __all__ = ['search_create_conv', 'search_publish_conv', 'search_update', 'search']
 
@@ -23,14 +24,15 @@ async def search_create_conv(
     creator_id: int,
     creator_email: str,
     users: Dict[str, int],
-    conv: 'CreateConvModel',
-    files: Optional[List['File']],
+    subject: str,
+    publish: bool,
+    messages: List['ConvCreateMessage'],
 ):
     addresses = _prepare_address(creator_email, *users.keys())
-    files = _prepare_files(files)
-    body = message_simplify(conv.message, conv.msg_format)
+    files = _prepare_files(list(chain(*(m.files for m in messages if m.files))))
+    body = message_simplify(' '.join(m.body for m in messages), messages[0].msg_format)
     user_ids = [creator_id]
-    if conv.publish:
+    if publish:
         user_ids += list(users.values())
 
     await conns.main.execute(
@@ -50,7 +52,7 @@ async def search_create_conv(
         conv_id,
         user_ids,
         creator_email,
-        conv.subject,
+        subject,
         addresses,
         files,
         body,
@@ -72,10 +74,7 @@ async def search_publish_conv(conns: Connections, conv_id: int, old_key: str, ne
 
 
 async def search_update(
-    conns: Connections,
-    conv_id: int,
-    actions: List[Tuple[int, Optional[int], 'ActionModel']],
-    files: Optional[List['File']],
+    conns: Connections, conv_id: int, actions: List[Tuple[int, Optional[int], 'Action']], files: Optional[List['File']]
 ):
     """
     If this gets slow it could be done on the worker.
@@ -102,7 +101,7 @@ class SearchUpdate:
         self.conns = conns
         self.conv_id: int = conv_id
 
-    async def modify_subject(self, action: 'ActionModel', action_id: int):
+    async def modify_subject(self, action: 'Action', action_id: int):
         await self.conns.main.execute(
             """
             update search set vector=vector || setweight(to_tsvector($1), 'A'), action=$2, ts=current_timestamp
@@ -113,7 +112,7 @@ class SearchUpdate:
             self.conv_id,
         )
 
-    async def msg_change(self, action: 'ActionModel', action_id: int, files: Optional[List['File']]):
+    async def msg_change(self, action: 'Action', action_id: int, files: Optional[List['File']]):
         await self.conns.main.execute(
             """
             update search set
@@ -126,7 +125,7 @@ class SearchUpdate:
             self.conv_id,
         )
 
-    async def prt_add(self, action: 'ActionModel', action_id: int, user_id: int):
+    async def prt_add(self, action: 'Action', action_id: int, user_id: int):
         email = action.participant
         async with self.conns.main.transaction():
             v = await self.conns.main.execute(
