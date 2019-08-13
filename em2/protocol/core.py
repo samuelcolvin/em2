@@ -11,6 +11,7 @@ import nacl.encoding
 from aiohttp import ClientError, ClientSession
 from arq import ArqRedis
 from async_timeout import timeout
+from atoolbox import RequestError
 from atoolbox.json_tools import lenient_json
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey
@@ -18,6 +19,7 @@ from pydantic import BaseModel, PositiveInt, UrlStr, ValidationError, constr
 from yarl import URL
 
 from em2.settings import Settings
+from em2.utils.web import full_url, internal_request_headers
 
 logger = logging.getLogger('em2.core')
 # could try another subdomain with a random part incase people are using em2-platform
@@ -71,6 +73,10 @@ class Em2Comms:
         self.signing_key = signing_key
         self.redis = redis
         self.resolver = resolver
+
+    def this_em2_node(self):
+        # TODO different for test? include proto?
+        return f'em2.{self.settings.domain}'
 
     async def check_signature(self, platform, request) -> None:  # noqa: C901 (ignore complexity)
         try:
@@ -154,6 +160,17 @@ class Em2Comms:
         else:
             await self.redis.setex(domain_key, 3600, v.cname)
             return v.cname
+
+    async def check_local(self, email):
+        h = internal_request_headers(self.settings)
+        url = full_url(self.settings, 'auth', '/check/')
+        async with self.session.get(url, data=email, headers=h) as r:
+            content = await r.read()
+
+        if r.status != 200:
+            raise RequestError(r.status, url, text=content.decode())
+
+        return content == b'1'
 
     async def get(
         self,

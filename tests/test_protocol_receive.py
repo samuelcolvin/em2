@@ -17,7 +17,8 @@ async def test_signing_verification(cli, url):
     assert obj == {'keys': [{'key': 'd759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48', 'ttl': 86400}]}
 
 
-async def test_push(em2_cli, settings, dummy_server: DummyServer, db_conn, redis):
+async def test_push(em2_cli, settings, dummy_server: DummyServer, db_conn, redis, factory: Factory):
+    user = await factory.create_user(email='recipient@example.com')
     ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
     # key = generate_conv_key('actor@example.org', ts, 'Test Subject')
     conv_key = '5771d1016ac9515319a15f9ea4621b411a2eab8b781e88db9885a806ee12144c'
@@ -90,10 +91,9 @@ async def test_push(em2_cli, settings, dummy_server: DummyServer, db_conn, redis
     assert jobs[0].function == 'web_push'
     args = json.loads(jobs[0].args[0])
     assert len(args.pop('actions')) == 4
-    u_id = await db_conn.fetchval('select id from users where email=$1', 'recipient@example.com')
     assert args == {
         'conversation': conv_key,
-        'participants': [{'user_id': u_id, 'user_v': 1, 'user_email': 'recipient@example.com'}],
+        'participants': [{'user_id': user.id, 'user_v': 2, 'user_email': 'recipient@example.com'}],
         'conv_details': {
             'act': 'conv:publish',
             'sub': 'Test Subject',
@@ -159,7 +159,8 @@ async def test_append_to_conv(em2_cli: Em2TestClient, conns):
     }
 
 
-async def test_create_append(em2_cli, conns):
+async def test_create_append(em2_cli, conns, factory: Factory):
+    await factory.create_user(email='p1@example.com')
     ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
     # key = generate_conv_key('actor@example.org', ts, 'Test Subject')
     conv_key = '5771d1016ac9515319a15f9ea4621b411a2eab8b781e88db9885a806ee12144c'

@@ -6,12 +6,10 @@ from typing import Any, Dict, List, Set, Tuple
 from aiohttp import ClientSession
 from arq import ArqRedis
 from asyncpg.pool import Pool
-from atoolbox import RequestError
 from cryptography.fernet import Fernet
 
 from em2.core import ActionTypes, UserTypes
 from em2.settings import Settings
-from em2.utils.web import full_url, internal_request_headers
 
 from .core import Em2Comms, HttpError
 
@@ -33,7 +31,6 @@ class Pusher:
         self.session: ClientSession = ctx['client_session']
         self.pg: Pool = ctx['pg']
         self.redis: ArqRedis = ctx['redis']
-        self.local_check_url = full_url(self.settings, 'auth', '/check/')
         self.em2 = Em2Comms(self.settings, self.session, ctx['signing_key'], self.redis, ctx['resolver'])
 
     async def split_destinations(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
@@ -67,14 +64,7 @@ class Pusher:
     async def resolve_user(self, email: str, current_user_type: UserTypes):
         if current_user_type == UserTypes.new:
             # only new users are checked to see if they're local
-            h = internal_request_headers(self.settings)
-            async with self.session.get(self.local_check_url, data=email, headers=h) as r:
-                content = await r.read()
-
-            if r.status != 200:
-                raise RequestError(r.status, self.local_check_url, text=content.decode())
-
-            if content == b'1':
+            if await self.em2.check_local(email):
                 # local user
                 await self.pg.execute("update users set user_type='local' where email=$1", email)
                 return
@@ -99,7 +89,7 @@ class Pusher:
 
     async def em2_send(self, conversation: str, actions: Dict[str, Any], em2_nodes: Set[str]):
         data = json.dumps(
-            {'platform': 'em2.' + self.settings.domain, 'actions': actions, 'conversation': conversation}
+            {'platform': self.em2.this_em2_node(), 'actions': actions, 'conversation': conversation}
         ).encode()
         await asyncio.gather(*[self.em2_send_node(data, n) for n in em2_nodes])
 

@@ -180,10 +180,11 @@ def em2_json_default(v):
 
 
 class Em2TestClient(TestClient):
-    def __init__(self, *args, settings, dummy_server, **kwargs):
+    def __init__(self, *args, settings, dummy_server, factory, **kwargs):
         super().__init__(*args, **kwargs)
         self._settings: Settings = settings
         self._dummy_server: DummyServer = dummy_server
+        self._factory: Factory = factory
         self._url_func = MakeUrl(self.app).get_path
 
     async def post_json(self, path, data, *, expected_status=200):
@@ -220,6 +221,8 @@ class Em2TestClient(TestClient):
         msg='test message',
         expected_status=200,
     ):
+        if not await self._factory.conn.fetchval('select 1 from users where email=$1', recipient):
+            await self._factory.create_user(email=recipient)
         ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
         conv_key = generate_conv_key(actor, ts, subject)
         ts_str = ts.isoformat()
@@ -236,8 +239,8 @@ class Em2TestClient(TestClient):
 
 
 @pytest.fixture(name='em2_cli')
-async def _fix_em2_cli(settings, aiohttp_client, cli: UserTestClient, dummy_server):
-    cli = Em2TestClient(cli.server, settings=settings, dummy_server=dummy_server)
+async def _fix_em2_cli(settings, aiohttp_client, cli: UserTestClient, dummy_server, factory):
+    cli = Em2TestClient(cli.server, settings=settings, dummy_server=dummy_server, factory=factory)
 
     yield cli
 

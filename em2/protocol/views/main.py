@@ -221,6 +221,12 @@ class Em2Push(ExecView):
         publish_action = next((a for a in m.actions if a.act == ActionTypes.conv_publish), None)
         push_all_actions = False
         if publish_action:
+            # is this really the best check, should we just check one of the domains matches?
+            are_local = await asyncio.gather(
+                *[self.em2.check_local(a.participant) for a in m.actions if a.act == ActionTypes.prt_add]
+            )
+            if not any(are_local):
+                raise JsonErrors.HTTPBadRequest('no participants on this em2 node')
             try:
                 await self.published_conv(publish_action, m)
                 push_all_actions = True
