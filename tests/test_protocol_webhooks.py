@@ -272,4 +272,4 @@ async def test_sns_subscribe(cli, url, dummy_server, mocker):
     }
     r = await cli.post(url('protocol:webhook-ses', token='testing'), json=data)
     assert r.status == 204, await r.text()
-    assert dummy_server.log == ['GET sns_signing_url.pem', 'HEAD status/200']
+    assert dummy_server.log == ['GET /sns_signing_url.pem > 200', 'HEAD /status/200/ > 200']

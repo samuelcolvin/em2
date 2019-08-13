@@ -268,7 +268,10 @@ async def test_valid_signature_repeat(em2_cli, dummy_server: DummyServer):
         assert await r.json() == {'message': 'full conversation required'}
 
     # both verification and routing requests should have been cached
-    assert dummy_server.log == ['GET em2/v1/signing/verification', 'GET v1/route']
+    assert dummy_server.log == [
+        'GET /em2/v1/signing/verification/ > 200',
+        'GET /v1/route/?email=actor@example.org > 200',
+    ]
 
 
 async def test_failed_verification_request(em2_cli, dummy_server: DummyServer, settings):
@@ -290,7 +293,7 @@ async def test_failed_verification_request(em2_cli, dummy_server: DummyServer, s
         'message': f"error getting signature from '{dummy_server.server_name}/does-not-exist/v1/signing/verification/'"
     }
 
-    assert dummy_server.log == ['GET does-not-exist/v1/signing/verification']
+    assert dummy_server.log == ['GET /does-not-exist/v1/signing/verification/ > 404']
 
 
 async def test_failed_get_em2_node(em2_cli, dummy_server: DummyServer):
@@ -299,7 +302,7 @@ async def test_failed_get_em2_node(em2_cli, dummy_server: DummyServer):
     r = await em2_cli.push_actions('1' * 20, actions, expected_status=401)
 
     assert await r.json() == {'message': 'not all actors have an em2 nodes'}
-    assert dummy_server.log == ['GET em2/v1/signing/verification']
+    assert dummy_server.log == ['GET /em2/v1/signing/verification/ > 200']
 
 
 async def test_participant_missing(em2_cli, dummy_server: DummyServer):

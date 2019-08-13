@@ -87,7 +87,7 @@ def _fix_clean_db(settings_session):
 
 @pytest.fixture(name='dummy_server')
 async def _fix_dummy_server(loop, aiohttp_server):
-    ctx = {'smtp': [], 's3_files': {}, 'webpush': []}
+    ctx = {'smtp': [], 's3_files': {}, 'webpush': [], 'em2push': []}
     return await create_dummy_server(aiohttp_server, extra_routes=dummy_server.routes, extra_context=ctx)
 
 

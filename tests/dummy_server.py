@@ -32,7 +32,7 @@ async def signing_verification(request):
 
 
 async def em2_push(request):
-    request.app['log'].append({'body': await request.text(), 'signature': request.headers['signature']})
+    request.app['em2push'].append({'body': await request.text(), 'signature': request.headers['signature']})
     return Response(status=200)
 
 
@@ -47,7 +47,7 @@ async def ses_endpoint_url(request):
             d[f'part:{part.get_content_type()}'] = payload.decode().replace('\r\n', '\n')
 
     to_sorted = ','.join(sorted(email['To'].split(',')))
-    request.app['log'][-1] += ' subject="{Subject}" to="{to_sorted}"'.format(to_sorted=to_sorted, **email)
+    request['log_msg'] = 'subject="{Subject}" to="{to_sorted}"'.format(to_sorted=to_sorted, **email)
     request.app['smtp'].append(d)
     return Response(text='<MessageId>testing-msg-key</MessageId>')
 

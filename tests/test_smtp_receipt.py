@@ -219,8 +219,8 @@ async def test_get_file(conns, factory: Factory, db_conn, create_email, attachme
     assert r2.headers['Location'] == r1.headers['Location']
 
     assert dummy_server.log == [
-        'GET s3_endpoint_url/foobar/s3-test-path',
-        f'PUT s3_endpoint_url/s3_temp_bucket.example.com/{conv_key}/s3-test-path/testing-hello2/testing.txt',
+        'GET /s3_endpoint_url/foobar/s3-test-path > 200',
+        f'PUT /s3_endpoint_url/s3_temp_bucket.example.com/{conv_key}/s3-test-path/testing-hello2/testing.txt > 200',
     ]
 
 
@@ -434,10 +434,9 @@ async def test_image_extraction(conns, db_conn, create_email, send_to_remote, wo
 
     assert await worker.run_check() == 5
     assert len(dummy_server.log) == 4
-    assert dummy_server.log[0] == 'GET image'
-    assert dummy_server.log[1] == 'GET image'
-    assert dummy_server.log[2].startswith('PUT s3_endpoint_url/s3_cache_bucket.example.com/')
-    assert dummy_server.log[3].startswith('PUT s3_endpoint_url/s3_cache_bucket.example.com/')
+    assert {dummy_server.log[0], dummy_server.log[1]} == {'GET /image/?size=456 > 200', 'GET /image/?size=123 > 200'}
+    assert dummy_server.log[2].startswith('PUT /s3_endpoint_url/s3_cache_bucket.example.com/')
+    assert dummy_server.log[3].startswith('PUT /s3_endpoint_url/s3_cache_bucket.example.com/')
 
     cache_files = await db_conn.fetch('select url, error, size, hash, content_type from image_cache order by size')
     assert [dict(r) for r in cache_files] == [

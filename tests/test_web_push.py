@@ -37,7 +37,7 @@ async def test_web_push(cli, factory: Factory, redis, worker_ctx, dummy_server, 
     data = {'participants': [{'user_id': factory.user.id, 'foo': 'bar'}], 'other': 42}
     assert 1 == await web_push(worker_ctx, json.dumps(data))
 
-    assert dummy_server.log == ['POST vapid', 'POST vapid']
+    assert dummy_server.log == ['POST /vapid/ > 201', 'POST /vapid/ > 201']
     assert len(await redis.keys('web-push-subs:*')) == 1
 
 
@@ -53,7 +53,12 @@ async def test_web_push_multiple(cli, factory: Factory, redis, worker_ctx, dummy
     data = {'participants': [{'user_id': factory.user.id, 'foo': 'bar'}], 'other': 42}
     assert 2 == await web_push(worker_ctx, json.dumps(data))
 
-    assert dummy_server.log == ['POST vapid', 'POST vapid', 'POST vapid', 'POST vapid']
+    assert sorted(dummy_server.log) == [
+        'POST /vapid/ > 201',
+        'POST /vapid/ > 201',
+        'POST /vapid/?v=1 > 201',
+        'POST /vapid/?v=1 > 201',
+    ]
     assert len(await redis.keys('web-push-subs:*')) == 2
 
 
@@ -64,7 +69,7 @@ async def test_web_push_unsubscribe(cli, factory: Factory, redis, dummy_server, 
     await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub)
     assert len(await redis.keys('web-push-subs:*')) == 0
 
-    assert dummy_server.log == ['POST status/410']
+    assert dummy_server.log == ['POST /status/410/ > 410']
 
 
 async def test_web_push_bad(cli, factory: Factory, redis, worker_ctx, dummy_server, web_push_sub):
@@ -73,7 +78,7 @@ async def test_web_push_bad(cli, factory: Factory, redis, worker_ctx, dummy_serv
 
     await cli.post_json(factory.url('ui:webpush-subscribe'), web_push_sub, status=500)
 
-    assert dummy_server.log == ['POST status/500']
+    assert dummy_server.log == ['POST /status/500/ > 500']
     assert len(await redis.keys('web-push-subs:*')) == 1
 
 
@@ -86,7 +91,7 @@ async def test_web_push_not_configured(cli, factory: Factory, redis, worker_ctx,
     worker_ctx['conns'].settings.vapid_sub_email = None
     assert 'web push not configured' == await web_push(worker_ctx, json.dumps(data))
 
-    assert dummy_server.log == ['POST vapid']
+    assert dummy_server.log == ['POST /vapid/ > 201']
     assert len(await redis.keys('web-push-subs:*')) == 1
 
 
@@ -104,7 +109,7 @@ async def test_push_action(cli, factory: Factory, redis, worker, dummy_server, w
 
     await worker.async_run()
     assert await worker.run_check() == 2
-    assert dummy_server.log == ['POST vapid', 'POST vapid']
+    assert dummy_server.log == ['POST /vapid/ > 201', 'POST /vapid/ > 201']
     assert len(dummy_server.app['webpush']) == 2
     assert dummy_server.app['webpush'][0] == {'user_id': user.id, 'user_v': 2}
     assert dummy_server.app['webpush'][1] == {

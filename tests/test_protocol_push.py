@@ -18,10 +18,13 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
     await worker.run_check(max_burst_jobs=2)
     assert await worker.run_check()
 
-    assert len(dummy_server.log) == 3
-    data = dummy_server.log.pop()
-    assert dummy_server.log == ['GET v1/route', 'POST em2/v1/push']
+    assert dummy_server.log == [
+        'GET /v1/route/?email=whatever@example.org > 200',
+        'POST /em2/v1/push/?domain=localhost > 200',
+    ]
 
+    assert len(dummy_server.app['em2push']) == 1
+    data = dummy_server.app['em2push'][0]
     ts, sig = data['signature'].split(',')
     assert ts == CloseToNow()
 
@@ -77,7 +80,7 @@ async def test_publish_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
     await ses_worker.async_run()
     assert await ses_worker.run_check() == 3
 
-    assert dummy_server.log == ['POST ses_endpoint_url subject="Test Subject" to="whatever@example.net"']
+    assert dummy_server.log == ['POST /ses_endpoint_url/ > 200 (subject="Test Subject" to="whatever@example.net")']
     assert dummy_server.app['smtp'] == [
         {
             'Subject': 'Test Subject',
@@ -118,8 +121,8 @@ async def test_add_msg_ses(factory: Factory, db_conn, ses_worker: Worker, dummy_
     assert await ses_worker.run_check() == 6
 
     assert dummy_server.log == [
-        'POST ses_endpoint_url subject="Test Subject" to="whatever@example.net"',
-        'POST ses_endpoint_url subject="Test Subject" to="whatever@example.net"',
+        'POST /ses_endpoint_url/ > 200 (subject="Test Subject" to="whatever@example.net")',
+        'POST /ses_endpoint_url/ > 200 (subject="Test Subject" to="whatever@example.net")',
     ]
     assert len(dummy_server.app['smtp']) == 2
     assert dummy_server.app['smtp'][0]['part:text/html'] == '<p>Test Message</p>\n'
@@ -144,8 +147,8 @@ async def test_ignore_seen(factory: Factory, db_conn, ses_worker: Worker, dummy_
     assert await ses_worker.run_check() == 8
 
     assert dummy_server.log == [
-        'POST ses_endpoint_url subject="Test Subject" to="whatever@example.net"',
-        'POST ses_endpoint_url subject="Test Subject" to="another@example.net,whatever@example.net"',
+        'POST /ses_endpoint_url/ > 200 (subject="Test Subject" to="whatever@example.net")',
+        'POST /ses_endpoint_url/ > 200 (subject="Test Subject" to="another@example.net,whatever@example.net")',
     ]
     assert len(dummy_server.app['smtp']) == 2
     assert dummy_server.app['smtp'][0]['part:text/html'] == '<p>Test Message</p>\n'

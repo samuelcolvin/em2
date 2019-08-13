@@ -150,7 +150,7 @@ async def test_get_images_ok(worker_ctx, factory: Factory, dummy_server, db_conn
     await get_images(worker_ctx, conv.id, action, {url})
 
     assert len(dummy_server.log) == 2
-    assert dummy_server.log[0] == 'GET image'
+    assert dummy_server.log[0] == 'GET /image/ > 200'
     assert await db_conn.fetchval('select count(*) from image_cache') == 1
     r = dict(await db_conn.fetchrow('select * from image_cache'))
     assert r == {
