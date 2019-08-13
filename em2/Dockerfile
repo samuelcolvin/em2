@@ -4,9 +4,9 @@ FROM python:3.7-alpine3.8 as build
 
 RUN apk add -U gcc g++ musl-dev zlib-dev libuv libffi-dev make openssl-dev git jpeg-dev openjpeg libjpeg-turbo tiff-dev
 
-RUN pip install -U pip setuptools
+RUN pip install -U pip setuptools cython
 ADD ./requirements1.txt /home/root/requirements1.txt
-RUN pip install -r /home/root/requirements1.txt
+RUN PIP_NO_BINARY=pydantic pip install -r /home/root/requirements1.txt
 ADD ./requirements2.txt /home/root/requirements2.txt
 RUN pip install -r /home/root/requirements2.txt
 # get rid of unnecessary files to keep the size of site-packages and the final image down
