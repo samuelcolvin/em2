@@ -211,8 +211,7 @@ class Em2Push(ExecView):
         # TODO give more details on the problems
         try:
             nodes = set(await asyncio.gather(*[self.em2.get_em2_node(e) for e in actor_emails]))
-        except HttpError as e:
-            debug(e)
+        except HttpError:
             # this could be temporary due to error get em2 node
             raise JsonErrors.HTTPUnauthorized('not all actors have an em2 nodes')
 
