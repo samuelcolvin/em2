@@ -209,7 +209,6 @@ class Action:
     follows: Optional[int] = None
     parent: Optional[int] = None
     files: List[File] = None
-    # TODO: warnings
 
 
 class _Act:
@@ -241,9 +240,7 @@ class _Act:
         _, last_action = await get_conv_for_user(self.conns, actor_id, self.conv_id)
         return last_action
 
-    async def run(
-        self, action: Action, last_action: int, files: Optional[List[File]]
-    ) -> Tuple[Optional[int], Optional[int]]:
+    async def run(self, action: Action, last_action: int) -> Tuple[Optional[int], Optional[int]]:
         if action.act is ActionTypes.seen:
             return await self._seen(action), None
 
@@ -256,8 +253,8 @@ class _Act:
             action_id, changed_user_id = await self._act_on_participant(action)
         elif action.act in _msg_action_types:
             action_id, action_pk = await self._act_on_message(action)
-            if files:
-                await create_files(self.conns, files, self.conv_id, action_pk)
+            if action.files:
+                await create_files(self.conns, action.files, self.conv_id, action_pk)
         elif action.act in _subject_action_types:
             action_id = await self._act_on_subject(action)
         else:
@@ -525,12 +522,7 @@ class ConvFlags(str, Enum):
 
 
 async def apply_actions(
-    conns: Connections,
-    conv_ref: StrInt,
-    actions: List[Action],
-    spam: bool = False,
-    warnings: Dict[str, str] = None,
-    files: Optional[List[File]] = None,
+    conns: Connections, conv_ref: StrInt, actions: List[Action], spam: bool = False, warnings: Dict[str, str] = None
 ) -> Tuple[int, List[int]]:
     """
     Apply actions and return their ids.
@@ -551,7 +543,7 @@ async def apply_actions(
             if action.actor_id != actor_user_id:
                 actor_user_id = action.actor_id
                 last_action = await act_cls.new_actor(action.actor_id)
-            action_id, changed_user_id = await act_cls.run(action, last_action, files)
+            action_id, changed_user_id = await act_cls.run(action, last_action)
             if action_id:
                 actions_with_ids.append((action_id, changed_user_id, action))
 
@@ -618,7 +610,7 @@ async def apply_actions(
 
     if updates:
         await update_conv_flags(conns, *updates)
-    await search_update(conns, conv_id, actions_with_ids, files)
+    await search_update(conns, conv_id, actions_with_ids)
     return conv_id, [a[0] for a in actions_with_ids]
 
 

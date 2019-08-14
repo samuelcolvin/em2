@@ -137,14 +137,15 @@ class ProcessSMTP:
                 new_prts = recipients - existing_prts
 
                 msg_format = MsgFormat.html if is_html else MsgFormat.plain
+                body = (body or '').strip()
                 actions = [
-                    Action(act=ActionTypes.msg_add, actor_id=actor_id, body=(body or '').strip(), msg_format=msg_format)
+                    Action(act=ActionTypes.msg_add, actor_id=actor_id, body=body, msg_format=msg_format, files=files)
                 ]
 
                 actions += [Action(act=ActionTypes.prt_add, actor_id=actor_id, participant=addr) for addr in new_prts]
 
                 _, action_ids = await apply_actions(
-                    conns=self.conns, conv_ref=conv_id, actions=actions, spam=spam, warnings=warnings, files=files
+                    conns=self.conns, conv_ref=conv_id, actions=actions, spam=spam, warnings=warnings
                 )
                 assert action_ids
 

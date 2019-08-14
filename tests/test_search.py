@@ -248,7 +248,7 @@ async def test_search_query_files(factory: Factory, conns, query, count):
         File(hash='x', name='fat cat.txt', content_id='a', content_disp='inline', content_type='text/plain', size=10),
         File(hash='x', name='rat.png', content_id='b', content_disp='inline', content_type='image/png', size=100),
     ]
-    await factory.act(conv.id, Action(actor_id=user.id, act=ActionTypes.msg_add, body='apple **pie**'), files=files)
+    await factory.act(conv.id, Action(actor_id=user.id, act=ActionTypes.msg_add, body='apple **pie**', files=files))
 
     assert len(json.loads(await search(conns, user.id, query))['conversations']) == count
 

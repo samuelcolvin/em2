@@ -6,7 +6,7 @@ import pytest
 from atoolbox.test_utils import DummyServer
 
 from em2.background import push_sql_all
-from em2.core import ActionTypes, construct_conv
+from em2.core import ActionTypes, construct_conv, generate_conv_key
 from em2.protocol.core import get_signing_key
 
 from .conftest import Em2TestClient, Factory
@@ -554,3 +554,73 @@ async def test_prt_remove_invalid(em2_cli: Em2TestClient, conns):
         'messages': [{'ref': 3, 'body': 'test message', 'created': ts, 'format': 'markdown', 'active': True}],
         'participants': {'actor@example.org': {'id': 1}, 'recipient@example.com': {'id': 2}},
     }
+
+
+async def test_create_with_files(em2_cli: Em2TestClient, db_conn, factory: Factory):
+    files = [
+        {
+            'hash': '1' * 32,
+            'name': 'testing.txt',
+            'content_id': 'a' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 123,
+            'url': 'http://foobar.com',
+        },
+        {
+            'hash': '2' * 32,
+            'name': 'testing2.txt',
+            'content_id': '2' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 456,
+            'url': 'http://foobar.com',
+        },
+    ]
+
+    a = 'actor@example.org'
+    recipient = 'recipient@example.com'
+    await factory.create_user(email=recipient)
+    ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
+    subject = 'File Test'
+    conv_key = generate_conv_key(a, ts, subject)
+    actions = [
+        {'id': 1, 'act': 'participant:add', 'ts': ts, 'actor': a, 'participant': a},
+        {'id': 2, 'act': 'participant:add', 'ts': ts, 'actor': a, 'participant': recipient},
+        {'id': 3, 'act': 'message:add', 'ts': ts, 'actor': a, 'body': 'testing', 'files': files},
+        {'id': 4, 'act': 'conv:publish', 'ts': ts, 'actor': a, 'body': subject},
+    ]
+    assert await db_conn.fetchval('select count(*) from files') == 0
+
+    await em2_cli.push_actions(conv_key, actions)
+
+    assert await db_conn.fetchval('select count(*) from files') == 2
+    file = await db_conn.fetchrow(
+        """
+        select name, hash, content_id, a.id from files f
+        join actions a on f.action = a.pk where size=123
+        """
+    )
+    assert dict(file) == {'name': 'testing.txt', 'hash': '1' * 32, 'content_id': 'a' * 20, 'id': 3}
+
+
+async def test_append_files(em2_cli: Em2TestClient, db_conn):
+    await em2_cli.create_conv()
+
+    conv_key = await db_conn.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    file = {
+        'hash': '1' * 32,
+        'name': 'testing.txt',
+        'content_id': 'a' * 20,
+        'content_disp': 'inline',
+        'content_type': 'text/plain',
+        'size': 123,
+        'url': 'http://foobar.com',
+    }
+    actions = [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'x', 'files': [file]}]
+    assert await db_conn.fetchval('select count(*) from actions') == 4
+    assert await db_conn.fetchval('select count(*) from files') == 0
+    await em2_cli.push_actions(conv_key, actions)
+    assert await db_conn.fetchval('select count(*) from actions') == 5
+    assert await db_conn.fetchval('select count(*) from files') == 1

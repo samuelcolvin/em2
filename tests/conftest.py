@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from enum import Enum
 from io import BytesIO
-from typing import List, Optional
+from typing import List
 
 import pytest
 from aiohttp import ClientSession, ClientTimeout
@@ -23,7 +23,7 @@ from yarl import URL
 
 from em2.auth.utils import mk_password
 from em2.background import push_multiple
-from em2.core import Action, Connections, File, apply_actions, generate_conv_key
+from em2.core import Action, Connections, apply_actions, generate_conv_key
 from em2.main import create_app
 from em2.protocol.core import get_signing_key
 from em2.protocol.smtp import LogSmtpHandler, SesSmtpHandler
@@ -225,12 +225,11 @@ class Em2TestClient(TestClient):
             await self._factory.create_user(email='recipient@example.com')
         ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
         conv_key = generate_conv_key(actor, ts, subject)
-        ts_str = ts.isoformat()
         actions = [
-            {'id': 1, 'act': 'participant:add', 'ts': ts_str, 'actor': actor, 'participant': actor},
-            {'id': 2, 'act': 'participant:add', 'ts': ts_str, 'actor': actor, 'participant': recipient},
-            {'id': 3, 'act': 'message:add', 'ts': ts_str, 'actor': actor, 'body': msg},
-            {'id': 4, 'act': 'conv:publish', 'ts': ts_str, 'actor': actor, 'body': subject},
+            {'id': 1, 'act': 'participant:add', 'ts': ts, 'actor': actor, 'participant': actor},
+            {'id': 2, 'act': 'participant:add', 'ts': ts, 'actor': actor, 'participant': recipient},
+            {'id': 3, 'act': 'message:add', 'ts': ts, 'actor': actor, 'body': msg},
+            {'id': 4, 'act': 'conv:publish', 'ts': ts, 'actor': actor, 'body': subject},
         ]
         return await self.push_actions(conv_key, actions, em2_node=em2_node, expected_status=expected_status)
 
@@ -356,8 +355,8 @@ class Factory:
             'insert into labels (:values__names) values :values returning id', values=values
         )
 
-    async def act(self, conv_id: int, action: Action, files: Optional[List[File]] = None) -> List[int]:
-        conv_id, action_ids = await apply_actions(self.conns, conv_id, [action], files=files)
+    async def act(self, conv_id: int, action: Action) -> List[int]:
+        conv_id, action_ids = await apply_actions(self.conns, conv_id, [action])
 
         if action_ids:
             await push_multiple(self.conns, conv_id, action_ids)

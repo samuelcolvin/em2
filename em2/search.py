@@ -73,9 +73,7 @@ async def search_publish_conv(conns: Connections, conv_id: int, old_key: str, ne
     )
 
 
-async def search_update(
-    conns: Connections, conv_id: int, actions: List[Tuple[int, Optional[int], 'Action']], files: Optional[List['File']]
-):
+async def search_update(conns: Connections, conv_id: int, actions: List[Tuple[int, Optional[int], 'Action']]):
     """
     If this gets slow it could be done on the worker.
 
@@ -89,7 +87,7 @@ async def search_update(
             if action.act is ActionTypes.subject_modify:
                 await s_update.modify_subject(action, action_id)
             elif action.act in {ActionTypes.msg_add, ActionTypes.msg_modify}:
-                await s_update.msg_change(action, action_id, files)
+                await s_update.msg_change(action, action_id, action.files)
             elif action.act is ActionTypes.prt_add:
                 await s_update.prt_add(action, action_id, user_id)
             elif action.act is ActionTypes.prt_remove:

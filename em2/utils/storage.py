@@ -17,7 +17,7 @@ from em2.settings import Settings
 
 from .datetime import to_unix_s, utcnow
 
-__all__ = ('parse_storage_uri', 'S3Client', 'S3')
+__all__ = ('parse_storage_uri', 'S3Client', 'S3', 'check_content_type')
 
 uri_re = re.compile(r'^(s3)://([^/]+)/(.+)$')
 
@@ -144,3 +144,14 @@ class S3:
     def _signature(self, to_sign: str) -> str:
         s = hmac.new(self._settings.aws_secret_key.encode(), to_sign.encode(), hashlib.sha1).digest()
         return base64.b64encode(s).decode()
+
+
+main_content_types = {'application', 'audio', 'font', 'image', 'text', 'video'}
+
+
+def check_content_type(v: str) -> str:
+    v = v.lower().strip(' \r\n')
+    parts = v.split('/')
+    if len(parts) != 2 or parts[0] not in main_content_types:
+        raise ValueError('invalid Content-Type')
+    return v

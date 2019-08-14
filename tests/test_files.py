@@ -100,7 +100,7 @@ async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_ser
 
     dummy_server.app['s3_files'][f'{conv.key}/{content_id}/testing.png'] = 'this is a test'
 
-    data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': [content_id]}
+    data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': [content_id]}]}
     await cli.post_json(factory.url('ui:act', conv=conv.key), data)
 
     data = await db_conn.fetchrow('select * from files')
@@ -124,7 +124,7 @@ async def test_message_with_attachment_no_file(cli, factory: Factory):
     await factory.create_user()
     conv = await factory.create_conv(publish=True)
 
-    data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': ['foobar']}
+    data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': ['foobar']}]}
     r = await cli.post_json(factory.url('ui:act', conv=conv.key), data, status=400)
     assert await r.json() == {'message': "no file found for content id 'foobar'"}
 
@@ -137,7 +137,7 @@ async def test_message_with_attachment_not_uploaded(cli, factory: Factory):
     obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q))
     content_id = obj['content_id']
 
-    data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': [content_id]}
+    data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': [content_id]}]}
     r = await cli.post_json(factory.url('ui:act', conv=conv.key), data, status=400)
     assert await r.json() == {'message': 'file not uploaded'}
 
@@ -339,7 +339,7 @@ async def test_add_to_draft(cli, factory: Factory, db_conn, dummy_server: DummyS
 
     dummy_server.app['s3_files'][f'{conv.key}/{content_id}/testing.png'] = 'this is a test'
 
-    data = {'actions': [{'act': 'message:add', 'body': 'message 2'}], 'files': [content_id]}
+    data = {'actions': [{'act': 'message:add', 'body': 'message 2', 'files': [content_id]}]}
     await cli.post_json(factory.url('ui:act', conv=conv.key), data)
 
     assert 1 == await db_conn.fetchval('select count(*) from files')

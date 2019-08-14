@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple, Union
 
 import nacl.encoding
 from atoolbox import JsonErrors, json_response
-from pydantic import BaseModel, EmailStr, Extra, conint, constr, validator
+from pydantic import BaseModel, EmailStr, Extra, PositiveInt, UrlStr, conint, constr, validator
 from typing_extensions import Literal
 
 from em2.background import push_all, push_multiple
@@ -13,6 +13,7 @@ from em2.core import (
     Action,
     ActionTypes,
     ConvCreateMessage,
+    File,
     UserTypes,
     apply_actions,
     create_conv,
@@ -21,6 +22,7 @@ from em2.core import (
 )
 from em2.protocol.core import HttpError, InvalidSignature
 from em2.utils.core import MsgFormat
+from em2.utils.storage import check_content_type
 
 from .utils import ExecView
 
@@ -44,6 +46,9 @@ class ActionCore(BaseModel):
     ts: datetime
     actor: EmailStr
 
+    def core_files(self) -> Optional[List[File]]:
+        pass
+
     class Config:
         extra = Extra.forbid
 
@@ -66,21 +71,27 @@ class MessageModel(ActionCore):
     parent: Optional[int] = None
 
 
-# matches core.py::File
-class File(BaseModel):
-    hash: str
-    name: Optional[str]
-    content_id: str
-    content_disp: str
-    content_type: str
-    size: int
-    content: Optional[bytes] = None
-    storage: Optional[str] = None
+class ExternalFile(BaseModel):
+    hash: constr(min_length=32, max_length=65)
+    name: Optional[constr(min_length=1, max_length=1023)]
+    content_id: constr(min_length=20, max_length=255)
+    content_disp: Literal['attachment', 'inline']
+    content_type: constr(max_length=63)
+    size: PositiveInt
+    url: UrlStr
+
+    @validator('content_type')
+    def check_content_type(cls, v: str):
+        return check_content_type(v)
 
 
 class MessageAddModel(MessageModel):
     act: Literal[ActionTypes.msg_add]
-    files: List[File] = None
+    files: Optional[List[ExternalFile]] = None
+
+    def core_files(self) -> Optional[List[File]]:
+        if self.files:
+            return [File(**f.dict(exclude={'url'})) for f in self.files]
 
 
 class MessageModifyModel(MessageAddModel):
@@ -275,7 +286,10 @@ class Em2Push(ExecView):
 
         actor_emails = {a.actor for a in m.actions}
         actor_user_ids = await get_create_multiple_users(self.conns, actor_emails)
-        actions = [Action(actor_id=actor_user_ids[a.actor], **a.dict(exclude={'actor'})) for a in actions_to_apply]
+        actions = [
+            Action(actor_id=actor_user_ids[a.actor], files=a.core_files(), **a.dict(exclude={'actor', 'files'}))
+            for a in actions_to_apply
+        ]
 
         try:
             await apply_actions(self.conns, conv_id, actions)
@@ -300,7 +314,9 @@ class Em2Push(ExecView):
                 break
             if a.act == ActionTypes.msg_add:
                 messages.append(
-                    ConvCreateMessage(body=a.body, msg_format=a.msg_format, action_id=a.id, parent=a.parent)
+                    ConvCreateMessage(
+                        body=a.body, msg_format=a.msg_format, action_id=a.id, parent=a.parent, files=a.core_files()
+                    )
                 )
             elif a.act == ActionTypes.prt_add and a.participant != actor_email:
                 participants[a.participant] = a.id
