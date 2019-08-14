@@ -207,9 +207,9 @@ class Em2TestClient(TestClient):
         return r
 
     async def push_actions(self, conv_key, actions, *, em2_node=None, expected_status=200):
-        em2_node = em2_node or self._dummy_server.server_name + '/em2'
-        data = {'conversation': conv_key, 'em2_node': em2_node, 'actions': actions}
-        return await self.post_json(self.url('protocol:em2-push'), data=data, expected_status=expected_status)
+        em2_node = em2_node or f'localhost:{self._dummy_server.server.port}/em2'
+        path = self.url('protocol:em2-push', conv=conv_key, query={'node': em2_node})
+        return await self.post_json(path, data={'actions': actions}, expected_status=expected_status)
 
     async def create_conv(
         self,
@@ -221,8 +221,8 @@ class Em2TestClient(TestClient):
         msg='test message',
         expected_status=200,
     ):
-        if not await self._factory.conn.fetchval('select 1 from users where email=$1', recipient):
-            await self._factory.create_user(email=recipient)
+        if not await self._factory.conn.fetchval('select 1 from users where email=$1', 'recipient@example.com'):
+            await self._factory.create_user(email='recipient@example.com')
         ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
         conv_key = generate_conv_key(actor, ts, subject)
         ts_str = ts.isoformat()

@@ -15,7 +15,7 @@ from atoolbox import RequestError
 from atoolbox.json_tools import lenient_json
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey
-from pydantic import BaseModel, PositiveInt, UrlStr, ValidationError, constr
+from pydantic import BaseModel, PositiveInt, ValidationError, constr
 from yarl import URL
 
 from em2.settings import Settings
@@ -46,7 +46,7 @@ class ResponseSummary:
 
 
 class RouteModel(BaseModel):
-    node: UrlStr
+    node: str
 
 
 class VerificationKeysModel(BaseModel):
@@ -78,7 +78,7 @@ class Em2Comms:
         # TODO different for test? include proto?
         return f'em2.{self.settings.domain}'
 
-    async def check_signature(self, platform, request) -> None:  # noqa: C901 (ignore complexity)
+    async def check_signature(self, node, request) -> None:  # noqa: C901 (ignore complexity)
         try:
             sig = request.headers['Signature']
         except KeyError:
@@ -100,7 +100,7 @@ class Em2Comms:
         data = await request.read()
         body = body_to_sign(request.method, request.url, ts_str, data)
 
-        signing_verify_cache_key = f'node-signing-verify:{platform}'
+        signing_verify_cache_key = f'node-signing-verify:{node}'
         signing_verify_key = await self.redis.get(signing_verify_cache_key)
         error = None
         if signing_verify_key:
@@ -108,7 +108,7 @@ class Em2Comms:
             if not error:
                 return
 
-        url = platform + '/v1/signing/verification/'
+        url = node + '/v1/signing/verification/'
         try:
             r = await self.get(url, sign=False, model=VerificationKeysModel)
         except HttpError:
@@ -136,8 +136,7 @@ class Em2Comms:
         if not em2_domain:
             return
 
-        scheme = 'http' if self.settings.testing else 'https'
-        r = await self.get(f'{scheme}://{em2_domain}/v1/route/', sign=False, params={'email': email}, model=RouteModel)
+        r = await self.get(em2_domain + '/v1/route/', sign=False, params={'email': email}, model=RouteModel)
 
         node = r.model.node.rstrip('/')
         # 31_104_000 is one year, got a valid em2 node, assume it'll last for a long time
@@ -214,7 +213,8 @@ class Em2Comms:
         else:
             data_ = None
 
-        url_ = URL(url)
+        schema = 'http' if self.settings.testing else 'https'
+        url_ = URL(schema + '://' + url)
         if params:
             url_ = url_.with_query(params)
 

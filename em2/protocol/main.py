@@ -30,7 +30,7 @@ async def create_app_protocol(settings=None):
         [
             web.post('/webhook/ses/{token}/', ses_webhook, name='webhook-ses'),
             web.get('/v1/signing/verification/', signing_verification, name='signing-verification'),
-            web.post('/v1/push/', Em2Push.view(), name='em2-push'),
+            web.post('/v1/push/{conv:[a-f0-9]{64}}/', Em2Push.view(), name='em2-push'),
         ]
     )
     app['index_path'] = build_index(app, 'platform-to-platform interface')

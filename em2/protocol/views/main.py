@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import nacl.encoding
 from atoolbox import JsonErrors, json_response
@@ -66,10 +66,21 @@ class MessageModel(ActionCore):
     parent: Optional[int] = None
 
 
+# matches core.py::File
+class File(BaseModel):
+    hash: str
+    name: Optional[str]
+    content_id: str
+    content_disp: str
+    content_type: str
+    size: int
+    content: Optional[bytes] = None
+    storage: Optional[str] = None
+
+
 class MessageAddModel(MessageModel):
     act: Literal[ActionTypes.msg_add]
-    warnings: Any = None  # TODO stricter type
-    files: list = None  # TODO stricter type
+    files: List[File] = None
 
 
 class MessageModifyModel(MessageAddModel):
@@ -114,8 +125,6 @@ class Em2Push(ExecView):
     """
 
     class Model(BaseModel):
-        em2_node: constr(min_length=4)
-        conversation: str
         actions: List[
             Union[
                 ParticipantModel,
@@ -186,10 +195,15 @@ class Em2Push(ExecView):
 
     async def execute(self, m: Model):
         try:
-            await self.em2.check_signature(m.em2_node, self.request)
+            em2_node = self.request.query['node']
+        except KeyError:
+            raise JsonErrors.HTTPBadRequest("'node' get parameter missing")
+
+        try:
+            await self.em2.check_signature(em2_node, self.request)
         except InvalidSignature as e:
             msg = e.args[0]
-            logger.info('unauthorized em2 push msg="%s" em2-node="%s"', msg, m.em2_node)
+            logger.info('unauthorized em2 push msg="%s" em2-node="%s"', msg, em2_node)
             raise JsonErrors.HTTPUnauthorized(msg)
 
         actor_emails = {a.actor for a in m.actions}
@@ -204,12 +218,12 @@ class Em2Push(ExecView):
         if None in nodes:
             # this could be temporary due to error get em2 node
             raise JsonErrors.HTTPUnauthorized('not all actors have an em2 nodes')
-        if nodes != {m.em2_node}:
+        if nodes != {em2_node}:
             raise JsonErrors.HTTPBadRequest("not all actors' em2 nodes match request node")
 
         # TODO idempotency key
         async with self.conns.main.transaction():
-            conv_id, transmit, action_ids = await self.execute_trans(m)
+            conv_id, transmit, action_ids = await self.execute_trans(m, em2_node)
 
         if conv_id is not None:
             if action_ids is None:
@@ -217,7 +231,7 @@ class Em2Push(ExecView):
             else:
                 await push_multiple(self.conns, conv_id, action_ids, transmit=transmit)
 
-    async def execute_trans(self, m: Model) -> Tuple[Optional[int], bool, Optional[List[int]]]:
+    async def execute_trans(self, m: Model, em2_node: str) -> Tuple[Optional[int], bool, Optional[List[int]]]:
         publish_action = next((a for a in m.actions if a.act == ActionTypes.conv_publish), None)
         push_all_actions = False
         if publish_action:
@@ -228,20 +242,21 @@ class Em2Push(ExecView):
             if not any(are_local):
                 raise JsonErrors.HTTPBadRequest('no participants on this em2 node')
             try:
-                await self.published_conv(publish_action, m)
+                await self.published_conv(publish_action, m, em2_node)
                 push_all_actions = True
             except JsonErrors.HTTPConflict:
                 # conversation already exists, that's okay
                 pass
 
+        conversation = self.request.match_info['conv']
         # lock the conversation here so simultaneous requests executing the same action ids won't cause errors
         r = await self.conns.main.fetchrow(
-            'select id, last_action_id, leader_node from conversations where key=$1 for no key update', m.conversation
+            'select id, last_action_id, leader_node from conversations where key=$1 for no key update', conversation
         )
         if r:
             conv_id, last_action_id, leader_node = r
 
-            if leader_node and leader_node != m.em2_node:
+            if leader_node and leader_node != em2_node:
                 raise JsonErrors.HTTPBadRequest('request em2 node does not match current em2 node')
         else:
             # conversation doesn't exist and there's no publish_action, need the whole conversation
@@ -260,9 +275,7 @@ class Em2Push(ExecView):
 
         actor_emails = {a.actor for a in m.actions}
         actor_user_ids = await get_create_multiple_users(self.conns, actor_emails)
-        actions = [
-            Action(actor_id=actor_user_ids[a.actor], **a.dict(exclude={'actor', 'warnings'})) for a in actions_to_apply
-        ]
+        actions = [Action(actor_id=actor_user_ids[a.actor], **a.dict(exclude={'actor'})) for a in actions_to_apply]
 
         try:
             await apply_actions(self.conns, conv_id, actions)
@@ -274,7 +287,7 @@ class Em2Push(ExecView):
         action_ids = None if push_all_actions else [a.id for a in actions]
         return conv_id, push_transmit, action_ids
 
-    async def published_conv(self, publish_action: PublishModel, m: Model):
+    async def published_conv(self, publish_action: PublishModel, m: Model, em2_node: str):
         """
         New conversation just published
         """
@@ -302,6 +315,6 @@ class Em2Push(ExecView):
             messages=messages,
             participants=participants,
             ts=publish_action.ts,
-            given_conv_key=m.conversation,
-            leader_node=m.em2_node,
+            given_conv_key=self.request.match_info['conv'],
+            leader_node=em2_node,
         )
