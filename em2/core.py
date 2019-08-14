@@ -194,6 +194,7 @@ class File:
     size: int
     content: Optional[bytes] = None
     storage: Optional[str] = None
+    download_url: Optional[str] = None
 
 
 @dataclass

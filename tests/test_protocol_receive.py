@@ -565,7 +565,7 @@ async def test_create_with_files(em2_cli: Em2TestClient, db_conn, factory: Facto
             'content_disp': 'inline',
             'content_type': 'text/plain',
             'size': 123,
-            'url': 'http://foobar.com',
+            'download_url': 'http://foobar.com',
         },
         {
             'hash': '2' * 32,
@@ -574,7 +574,7 @@ async def test_create_with_files(em2_cli: Em2TestClient, db_conn, factory: Facto
             'content_disp': 'inline',
             'content_type': 'text/plain',
             'size': 456,
-            'url': 'http://foobar.com',
+            'download_url': 'http://foobar.com',
         },
     ]
 
@@ -616,7 +616,7 @@ async def test_append_files(em2_cli: Em2TestClient, db_conn):
         'content_disp': 'inline',
         'content_type': 'text/plain',
         'size': 123,
-        'url': 'http://foobar.com',
+        'download_url': 'http://foobar.com',
     }
     actions = [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'x', 'files': [file]}]
     assert await db_conn.fetchval('select count(*) from actions') == 4

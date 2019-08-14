@@ -94,7 +94,7 @@ class GetHtmlImage(View):
 
         if error:
             # 200, but not an image should show image error in browser
-            raise HTTPOk(text=f'unable to download image, response: {error}')
+            raise HTTPOk(text=f'unable to download image, {error}')
 
         _, bucket, path = parse_storage_uri(storage)
         url = S3(s).signed_download_url(bucket, path)

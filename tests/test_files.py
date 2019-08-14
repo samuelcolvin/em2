@@ -117,6 +117,8 @@ async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_ser
         'name': 'testing.png',
         'content_type': 'text/plain; charset=utf-8',
         'size': 14,
+        'download_url': None,
+        'error': None,
     }
 
 
@@ -194,9 +196,17 @@ async def test_get_images_bad(worker_ctx, factory: Factory, dummy_server, db_con
     )
     assert [dict(r) for r in cache_files] == [
         {
-            'url': dummy_server.server_name + '/status/201/',
+            'url': dummy_server.server_name + '/status/200/',
             'storage': None,
-            'error': 201,
+            'error': 'Content-Type header bad for image',
+            'size': None,
+            'hash': None,
+            'content_type': None,
+        },
+        {
+            'url': 'cid:ii_jxuceprp0',
+            'storage': None,
+            'error': 'download error',
             'size': None,
             'hash': None,
             'content_type': None,
@@ -204,20 +214,19 @@ async def test_get_images_bad(worker_ctx, factory: Factory, dummy_server, db_con
         {
             'url': dummy_server.server_name + '/image/?size=700',
             'storage': None,
-            'error': 1413,
+            'error': 'invalid Content-Length',
             'size': None,
             'hash': None,
             'content_type': None,
         },
         {
-            'url': dummy_server.server_name + '/status/200/',
+            'url': dummy_server.server_name + '/status/201/',
             'storage': None,
-            'error': 1415,
+            'error': 'response: 201',
             'size': None,
             'hash': None,
             'content_type': None,
         },
-        {'url': 'cid:ii_jxuceprp0', 'storage': None, 'error': 1502, 'size': None, 'hash': None, 'content_type': None},
     ]
 
 

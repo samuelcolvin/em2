@@ -290,7 +290,7 @@ class ConvAct(ExecView):
             raise JsonErrors.HTTPBadRequest('file not uploaded')
         else:
             return File(
-                hash=head['ETag'].strip('"'),
+                hash=head['ETag'].strip('"'),  # TODO need to replace with sha256 hash
                 name=path.rsplit('/', 1)[1],
                 content_id=content_id,
                 content_disp='attachment' if 'ContentDisposition' in head else 'inline',

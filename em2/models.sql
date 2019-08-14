@@ -213,6 +213,9 @@ create table files (
   content_id varchar(255) not null,
   name varchar(1023),
   content_type varchar(63),
+  -- URL used for original download
+  download_url varchar(2047),
+  error varchar(63),
   size bigint,
   unique (conv, content_id)
 );
@@ -223,7 +226,7 @@ create table image_cache (
   conv bigint not null references conversations on delete restrict,
   action bigint not null references actions,
   storage varchar(255),
-  error smallint,
+  error varchar(63),
   created timestamptz not null default current_timestamp,
   last_access timestamptz,
 

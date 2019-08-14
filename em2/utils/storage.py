@@ -2,22 +2,33 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import re
 from datetime import timedelta
 from math import ceil
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlencode
 
 import aiobotocore
 from aiobotocore import AioSession
 from aiobotocore.client import AioBaseClient
+from aiohttp import ClientError, ClientResponse, ClientSession
 from botocore.exceptions import ClientError as BotoClientError
 
 from em2.settings import Settings
 
 from .datetime import to_unix_s, utcnow
 
-__all__ = ('parse_storage_uri', 'S3Client', 'S3', 'check_content_type')
+logger = logging.getLogger('em2.utils.storage')
+__all__ = (
+    'parse_storage_uri',
+    'S3Client',
+    'S3',
+    'check_content_type',
+    'DownloadError',
+    'download_remote_file',
+    'image_extensions',
+)
 
 uri_re = re.compile(r'^(s3)://([^/]+)/(.+)$')
 
@@ -155,3 +166,77 @@ def check_content_type(v: str) -> str:
     if len(parts) != 2 or parts[0] not in main_content_types:
         raise ValueError('invalid Content-Type')
     return v
+
+
+# https://en.wikipedia.org/wiki/Comparison_of_web_browsers#Image_format_support looking at chrome and firefox
+image_extensions = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/gif': 'gif',
+    'image/svg+xml': 'svg',
+    'image/tiff': 'tiff',
+    'image/bmp': 'bmp',
+    'image/vnd.microsoft.icon': 'ico',
+    'image/webp': 'webp',
+    'image/x-icon': 'ico',
+    'image/x‑xbm': 'xbm',
+}
+
+
+class DownloadError(RuntimeError):
+    def __init__(self, error: str):
+        self.error = error
+
+
+def _check_headers(
+    response: ClientResponse, require_image: bool, full_url: str, max_size: int, expected_size: int
+) -> Tuple[int, str]:
+    content_type = response.headers.get('Content-Type', '').lower()
+    if require_image:
+        ext = image_extensions.get(content_type)
+        if not ext:
+            logger.warning('unknown image Content-Type %r, url: %r', content_type, full_url)
+            raise DownloadError('Content-Type header bad for image')
+    else:
+        parts = content_type.split('/')
+        if len(parts) != 2 or parts[0] not in main_content_types:
+            logger.warning('unknown Content-Type %r, url: %r', content_type, full_url)
+            raise DownloadError('Content-Type header bad')
+
+    try:
+        content_length = int(response.headers['Content-Length'])
+    except (ValueError, KeyError):
+        raise DownloadError('Content-Length header missing')
+
+    if (max_size and content_length > max_size) or (expected_size and content_length != expected_size):
+        raise DownloadError('invalid Content-Length')
+    return content_length, content_type
+
+
+async def download_remote_file(
+    url: str, session: ClientSession, *, require_image: bool = False, max_size: int = None, expected_size: int = None
+) -> Tuple[bytes, str]:
+    full_url = 'http:' + url if url.startswith('//') else url
+    try:
+        async with session.get(full_url, allow_redirects=True) as r:
+            if r.status != 200:
+                raise DownloadError(f'response: {r.status}')
+
+            content_length, content_type = _check_headers(r, require_image, full_url, max_size, expected_size)
+
+            # TODO we should download to a temporary local file in chunks
+            content, actual_size = b'', 0
+            async for chunk in r.content.iter_chunked(16384):
+                content += chunk
+                actual_size += len(chunk)
+                if actual_size > content_length:
+                    raise DownloadError('length greater than Content-Length')
+    except (ClientError, OSError) as e:
+        # could do more errors here
+        logger.warning('error downloading file from %r %s: %s', full_url, e.__class__.__name__, e, exc_info=True)
+        raise DownloadError('download error')
+    else:
+        if actual_size != content_length:
+            # actual downloaded size does not match content-length header
+            raise DownloadError('actual size differs from Content-Length')
+        return content, content_type

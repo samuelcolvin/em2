@@ -78,7 +78,7 @@ class ExternalFile(BaseModel):
     content_disp: Literal['attachment', 'inline']
     content_type: constr(max_length=63)
     size: PositiveInt
-    url: UrlStr
+    download_url: UrlStr
 
     @validator('content_type')
     def check_content_type(cls, v: str):
@@ -91,7 +91,7 @@ class MessageAddModel(MessageModel):
 
     def core_files(self) -> Optional[List[File]]:
         if self.files:
-            return [File(**f.dict(exclude={'url'})) for f in self.files]
+            return [File(**f.dict()) for f in self.files]
 
 
 class MessageModifyModel(MessageAddModel):
@@ -204,7 +204,7 @@ class Em2Push(ExecView):
                         )
             return actions
 
-    async def execute(self, m: Model):
+    async def execute(self, m: Model):  # noqa: C901 (ignore complexity)
         try:
             em2_node = self.request.query['node']
         except KeyError:
@@ -232,7 +232,14 @@ class Em2Push(ExecView):
         if nodes != {em2_node}:
             raise JsonErrors.HTTPBadRequest("not all actors' em2 nodes match request node")
 
-        # TODO idempotency key
+        file_content_ids = set()
+        for a in m.actions:
+            if a.act == ActionTypes.msg_add and a.files:
+                for f in a.files:
+                    if f.content_id in file_content_ids:
+                        raise JsonErrors.HTTPBadRequest(f'duplicate file content_id on action {a.id}')
+                    file_content_ids.add(f.content_id)
+
         async with self.conns.main.transaction():
             conv_id, transmit, action_ids = await self.execute_trans(m, em2_node)
 
@@ -241,6 +248,9 @@ class Em2Push(ExecView):
                 await push_all(self.conns, conv_id, transmit=transmit)
             else:
                 await push_multiple(self.conns, conv_id, action_ids, transmit=transmit)
+
+        for content_id in file_content_ids:
+            await self.conns.redis.enqueue_job('download_push_file', conv_id, content_id)
 
     async def execute_trans(self, m: Model, em2_node: str) -> Tuple[Optional[int], bool, Optional[List[int]]]:
         publish_action = next((a for a in m.actions if a.act == ActionTypes.conv_publish), None)
