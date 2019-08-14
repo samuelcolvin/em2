@@ -203,8 +203,8 @@ create type ContentDisposition as enum ('attachment', 'inline');
 
 create table files (
   id bigserial primary key,
-  conv bigint not null references conversations on delete restrict,
-  action bigint not null references actions,
+  conv bigint not null references conversations on delete cascade,
+  action bigint not null references actions on delete cascade,
   send bigint references sends,
   storage varchar(255),
   storage_expires timestamptz,

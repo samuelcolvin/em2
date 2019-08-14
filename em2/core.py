@@ -691,7 +691,7 @@ async def conv_actions_json(
               prt_user.email participant, follows_action.id follows, parent_action.id parent,
               (select array_agg(row_to_json(f))
                 from (
-                  select content_disp, hash, content_id, name, content_type, size
+                  select storage, storage_expires, content_disp, hash, content_id, name, content_type, size
                   from files
                   where files.action = a.pk
                   order by content_id  -- TODO only used in tests I think, could be removed
@@ -735,7 +735,7 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
         elif act == ActionTypes.subject_modify:
             subject = action['body']
         elif act == ActionTypes.msg_add:
-            messages[action_id] = {
+            d = {
                 'ref': action_id,
                 'body': action['body'],
                 'created': action['ts'],
@@ -743,6 +743,10 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
                 'parent': action.get('parent'),
                 'active': True,
             }
+            files = action.get('files')
+            if files:
+                d['files'] = files
+            messages[action_id] = d
         elif act in _msg_action_types:
             message = messages[action['follows']]
             message['ref'] = action_id

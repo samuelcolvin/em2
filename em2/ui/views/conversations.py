@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
-from buildpg import SetValues, V, funcs
+from buildpg import MultipleValues, SetValues, V, Values, funcs
 from pydantic import BaseModel, EmailStr, constr, validator
 
 from em2.background import push_all, push_multiple
@@ -348,8 +348,14 @@ class ConvPublish(ExecView):
                 self.session.user_id,
                 ts,
             )
+            files = []
             for msg in conv_summary['messages']:
-                await self.add_msg(msg, conv_id, ts)
+                files += await self.add_msg(msg, conv_id, ts)
+
+            if files:
+                await self.conns.main.execute_b(
+                    'insert into files (:values__names) values :values', values=MultipleValues(*files)
+                )
 
             await self.conn.execute(
                 """
@@ -376,7 +382,7 @@ class ConvPublish(ExecView):
         await push_all(self.conns, conv_id)
         return dict(key=conv_key)
 
-    async def add_msg(self, msg_info: Dict[str, Any], conv_id: int, ts: datetime, parent: int = None):
+    async def add_msg(self, msg_info: Dict[str, Any], conv_id: int, ts: datetime, parent: int = None) -> List[Values]:
         """
         Recursively create messages.
         """
@@ -393,8 +399,10 @@ class ConvPublish(ExecView):
             msg_info['format'],
             parent,
         )
+        files = [Values(conv=conv_id, action=pk, **f) for f in msg_info.get('files', [])]
         for msg in msg_info.get('children', []):
-            await self.add_msg(msg, conv_id, ts, pk)
+            files += await self.add_msg(msg, conv_id, ts, pk)
+        return files
 
 
 class SetFlags(str, Enum):

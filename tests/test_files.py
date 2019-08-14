@@ -1,6 +1,7 @@
 import base64
 import hashlib
 
+from atoolbox.test_utils import DummyServer
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
 from em2.core import Action, ActionTypes
@@ -326,3 +327,30 @@ async def test_download_cache_image_invalid_url(factory: Factory, cli):
 
     obj = await cli.get_json(factory.url('ui:get-html-image', conv=conv.key, url='foobar'), status=400)
     assert obj == {'message': 'invalid url'}
+
+
+async def test_add_to_draft(cli, factory: Factory, db_conn, dummy_server: DummyServer):
+    await factory.create_user()
+    conv = await factory.create_conv()
+
+    q = dict(filename='testing.png', content_type='image/jpeg', size='14')
+    obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q))
+    content_id = obj['content_id']
+
+    dummy_server.app['s3_files'][f'{conv.key}/{content_id}/testing.png'] = 'this is a test'
+
+    data = {'actions': [{'act': 'message:add', 'body': 'message 2'}], 'files': [content_id]}
+    await cli.post_json(factory.url('ui:act', conv=conv.key), data)
+
+    assert 1 == await db_conn.fetchval('select count(*) from files')
+    f1 = dict(await db_conn.fetchrow('select * from files'))
+    [f1.pop(f) for f in ('id', 'conv', 'action')]
+    assert await db_conn.fetchval('select body from files f join actions a on f.action = a.pk') == 'message 2'
+
+    await cli.post_json(factory.url('ui:publish', conv=conv.key), {'publish': True})
+    assert 1 == await db_conn.fetchval('select count(*) from files')
+
+    f2 = dict(await db_conn.fetchrow('select * from files'))
+    [f2.pop(f) for f in ('id', 'conv', 'action')]
+    assert f1 == f2
+    assert await db_conn.fetchval('select body from files f join actions a on f.action = a.pk') == 'message 2'
