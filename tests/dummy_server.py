@@ -16,9 +16,9 @@ from cryptography.hazmat.primitives.asymmetric import ec
 async def em2_routing(request):
     email = request.query.get('email')
     if email == 'diff@example.org':
-        return json_response(node=f'http://{request.headers["host"]}/different')
+        return json_response(node=request.headers['host'] + '/different')
     else:
-        return json_response(node=f'http://{request.headers["host"]}/em2')
+        return json_response(node=request.headers['host'] + '/em2')
 
 
 # b'4' * 64 from conftest settings
@@ -135,7 +135,7 @@ async def get_image(request):
 routes = [
     web.get('/v1/route/', em2_routing),
     web.get('/em2/v1/signing/verification/', signing_verification),
-    web.post('/em2/v1/push/', em2_push),
+    web.post('/em2/v1/push/{conv:[a-f0-9]{64}}/', em2_push),
     web.post('/ses_endpoint_url/', ses_endpoint_url),
     web.get('/sns_signing_url.pem', sns_signing_endpoint),
     web.route('*', '/s3_endpoint_url/{bucket}/{key:.*}', s3_endpoint),

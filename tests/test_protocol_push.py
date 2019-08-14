@@ -19,8 +19,8 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
     assert await worker.run_check()
 
     assert dummy_server.log == [
-        'GET /v1/route/?email=whatever@example.org > 200',
-        'POST /em2/v1/push/?domain=localhost > 200',
+        f'GET /v1/route/?email=whatever@example.org > 200',
+        f'POST /em2/v1/push/{conv.key}/?node=em2.localhost > 200',
     ]
 
     assert len(dummy_server.app['em2push']) == 1
@@ -30,13 +30,11 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
 
     signing_key = get_signing_key(settings.signing_secret_key)
 
-    to_sign = f'POST {dummy_server.server_name}/em2/v1/push/?domain=localhost {ts}\n{data["body"]}'.encode()
+    body = data['body']
+    to_sign = f'POST {dummy_server.server_name}/em2/v1/push/{conv.key}/?node=em2.localhost {ts}\n{body}'.encode()
     signing_key.verify_key.verify(to_sign, bytes.fromhex(sig))
 
-    body = json.loads(data['body'])
-    assert body == {
-        'conversation': conv.key,
-        'platform': 'em2.localhost',
+    assert json.loads(body) == {
         'actions': [
             {
                 'id': 1,
@@ -69,7 +67,7 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
                 'body': 'Test Subject',
                 'extra_body': False,
             },
-        ],
+        ]
     }
 
 

@@ -88,14 +88,13 @@ class Pusher:
         return node, email
 
     async def em2_send(self, conversation: str, actions: Dict[str, Any], em2_nodes: Set[str]):
-        data = json.dumps(
-            {'platform': self.em2.this_em2_node(), 'actions': actions, 'conversation': conversation}
-        ).encode()
-        await asyncio.gather(*[self.em2_send_node(data, n) for n in em2_nodes])
+        data = json.dumps({'actions': actions}).encode()
+        this_em2_node = self.em2.this_em2_node()
+        await asyncio.gather(*[self.em2_send_node(data, n, this_em2_node, conversation) for n in em2_nodes])
 
-    async def em2_send_node(self, data: bytes, em2_node: str):
+    async def em2_send_node(self, data: bytes, em2_node: str, this_em2_node: str, conversation):
         try:
-            await self.em2.post(em2_node + '/v1/push/', data=data, params={'domain': self.settings.domain})
+            await self.em2.post(em2_node + f'/v1/push/{conversation}/', data=data, params={'node': this_em2_node})
         except HttpError:
             # TODO retry
             raise

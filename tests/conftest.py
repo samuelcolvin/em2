@@ -207,9 +207,9 @@ class Em2TestClient(TestClient):
         return r
 
     async def push_actions(self, conv_key, actions, *, em2_node=None, expected_status=200):
-        em2_node = em2_node or self._dummy_server.server_name + '/em2'
-        data = {'conversation': conv_key, 'em2_node': em2_node, 'actions': actions}
-        return await self.post_json(self.url('protocol:em2-push'), data=data, expected_status=expected_status)
+        em2_node = em2_node or f'localhost:{self._dummy_server.server.port}/em2'
+        path = self.url('protocol:em2-push', conv=conv_key, query={'node': em2_node})
+        return await self.post_json(path, data={'actions': actions}, expected_status=expected_status)
 
     async def create_conv(
         self,
