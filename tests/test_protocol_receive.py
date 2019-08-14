@@ -3,13 +3,14 @@ from datetime import datetime, timezone
 from operator import attrgetter
 
 import pytest
+from arq import ArqRedis
 from atoolbox.test_utils import DummyServer
 
 from em2.background import push_sql_all
 from em2.core import ActionTypes, construct_conv, generate_conv_key
 from em2.protocol.core import get_signing_key
 
-from .conftest import Em2TestClient, Factory
+from .conftest import Em2TestClient, Factory, Worker
 
 
 async def test_signing_verification(cli, url):
@@ -556,25 +557,27 @@ async def test_prt_remove_invalid(em2_cli: Em2TestClient, conns):
     }
 
 
-async def test_create_with_files(em2_cli: Em2TestClient, db_conn, factory: Factory):
+async def test_create_with_files(
+    em2_cli: Em2TestClient, db_conn, factory: Factory, worker: Worker, dummy_server: DummyServer, redis: ArqRedis
+):
     files = [
         {
-            'hash': '1' * 32,
+            'hash': '9ed9bf64e48c7b343c6dd5700c3ae57fb517a01bac891fd19c1dab57b23accdc',
             'name': 'testing.txt',
             'content_id': 'a' * 20,
             'content_disp': 'inline',
             'content_type': 'text/plain',
             'size': 123,
-            'download_url': 'http://foobar.com',
+            'download_url': dummy_server.server_name + '/image/?size=123',
         },
         {
-            'hash': '2' * 32,
+            'hash': '2cd3827451fd0fdf29d52743e49930d28228275cb960a25f3a973fe827389e7f',
             'name': 'testing2.txt',
             'content_id': '2' * 20,
             'content_disp': 'inline',
             'content_type': 'text/plain',
             'size': 456,
-            'download_url': 'http://foobar.com',
+            'download_url': dummy_server.server_name + '/image/?size=456',
         },
     ]
 
@@ -597,14 +600,33 @@ async def test_create_with_files(em2_cli: Em2TestClient, db_conn, factory: Facto
     assert await db_conn.fetchval('select count(*) from files') == 2
     file = await db_conn.fetchrow(
         """
-        select name, hash, content_id, a.id from files f
+        select name, hash, content_id, error, download_url, storage, a.id as action_id from files f
         join actions a on f.action = a.pk where size=123
         """
     )
-    assert dict(file) == {'name': 'testing.txt', 'hash': '1' * 32, 'content_id': 'a' * 20, 'id': 3}
+    assert dict(file) == {
+        'name': 'testing.txt',
+        'hash': '9ed9bf64e48c7b343c6dd5700c3ae57fb517a01bac891fd19c1dab57b23accdc',
+        'content_id': 'a' * 20,
+        'error': None,
+        'download_url': dummy_server.server_name + '/image/?size=123',
+        'storage': None,
+        'action_id': 3,
+    }
+    assert len(await redis.queued_jobs()) == 3
+
+    assert await worker.run_check() == 3
+    storage, error = await db_conn.fetchrow(
+        """
+        select storage, error from files f
+        join actions a on f.action = a.pk where size=123
+        """
+    )
+    assert error is None
+    assert storage == f's3://s3_files_bucket.example.com/{conv_key}/{"a" * 20}/testing.txt'
 
 
-async def test_append_files(em2_cli: Em2TestClient, db_conn):
+async def test_append_files(em2_cli: Em2TestClient, db_conn, redis: ArqRedis):
     await em2_cli.create_conv()
 
     conv_key = await db_conn.fetchval('select key from conversations')
@@ -624,3 +646,8 @@ async def test_append_files(em2_cli: Em2TestClient, db_conn):
     await em2_cli.push_actions(conv_key, actions)
     assert await db_conn.fetchval('select count(*) from actions') == 5
     assert await db_conn.fetchval('select count(*) from files') == 1
+
+    jobs = await redis.queued_jobs()
+    assert len(jobs) == 3  # two web_push and download
+    j = next(j for j in jobs if j.function == 'download_push_file')
+    assert j.args == (await db_conn.fetchval('select id from conversations'), 'aaaaaaaaaaaaaaaaaaaa')

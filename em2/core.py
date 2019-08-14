@@ -963,6 +963,7 @@ async def create_files(conns: Connections, files: List[File], conv_id: int, acti
             content_type=f.content_type,
             size=f.size,
             storage=f.storage,
+            download_url=f.download_url,
         )
         for f in files
     ]

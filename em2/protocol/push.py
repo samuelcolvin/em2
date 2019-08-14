@@ -103,7 +103,7 @@ class Pusher:
 
 
 async def download_push_file(ctx, conv_id: int, content_id: str):
-    session: ClientSession = ctx['session']
+    session: ClientSession = ctx['client_session']
     settings: Settings = ctx['settings']
     pg: Pool = ctx['pg']
 
