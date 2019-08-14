@@ -202,6 +202,11 @@ async def test_create_append(em2_cli, conns, factory: Factory):
     }
 
 
+async def test_no_participants_on_node(em2_cli: Em2TestClient):
+    r = await em2_cli.create_conv(recipient='x@other.com', expected_status=400)
+    assert await r.json() == {'message': 'no participants on this em2 node'}
+
+
 async def test_no_signature(em2_cli, dummy_server: DummyServer):
     a = 'actor@example.org'
     post_data = {'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}]}
@@ -234,7 +239,7 @@ async def test_invalid_signature_format(em2_cli, dummy_server: DummyServer, sig,
     assert await r.json() == {'message': message}
 
 
-async def test_invalid_signature(em2_cli, dummy_server: DummyServer):
+async def test_invalid_signature(em2_cli: Em2TestClient, dummy_server: DummyServer):
     a = 'actor@example.org'
     post_data = {'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}]}
     data = json.dumps(post_data)
@@ -244,6 +249,13 @@ async def test_invalid_signature(em2_cli, dummy_server: DummyServer):
     r = await em2_cli.post(path, data=data, headers={'Content-Type': 'application/json', 'Signature': sig})
     assert r.status == 401, await r.text()
     assert await r.json() == {'message': 'Invalid signature'}
+
+
+async def test_no_node(em2_cli: Em2TestClient):
+    a = 'actor@example.org'
+    post_data = {'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}]}
+    r = await em2_cli.post_json(em2_cli.url('protocol:em2-push', conv='1' * 64), data=post_data, expected_status=400)
+    assert await r.json() == {'message': "'node' get parameter missing"}
 
 
 async def test_valid_signature_repeat(em2_cli, dummy_server: DummyServer):

@@ -221,8 +221,8 @@ class Em2TestClient(TestClient):
         msg='test message',
         expected_status=200,
     ):
-        if not await self._factory.conn.fetchval('select 1 from users where email=$1', recipient):
-            await self._factory.create_user(email=recipient)
+        if not await self._factory.conn.fetchval('select 1 from users where email=$1', 'recipient@example.com'):
+            await self._factory.create_user(email='recipient@example.com')
         ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
         conv_key = generate_conv_key(actor, ts, subject)
         ts_str = ts.isoformat()
