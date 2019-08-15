@@ -558,7 +558,7 @@ async def test_prt_remove_invalid(em2_cli: Em2TestClient, conns):
 
 
 async def test_create_with_files(
-    em2_cli: Em2TestClient, db_conn, factory: Factory, worker: Worker, dummy_server: DummyServer, redis: ArqRedis
+    em2_cli: Em2TestClient, db_conn, factory: Factory, worker: Worker, dummy_server: DummyServer
 ):
     files = [
         {
@@ -636,7 +636,7 @@ async def test_append_files(em2_cli: Em2TestClient, db_conn, redis: ArqRedis):
         'content_disp': 'inline',
         'content_type': 'text/plain',
         'size': 123,
-        'download_url': 'http://foobar.com',
+        'download_url': 'https://example.com/image.png',
     }
     actions = [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'x', 'files': [file]}]
     assert await db_conn.fetchval('select count(*) from actions') == 4
@@ -651,7 +651,7 @@ async def test_append_files(em2_cli: Em2TestClient, db_conn, redis: ArqRedis):
     assert j.args == (await db_conn.fetchval('select id from conversations'), 'aaaaaaaaaaaaaaaaaaaa')
 
 
-async def test_download_errors(em2_cli: Em2TestClient, db_conn, dummy_server, worker: Worker):
+async def test_download_errors(em2_cli: Em2TestClient, db_conn, dummy_server: DummyServer, worker: Worker):
     await em2_cli.create_conv()
 
     conv_key = await db_conn.fetchval('select key from conversations')
@@ -736,12 +736,11 @@ async def test_download_errors(em2_cli: Em2TestClient, db_conn, dummy_server, wo
     ]
 
 
-async def test_duplicate_file_content_id(em2_cli: Em2TestClient, db_conn, dummy_server, worker: Worker):
+async def test_duplicate_file_content_id(em2_cli: Em2TestClient, db_conn, dummy_server: DummyServer):
     await em2_cli.create_conv()
 
     conv_key = await db_conn.fetchval('select key from conversations')
     ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
-    root = dummy_server.server_name
     files = [
         {
             'hash': '1' * 32,
@@ -750,7 +749,7 @@ async def test_duplicate_file_content_id(em2_cli: Em2TestClient, db_conn, dummy_
             'content_disp': 'inline',
             'content_type': 'text/plain',
             'size': 501,
-            'download_url': f'{root}/image/?size=501',
+            'download_url': 'https://example.com/image-1.png',
         },
         {
             'hash': '1' * 32,
@@ -759,7 +758,7 @@ async def test_duplicate_file_content_id(em2_cli: Em2TestClient, db_conn, dummy_
             'content_disp': 'inline',
             'content_type': 'text/plain',
             'size': 200,
-            'download_url': f'{root}/status/503/',
+            'download_url': 'https://example.com/image-2.png',
         },
     ]
     actions = [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'x', 'files': files}]
