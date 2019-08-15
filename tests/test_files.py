@@ -196,9 +196,17 @@ async def test_get_images_bad(worker_ctx, factory: Factory, dummy_server, db_con
     )
     assert [dict(r) for r in cache_files] == [
         {
+            'url': dummy_server.server_name + '/image/?size=700',
+            'storage': None,
+            'error': 'content_length_too_large',
+            'size': None,
+            'hash': None,
+            'content_type': None,
+        },
+        {
             'url': dummy_server.server_name + '/status/200/',
             'storage': None,
-            'error': 'Content-Type header bad for image',
+            'error': 'content_type_not_image',
             'size': None,
             'hash': None,
             'content_type': None,
@@ -206,15 +214,7 @@ async def test_get_images_bad(worker_ctx, factory: Factory, dummy_server, db_con
         {
             'url': 'cid:ii_jxuceprp0',
             'storage': None,
-            'error': 'download error',
-            'size': None,
-            'hash': None,
-            'content_type': None,
-        },
-        {
-            'url': dummy_server.server_name + '/image/?size=700',
-            'storage': None,
-            'error': 'invalid Content-Length',
+            'error': 'download_error',
             'size': None,
             'hash': None,
             'content_type': None,
@@ -222,7 +222,7 @@ async def test_get_images_bad(worker_ctx, factory: Factory, dummy_server, db_con
         {
             'url': dummy_server.server_name + '/status/201/',
             'storage': None,
-            'error': 'response: 201',
+            'error': 'response_201',
             'size': None,
             'hash': None,
             'content_type': None,
@@ -327,7 +327,7 @@ async def test_download_cache_image_bad(worker_ctx, factory: Factory, dummy_serv
     r = await cli.get(factory.url('ui:get-html-image', conv=conv.key, url=url_enc))
     text = await r.text()
     assert r.status == 200, text
-    assert text == 'unable to download image, response: 502'
+    assert text == 'unable to download image, response_502'
 
 
 async def test_download_cache_image_invalid_url(factory: Factory, cli):

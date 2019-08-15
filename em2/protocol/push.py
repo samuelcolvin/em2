@@ -1,17 +1,15 @@
 import asyncio
-import hashlib
 import json
 import logging
 from typing import Any, Dict, List, Set, Tuple
 
 from aiohttp import ClientSession
-from arq import ArqRedis, Retry
+from arq import ArqRedis
 from asyncpg.pool import Pool
 from cryptography.fernet import Fernet
 
 from em2.core import ActionTypes, UserTypes
 from em2.settings import Settings
-from em2.utils.storage import S3, DownloadError, download_remote_file
 
 from .core import Em2Comms, HttpError
 
@@ -100,45 +98,3 @@ class Pusher:
         except HttpError:
             # TODO retry
             raise
-
-
-async def download_push_file(ctx, conv_id: int, content_id: str):
-    session: ClientSession = ctx['client_session']
-    settings: Settings = ctx['settings']
-    pg: Pool = ctx['pg']
-
-    file_id, conv_key, expected_hash, size, url, filename, content_disp, content_type = await pg.fetchrow(
-        """
-        select f.id, key, hash, size, download_url, name, content_disp, content_type
-        from files f
-        join conversations c on f.conv = c.id
-        where f.conv=$1 and f.content_id=$2
-        """,
-        conv_id,
-        content_id,
-    )
-    if size > settings.max_em2_file_size:
-        await pg.execute('update files set error=$2 where id=$1', file_id, 'file too large')
-        return
-
-    try:
-        content, _ = await download_remote_file(url, session, expected_size=size)
-    except DownloadError as e:
-        await pg.execute('update files set error=$2 where id=$1', file_id, e.error)
-        raise Retry(30)  # TODO better back-off
-
-    content_hash = hashlib.sha256(content).hexdigest()
-    if content_hash != expected_hash:
-        await pg.execute('update files set error=$2 where id=$1', file_id, 'hash conflict')
-        return
-
-    async with S3(settings) as s3_client:
-        storage = await s3_client.upload(
-            bucket=settings.s3_file_bucket,
-            path=f'{conv_key}/{content_id}/{filename}',
-            content=content,
-            content_type=content_type,
-            content_disposition=content_disp,
-        )
-
-    await pg.execute('update files set storage=$2 where id=$1', file_id, storage)

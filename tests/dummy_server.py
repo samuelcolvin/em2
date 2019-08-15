@@ -7,7 +7,7 @@ import nacl.encoding
 import nacl.signing
 from aiohttp import web
 from aiohttp.hdrs import METH_GET, METH_HEAD
-from aiohttp.web_response import Response
+from aiohttp.web_response import Response, StreamResponse
 from atoolbox import json_response
 from cryptography.hazmat.backends import default_backend as cryptography_default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -132,6 +132,18 @@ async def get_image(request):
     return Response(body=b'X' * int(request.query.get('size', '10')), content_type='image/png')
 
 
+async def invalid_content_type(request):
+    return Response(body='invalid content-type', content_type='foobar')
+
+
+async def streamed_response(request):
+    r = StreamResponse()
+    r.content_type = 'text/plain'
+    await r.prepare(request)
+    await r.write(b'1' * 600)
+    return r
+
+
 routes = [
     web.get('/v1/route/', em2_routing),
     web.get('/em2/v1/signing/verification/', signing_verification),
@@ -141,4 +153,6 @@ routes = [
     web.route('*', '/s3_endpoint_url/{bucket}/{key:.*}', s3_endpoint),
     web.post('/vapid/', vapid_endpoint),
     web.get('/image/', get_image),
+    web.get('/invalid-content-type/', invalid_content_type),
+    web.get('/streamed-response/', streamed_response),
 ]

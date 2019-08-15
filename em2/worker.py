@@ -8,7 +8,8 @@ from buildpg import asyncpg
 from pydantic.utils import import_string
 
 from em2.protocol.core import get_signing_key
-from em2.protocol.push import download_push_file, push_actions
+from em2.protocol.files import download_push_file
+from em2.protocol.push import push_actions
 from em2.protocol.smtp import BaseSmtpHandler, smtp_send
 from em2.protocol.smtp.images import get_images
 from em2.settings import Settings

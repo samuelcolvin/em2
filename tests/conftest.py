@@ -72,6 +72,7 @@ def _fix_settings_session():
         ),
         vapid_sub_email='vapid-reports@example.com',
         signing_secret_key=b'4' * 64,
+        max_em2_file_size=500,
     )
 
 

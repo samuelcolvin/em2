@@ -190,27 +190,30 @@ class DownloadError(RuntimeError):
 
 def _check_headers(
     response: ClientResponse, require_image: bool, full_url: str, max_size: int, expected_size: int
-) -> Tuple[int, str]:
+) -> str:
     content_type = response.headers.get('Content-Type', '').lower()
     if require_image:
         ext = image_extensions.get(content_type)
         if not ext:
             logger.warning('unknown image Content-Type %r, url: %r', content_type, full_url)
-            raise DownloadError('Content-Type header bad for image')
+            raise DownloadError('content_type_not_image')
     else:
         parts = content_type.split('/')
         if len(parts) != 2 or parts[0] not in main_content_types:
             logger.warning('unknown Content-Type %r, url: %r', content_type, full_url)
-            raise DownloadError('Content-Type header bad')
+            raise DownloadError('content_type_invalid')
 
     try:
         content_length = int(response.headers['Content-Length'])
-    except (ValueError, KeyError):
-        raise DownloadError('Content-Length header missing')
+    except (KeyError, ValueError):
+        # missing Content-Length is okay
+        return content_type
 
-    if (max_size and content_length > max_size) or (expected_size and content_length != expected_size):
-        raise DownloadError('invalid Content-Length')
-    return content_length, content_type
+    if max_size and content_length > max_size:
+        raise DownloadError('content_length_too_large')
+    if expected_size and content_length != expected_size:
+        raise DownloadError('content_length_not_expected')
+    return content_type
 
 
 async def download_remote_file(
@@ -220,23 +223,21 @@ async def download_remote_file(
     try:
         async with session.get(full_url, allow_redirects=True) as r:
             if r.status != 200:
-                raise DownloadError(f'response: {r.status}')
+                raise DownloadError(f'response_{r.status}')
 
-            content_length, content_type = _check_headers(r, require_image, full_url, max_size, expected_size)
+            content_type = _check_headers(r, require_image, full_url, max_size, expected_size)
+            max_size_ = max_size or expected_size
 
             # TODO we should download to a temporary local file in chunks
             content, actual_size = b'', 0
             async for chunk in r.content.iter_chunked(16384):
                 content += chunk
                 actual_size += len(chunk)
-                if actual_size > content_length:
-                    raise DownloadError('length greater than Content-Length')
+                if actual_size > max_size_:
+                    raise DownloadError('streamed_file_too_large')
     except (ClientError, OSError) as e:
         # could do more errors here
         logger.warning('error downloading file from %r %s: %s', full_url, e.__class__.__name__, e, exc_info=True)
-        raise DownloadError('download error')
+        raise DownloadError('download_error')
     else:
-        if actual_size != content_length:
-            # actual downloaded size does not match content-length header
-            raise DownloadError('actual size differs from Content-Length')
         return content, content_type

@@ -613,8 +613,6 @@ async def test_create_with_files(
         'storage': None,
         'action_id': 3,
     }
-    assert len(await redis.queued_jobs()) == 3
-
     assert await worker.run_check() == 3
     storage, error = await db_conn.fetchrow(
         """
@@ -651,3 +649,88 @@ async def test_append_files(em2_cli: Em2TestClient, db_conn, redis: ArqRedis):
     assert len(jobs) == 3  # two web_push and download
     j = next(j for j in jobs if j.function == 'download_push_file')
     assert j.args == (await db_conn.fetchval('select id from conversations'), 'aaaaaaaaaaaaaaaaaaaa')
+
+
+async def test_download_errors(em2_cli: Em2TestClient, db_conn, dummy_server, worker: Worker):
+    await em2_cli.create_conv()
+
+    conv_key = await db_conn.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    root = dummy_server.server_name
+    files = [
+        {
+            'hash': '1' * 32,
+            'name': '1',
+            'content_id': 'a' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 501,
+            'download_url': f'{root}/image/?size=501',
+        },
+        {
+            'hash': '1' * 32,
+            'name': '2',
+            'content_id': 'b' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 200,
+            'download_url': f'{root}/status/503/',
+        },
+        {
+            'hash': '1' * 32,
+            'name': '3',
+            'content_id': 'c' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 200,
+            'download_url': f'{root}/image/?size=200',
+        },
+        {
+            'hash': '1' * 32,
+            'name': '4',
+            'content_id': 'd' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 100,
+            'download_url': f'{root}/image/?size=101',
+        },
+        {
+            'hash': '1' * 32,
+            'name': '5',
+            'content_id': 'e' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 100,
+            'download_url': f'{root}/invalid-content-type/',
+        },
+        {
+            'hash': '1' * 32,
+            'name': '6',
+            'content_id': 'f' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 100,
+            'download_url': f'{root}/streamed-response/',
+        },
+    ]
+    actions = [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'x', 'files': files}]
+    await em2_cli.push_actions(conv_key, actions)
+    assert await db_conn.fetchval('select count(*) from files') == 6
+
+    worker.retry_jobs = False
+    await worker.async_run()
+    assert worker.jobs_complete == 4
+    assert worker.jobs_failed == 4
+    v = await db_conn.fetch(
+        'select download_url, storage, error from files f join actions a on f.action = a.pk order by name'
+    )
+    files = [dict(r) for r in v]
+    # debug(files)
+    assert files == [
+        {'download_url': f'{root}/image/?size=501', 'storage': None, 'error': 'file_too_large'},
+        {'download_url': f'{root}/status/503/', 'storage': None, 'error': 'response_503'},
+        {'download_url': f'{root}/image/?size=200', 'storage': None, 'error': 'hashes_conflict'},
+        {'download_url': f'{root}/image/?size=101', 'storage': None, 'error': 'content_length_not_expected'},
+        {'download_url': f'{root}/invalid-content-type/', 'storage': None, 'error': 'content_type_invalid'},
+        {'download_url': f'{root}/streamed-response/', 'storage': None, 'error': 'streamed_file_too_large'},
+    ]
