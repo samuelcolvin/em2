@@ -734,3 +734,34 @@ async def test_download_errors(em2_cli: Em2TestClient, db_conn, dummy_server, wo
         {'download_url': f'{root}/invalid-content-type/', 'storage': None, 'error': 'content_type_invalid'},
         {'download_url': f'{root}/streamed-response/', 'storage': None, 'error': 'streamed_file_too_large'},
     ]
+
+
+async def test_duplicate_file_content_id(em2_cli: Em2TestClient, db_conn, dummy_server, worker: Worker):
+    await em2_cli.create_conv()
+
+    conv_key = await db_conn.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    root = dummy_server.server_name
+    files = [
+        {
+            'hash': '1' * 32,
+            'name': '1',
+            'content_id': 'a' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 501,
+            'download_url': f'{root}/image/?size=501',
+        },
+        {
+            'hash': '1' * 32,
+            'name': '2',
+            'content_id': 'a' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 200,
+            'download_url': f'{root}/status/503/',
+        },
+    ]
+    actions = [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'x', 'files': files}]
+    r = await em2_cli.push_actions(conv_key, actions, expected_status=400)
+    assert await r.json() == {'message': 'duplicate file content_id on action 5'}
