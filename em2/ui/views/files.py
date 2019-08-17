@@ -11,7 +11,7 @@ from em2.settings import Settings
 from em2.utils.datetime import utcnow
 from em2.utils.db import or404
 from em2.utils.smtp import CopyToTemp
-from em2.utils.storage import S3, parse_storage_uri
+from em2.utils.storage import S3, check_content_type, parse_storage_uri
 
 from .utils import View, file_upload_cache_key
 
@@ -94,7 +94,7 @@ class GetHtmlImage(View):
 
         if error:
             # 200, but not an image should show image error in browser
-            raise HTTPOk(text=f'unable to download image, response: {error}')
+            raise HTTPOk(text=f'unable to download image, {error}')
 
         _, bucket, path = parse_storage_uri(storage)
         url = S3(s).signed_download_url(bucket, path)
@@ -102,7 +102,6 @@ class GetHtmlImage(View):
 
 
 upload_pending_ttl = 3600
-main_content_types = {'application', 'audio', 'font', 'image', 'text', 'video'}
 
 
 class UploadFile(View):
@@ -114,11 +113,7 @@ class UploadFile(View):
 
         @validator('content_type')
         def check_content_type(cls, v: str):
-            v = v.lower().strip(' \r\n')
-            parts = v.split('/')
-            if len(parts) != 2 or parts[0] not in main_content_types:
-                raise ValueError('invalid Content-Type')
-            return v
+            return check_content_type(v)
 
     async def call(self):
         s = self.settings

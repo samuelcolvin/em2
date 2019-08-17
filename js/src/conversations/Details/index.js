@@ -90,9 +90,14 @@ class ConvDetailsView extends React.Component {
   add_msg = async () => {
     if (!this.state.locked && !this.upload_ongoing() && this.state.new_message.has_content) {
       this.setState({locked: true})
-      const actions = [{act: 'message:add', body: this.state.new_message.to_markdown()}]
-      const files = this.state.files.filter(f => f.done).map(f => f.content_id)
-      const r = await window.logic.conversations.act(this.state.conv.key, actions, files)
+      const actions = [
+        {
+          act: 'message:add',
+          body: this.state.new_message.to_markdown(),
+          files: this.state.files.filter(f => f.done).map(f => f.content_id),
+        },
+      ]
+      const r = await window.logic.conversations.act(this.state.conv.key, actions)
       this.action_ids = r.data.action_ids
       this.setState({new_message: empty_editor, files: []})
     }

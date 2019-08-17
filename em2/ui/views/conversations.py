@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
 from buildpg import MultipleValues, SetValues, V, Values, funcs
-from pydantic import BaseModel, EmailStr, constr, validator
+from pydantic import BaseModel, EmailStr, Extra, constr, validator
 
 from em2.background import push_all, push_multiple
 from em2.core import (
@@ -207,6 +207,7 @@ class ActionModel(BaseModel):
     follows: Optional[int] = None
     parent: Optional[int] = None
     msg_format: MsgFormat = MsgFormat.markdown
+    files: List[str] = None
 
     @validator('act')
     def check_act(cls, v):
@@ -239,44 +240,43 @@ class ActionModel(BaseModel):
             raise ValueError('follows is required for this action')
         return v
 
-    def as_raw_action(self, actor_id) -> Action:
-        # technically unnecessary, could just cast
-        return Action(actor_id=actor_id, **self.dict())
+    @validator('files')
+    def check_files(cls, value, values):
+        act = values.get('act')
+        if act and value and act != ActionTypes.msg_add:
+            raise ValueError('files only valid on "message:add" actions')
+        return value
+
+    class Config:
+        extra = Extra.forbid
 
 
 class ConvAct(ExecView):
     class Model(BaseModel):
         actions: List[ActionModel]
-        files: List[str] = None
 
-        @validator('files')
-        def check_files(cls, value, values):
-            actions: List[ActionModel] = values['actions']
-            if len(actions) != 1 or actions[0].act != ActionTypes.msg_add:
-                raise ValueError('files only valid with one "message:add" action')
-            return value
+        class Config:
+            extra = Extra.forbid
 
     async def execute(self, m: Model):
-        files = None
-        if m.files:
-            conv_id, _ = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
-            files = await self.get_files(conv_id, m.files)
         conv_id, action_ids = await apply_actions(
-            conns=self.conns,
-            conv_ref=self.request.match_info['conv'],
-            actions=[a.as_raw_action(self.session.user_id) for a in m.actions],
-            files=files,
+            conns=self.conns, conv_ref=self.request.match_info['conv'], actions=[a async for a in self.raw_actions(m)]
         )
 
         if action_ids:
             await push_multiple(self.conns, conv_id, action_ids)
         return {'action_ids': action_ids}
 
-    async def get_files(self, conv_id: int, file_content_ids: List[str]) -> List[File]:
-        async with S3(self.settings) as s3_client:
-            return await asyncio.gather(
-                *(self.prepare_file(s3_client, conv_id, content_id) for content_id in file_content_ids)
-            )
+    async def raw_actions(self, m: Model):
+        for a in m.actions:
+            files = None
+            if a.files:
+                conv_id, _ = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
+                async with S3(self.settings) as s3_client:
+                    files = await asyncio.gather(
+                        *(self.prepare_file(s3_client, conv_id, content_id) for content_id in a.files)
+                    )
+            yield Action(actor_id=self.session.user_id, files=files, **a.dict(exclude={'files'}))
 
     async def prepare_file(self, s3_client, conv_id, content_id: str):
         storage_path = await self.redis.get(file_upload_cache_key(conv_id, content_id))
@@ -290,7 +290,7 @@ class ConvAct(ExecView):
             raise JsonErrors.HTTPBadRequest('file not uploaded')
         else:
             return File(
-                hash=head['ETag'].strip('"'),
+                hash=head['ETag'].strip('"'),  # TODO need to replace with sha256 hash
                 name=path.rsplit('/', 1)[1],
                 content_id=content_id,
                 content_disp='attachment' if 'ContentDisposition' in head else 'inline',

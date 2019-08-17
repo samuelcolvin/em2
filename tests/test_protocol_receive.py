@@ -3,13 +3,14 @@ from datetime import datetime, timezone
 from operator import attrgetter
 
 import pytest
+from arq import ArqRedis
 from atoolbox.test_utils import DummyServer
 
 from em2.background import push_sql_all
-from em2.core import ActionTypes, construct_conv
+from em2.core import ActionTypes, construct_conv, generate_conv_key
 from em2.protocol.core import get_signing_key
 
-from .conftest import Em2TestClient, Factory
+from .conftest import Em2TestClient, Factory, Worker
 
 
 async def test_signing_verification(cli, url):
@@ -554,3 +555,212 @@ async def test_prt_remove_invalid(em2_cli: Em2TestClient, conns):
         'messages': [{'ref': 3, 'body': 'test message', 'created': ts, 'format': 'markdown', 'active': True}],
         'participants': {'actor@example.org': {'id': 1}, 'recipient@example.com': {'id': 2}},
     }
+
+
+async def test_create_with_files(
+    em2_cli: Em2TestClient, db_conn, factory: Factory, worker: Worker, dummy_server: DummyServer
+):
+    files = [
+        {
+            'hash': '9ed9bf64e48c7b343c6dd5700c3ae57fb517a01bac891fd19c1dab57b23accdc',
+            'name': 'testing.txt',
+            'content_id': 'a' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 123,
+            'download_url': dummy_server.server_name + '/image/?size=123',
+        },
+        {
+            'hash': '2cd3827451fd0fdf29d52743e49930d28228275cb960a25f3a973fe827389e7f',
+            'name': 'testing2.txt',
+            'content_id': '2' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 456,
+            'download_url': dummy_server.server_name + '/image/?size=456',
+        },
+    ]
+
+    a = 'actor@example.org'
+    recipient = 'recipient@example.com'
+    await factory.create_user(email=recipient)
+    ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
+    subject = 'File Test'
+    conv_key = generate_conv_key(a, ts, subject)
+    actions = [
+        {'id': 1, 'act': 'participant:add', 'ts': ts, 'actor': a, 'participant': a},
+        {'id': 2, 'act': 'participant:add', 'ts': ts, 'actor': a, 'participant': recipient},
+        {'id': 3, 'act': 'message:add', 'ts': ts, 'actor': a, 'body': 'testing', 'files': files},
+        {'id': 4, 'act': 'conv:publish', 'ts': ts, 'actor': a, 'body': subject},
+    ]
+    assert await db_conn.fetchval('select count(*) from files') == 0
+
+    await em2_cli.push_actions(conv_key, actions)
+
+    assert await db_conn.fetchval('select count(*) from files') == 2
+    file = await db_conn.fetchrow(
+        """
+        select name, hash, content_id, error, download_url, storage, a.id as action_id from files f
+        join actions a on f.action = a.pk where size=123
+        """
+    )
+    assert dict(file) == {
+        'name': 'testing.txt',
+        'hash': '9ed9bf64e48c7b343c6dd5700c3ae57fb517a01bac891fd19c1dab57b23accdc',
+        'content_id': 'a' * 20,
+        'error': None,
+        'download_url': dummy_server.server_name + '/image/?size=123',
+        'storage': None,
+        'action_id': 3,
+    }
+    assert await worker.run_check() == 3
+    storage, error = await db_conn.fetchrow(
+        """
+        select storage, error from files f
+        join actions a on f.action = a.pk where size=123
+        """
+    )
+    assert error is None
+    assert storage == f's3://s3_files_bucket.example.com/{conv_key}/{"a" * 20}/testing.txt'
+
+
+async def test_append_files(em2_cli: Em2TestClient, db_conn, redis: ArqRedis):
+    await em2_cli.create_conv()
+
+    conv_key = await db_conn.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    file = {
+        'hash': '1' * 32,
+        'name': 'testing.txt',
+        'content_id': 'a' * 20,
+        'content_disp': 'inline',
+        'content_type': 'text/plain',
+        'size': 123,
+        'download_url': 'https://example.com/image.png',
+    }
+    actions = [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'x', 'files': [file]}]
+    assert await db_conn.fetchval('select count(*) from actions') == 4
+    assert await db_conn.fetchval('select count(*) from files') == 0
+    await em2_cli.push_actions(conv_key, actions)
+    assert await db_conn.fetchval('select count(*) from actions') == 5
+    assert await db_conn.fetchval('select count(*) from files') == 1
+
+    jobs = await redis.queued_jobs()
+    assert len(jobs) == 3  # two web_push and download
+    j = next(j for j in jobs if j.function == 'download_push_file')
+    assert j.args == (await db_conn.fetchval('select id from conversations'), 'aaaaaaaaaaaaaaaaaaaa')
+
+
+async def test_download_errors(em2_cli: Em2TestClient, db_conn, dummy_server: DummyServer, worker: Worker):
+    await em2_cli.create_conv()
+
+    conv_key = await db_conn.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    root = dummy_server.server_name
+    files = [
+        {
+            'hash': '1' * 32,
+            'name': '1',
+            'content_id': 'a' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 501,
+            'download_url': f'{root}/image/?size=501',
+        },
+        {
+            'hash': '1' * 32,
+            'name': '2',
+            'content_id': 'b' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 200,
+            'download_url': f'{root}/status/503/',
+        },
+        {
+            'hash': '1' * 32,
+            'name': '3',
+            'content_id': 'c' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 200,
+            'download_url': f'{root}/image/?size=200',
+        },
+        {
+            'hash': '1' * 32,
+            'name': '4',
+            'content_id': 'd' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 100,
+            'download_url': f'{root}/image/?size=101',
+        },
+        {
+            'hash': '1' * 32,
+            'name': '5',
+            'content_id': 'e' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 100,
+            'download_url': f'{root}/invalid-content-type/',
+        },
+        {
+            'hash': '1' * 32,
+            'name': '6',
+            'content_id': 'f' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 100,
+            'download_url': f'{root}/streamed-response/',
+        },
+    ]
+    actions = [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'x', 'files': files}]
+    await em2_cli.push_actions(conv_key, actions)
+    assert await db_conn.fetchval('select count(*) from files') == 6
+
+    worker.retry_jobs = False
+    await worker.async_run()
+    assert worker.jobs_complete == 4
+    assert worker.jobs_failed == 4
+    v = await db_conn.fetch(
+        'select download_url, storage, error from files f join actions a on f.action = a.pk order by name'
+    )
+    files = [dict(r) for r in v]
+    # debug(files)
+    assert files == [
+        {'download_url': f'{root}/image/?size=501', 'storage': None, 'error': 'file_too_large'},
+        {'download_url': f'{root}/status/503/', 'storage': None, 'error': 'response_503'},
+        {'download_url': f'{root}/image/?size=200', 'storage': None, 'error': 'hashes_conflict'},
+        {'download_url': f'{root}/image/?size=101', 'storage': None, 'error': 'content_length_not_expected'},
+        {'download_url': f'{root}/invalid-content-type/', 'storage': None, 'error': 'content_type_invalid'},
+        {'download_url': f'{root}/streamed-response/', 'storage': None, 'error': 'streamed_file_too_large'},
+    ]
+
+
+async def test_duplicate_file_content_id(em2_cli: Em2TestClient, db_conn, dummy_server: DummyServer):
+    await em2_cli.create_conv()
+
+    conv_key = await db_conn.fetchval('select key from conversations')
+    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
+    files = [
+        {
+            'hash': '1' * 32,
+            'name': '1',
+            'content_id': 'a' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 501,
+            'download_url': 'https://example.com/image-1.png',
+        },
+        {
+            'hash': '1' * 32,
+            'name': '2',
+            'content_id': 'a' * 20,
+            'content_disp': 'inline',
+            'content_type': 'text/plain',
+            'size': 200,
+            'download_url': 'https://example.com/image-2.png',
+        },
+    ]
+    actions = [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'x', 'files': files}]
+    r = await em2_cli.push_actions(conv_key, actions, expected_status=400)
+    assert await r.json() == {'message': 'duplicate file content_id on action 5'}

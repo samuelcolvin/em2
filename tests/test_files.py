@@ -100,7 +100,7 @@ async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_ser
 
     dummy_server.app['s3_files'][f'{conv.key}/{content_id}/testing.png'] = 'this is a test'
 
-    data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': [content_id]}
+    data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': [content_id]}]}
     await cli.post_json(factory.url('ui:act', conv=conv.key), data)
 
     data = await db_conn.fetchrow('select * from files')
@@ -117,6 +117,8 @@ async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_ser
         'name': 'testing.png',
         'content_type': 'text/plain; charset=utf-8',
         'size': 14,
+        'download_url': None,
+        'error': None,
     }
 
 
@@ -124,7 +126,7 @@ async def test_message_with_attachment_no_file(cli, factory: Factory):
     await factory.create_user()
     conv = await factory.create_conv(publish=True)
 
-    data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': ['foobar']}
+    data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': ['foobar']}]}
     r = await cli.post_json(factory.url('ui:act', conv=conv.key), data, status=400)
     assert await r.json() == {'message': "no file found for content id 'foobar'"}
 
@@ -137,7 +139,7 @@ async def test_message_with_attachment_not_uploaded(cli, factory: Factory):
     obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q))
     content_id = obj['content_id']
 
-    data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}], 'files': [content_id]}
+    data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': [content_id]}]}
     r = await cli.post_json(factory.url('ui:act', conv=conv.key), data, status=400)
     assert await r.json() == {'message': 'file not uploaded'}
 
@@ -194,17 +196,9 @@ async def test_get_images_bad(worker_ctx, factory: Factory, dummy_server, db_con
     )
     assert [dict(r) for r in cache_files] == [
         {
-            'url': dummy_server.server_name + '/status/201/',
-            'storage': None,
-            'error': 201,
-            'size': None,
-            'hash': None,
-            'content_type': None,
-        },
-        {
             'url': dummy_server.server_name + '/image/?size=700',
             'storage': None,
-            'error': 1413,
+            'error': 'content_length_too_large',
             'size': None,
             'hash': None,
             'content_type': None,
@@ -212,12 +206,27 @@ async def test_get_images_bad(worker_ctx, factory: Factory, dummy_server, db_con
         {
             'url': dummy_server.server_name + '/status/200/',
             'storage': None,
-            'error': 1415,
+            'error': 'content_type_not_image',
             'size': None,
             'hash': None,
             'content_type': None,
         },
-        {'url': 'cid:ii_jxuceprp0', 'storage': None, 'error': 1502, 'size': None, 'hash': None, 'content_type': None},
+        {
+            'url': 'cid:ii_jxuceprp0',
+            'storage': None,
+            'error': 'download_error',
+            'size': None,
+            'hash': None,
+            'content_type': None,
+        },
+        {
+            'url': dummy_server.server_name + '/status/201/',
+            'storage': None,
+            'error': 'response_201',
+            'size': None,
+            'hash': None,
+            'content_type': None,
+        },
     ]
 
 
@@ -318,7 +327,7 @@ async def test_download_cache_image_bad(worker_ctx, factory: Factory, dummy_serv
     r = await cli.get(factory.url('ui:get-html-image', conv=conv.key, url=url_enc))
     text = await r.text()
     assert r.status == 200, text
-    assert text == 'unable to download image, response: 502'
+    assert text == 'unable to download image, response_502'
 
 
 async def test_download_cache_image_invalid_url(factory: Factory, cli):
@@ -339,7 +348,7 @@ async def test_add_to_draft(cli, factory: Factory, db_conn, dummy_server: DummyS
 
     dummy_server.app['s3_files'][f'{conv.key}/{content_id}/testing.png'] = 'this is a test'
 
-    data = {'actions': [{'act': 'message:add', 'body': 'message 2'}], 'files': [content_id]}
+    data = {'actions': [{'act': 'message:add', 'body': 'message 2', 'files': [content_id]}]}
     await cli.post_json(factory.url('ui:act', conv=conv.key), data)
 
     assert 1 == await db_conn.fetchval('select count(*) from files')
