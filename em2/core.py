@@ -774,26 +774,11 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
     return {'subject': subject, 'created': created, 'messages': msg_list, 'participants': participants}
 
 
-@dataclass
-class ConvCreateMessage:
-    body: str
-    msg_format: MsgFormat
-    action_id: Optional[int] = None
-    parent: Optional[int] = None
-    files: Optional[List[File]] = None
-
-
-async def create_conv(
+async def create_conv(  # noqa: 901
     *,
     conns: Connections,
     creator_email: str,
-    creator_id: int,
-    subject: str,
-    publish: bool,
-    messages: List[ConvCreateMessage],
-    participants: Dict[str, Optional[int]],
-    publish_action_id: Optional[int] = None,
-    ts: Optional[datetime] = None,
+    actions: List[Action],
     given_conv_key: Optional[str] = None,
     leader_node: str = None,
     spam: bool = False,
@@ -807,21 +792,33 @@ async def create_conv(
 
     :param conns: connections to use when creating conversation
     :param creator_email: email address of user creating conversation
-    :param creator_id: id of that user
-    :param subject: subject of the new conversation
-    :param publish: whether the conversation should be (or has been) published
-    :param messages: list of messages for the conversation
-    :param participants: lookup from email address of participants to IDs of the actions used when adding that prt
-    :param publish_action_id: optional id of the action ID
-    :param ts: optional timestamp
+    :param actions: list of actions: add message, add participant, publish or create
     :param given_conv_key: given conversation key, checked to confirm it matches generated conv key if given
     :param leader_node: node of the leader of this conversation, black if this node
     :param spam: whether conversation is spam
     :param warnings: warnings about the conversation
     :return: tuple conversation id and key
     """
-    ts = ts or utcnow()
-    conv_key = generate_conv_key(creator_email, ts, subject) if publish else draft_conv_key()
+    main_action: Optional[Action] = None
+
+    # lookup from email address of participants to IDs of the actions used when adding that prt
+    participants: Dict[str, Optional[int]] = {}
+    messages: List[Action] = []
+
+    for action in actions:
+        if action.act in {ActionTypes.conv_publish, ActionTypes.conv_create}:
+            main_action = action
+        elif action.act == ActionTypes.msg_add:
+            messages.append(action)
+        elif action.act == ActionTypes.prt_add:
+            participants[action.participant] = action.id
+
+    assert main_action is not None, 'no publish or create action found'
+    ts = main_action.ts or utcnow()
+
+    publish = main_action.act == ActionTypes.conv_publish
+    creator_id = main_action.actor_id
+    conv_key = generate_conv_key(creator_email, ts, main_action.body) if publish else draft_conv_key()
     if given_conv_key is not None and given_conv_key != conv_key:
         raise JsonErrors.HTTPBadRequest('invalid conversation key', details={'expected': conv_key})
     async with conns.main.transaction():
@@ -876,7 +873,7 @@ async def create_conv(
         values = [
             Values(
                 conv=conv_id,
-                id=m.action_id,
+                id=m.id,
                 act=ActionTypes.msg_add,
                 actor=creator_id,
                 ts=ts,
@@ -897,11 +894,11 @@ async def create_conv(
             values              ($1  , $2 , $3   , $4, $5  , $6)
             """,
             conv_id,
-            ActionTypes.conv_publish if publish else ActionTypes.conv_create,
+            main_action.act,
             creator_id,
             ts,
-            subject,
-            publish_action_id,
+            main_action.body,
+            main_action.id,
         )
         await update_conv_users(conns, conv_id)
         for r, m in zip(msg_action_pks, messages):
@@ -943,7 +940,7 @@ async def create_conv(
         creator_email=creator_email,
         creator_id=creator_id,
         users=part_users,
-        subject=subject,
+        subject=main_action.body,
         publish=publish,
         messages=messages,
     )

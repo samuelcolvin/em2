@@ -8,7 +8,7 @@ from em2.utils.core import message_simplify
 from em2.utils.db import Connections
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .core import Action, File, ConvCreateMessage  # noqa: F401
+    from .core import Action, File  # noqa: F401
 
 __all__ = ['search_create_conv', 'search_publish_conv', 'search_update', 'search']
 
@@ -26,7 +26,7 @@ async def search_create_conv(
     users: Dict[str, int],
     subject: str,
     publish: bool,
-    messages: List['ConvCreateMessage'],
+    messages: List['Action'],
 ):
     addresses = _prepare_address(creator_email, *users.keys())
     files = _prepare_files(list(chain(*(m.files for m in messages if m.files))))

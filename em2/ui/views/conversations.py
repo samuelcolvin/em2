@@ -11,7 +11,6 @@ from em2.background import push_all, push_multiple
 from em2.core import (
     Action,
     ActionTypes,
-    ConvCreateMessage,
     ConvFlags,
     File,
     UpdateFlag,
@@ -182,15 +181,17 @@ class ConvCreate(ExecView):
             return v
 
     async def execute(self, conv: Model):
-        conv_id, conv_key = await create_conv(
-            conns=self.conns,
-            creator_email=self.session.email,
-            creator_id=self.session.user_id,
-            subject=conv.subject,
-            publish=conv.publish,
-            messages=[ConvCreateMessage(body=conv.message, msg_format=conv.msg_format)],
-            participants={p.email: None for p in conv.participants},
-        )
+        actor_id = self.session.user_id
+        actions = [Action(act=ActionTypes.prt_add, actor_id=actor_id, participant=p.email) for p in conv.participants]
+        actions += [
+            Action(act=ActionTypes.msg_add, actor_id=actor_id, body=conv.message, msg_format=conv.msg_format),
+            Action(
+                act=ActionTypes.conv_publish if conv.publish else ActionTypes.conv_create,
+                actor_id=actor_id,
+                body=conv.subject,
+            ),
+        ]
+        conv_id, conv_key = await create_conv(conns=self.conns, creator_email=self.session.email, actions=actions)
 
         await push_all(self.conns, conv_id)
         return dict(key=conv_key, status_=201)

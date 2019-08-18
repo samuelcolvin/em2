@@ -12,7 +12,6 @@ from em2.background import push_all, push_multiple
 from em2.core import (
     Action,
     ActionTypes,
-    ConvCreateMessage,
     File,
     UserTypes,
     apply_actions,
@@ -227,7 +226,7 @@ class Em2Push(ExecView):
             raise JsonErrors.HTTPUnauthorized('not all actors have an em2 nodes')
 
         if None in nodes:
-            # this could be temporary due to error get em2 node
+            # this could be temporary due to an error getting the em2 node
             raise JsonErrors.HTTPUnauthorized('not all actors have an em2 nodes')
         if nodes != {em2_node}:
             raise JsonErrors.HTTPBadRequest("not all actors' em2 nodes match request node")
@@ -317,30 +316,31 @@ class Em2Push(ExecView):
         """
         actor_email = publish_action.actor
 
-        messages = []
-        participants = {}
+        actions: List[Action] = []
+        actor_id = await get_create_user(self.conns, actor_email, UserTypes.remote_em2)
         for a in m.actions:
-            if a.id > publish_action.id:
+            if a.id == publish_action.id:
+                actions.append(Action(act=ActionTypes.conv_publish, actor_id=actor_id, id=a.id, ts=a.ts, body=a.body))
                 break
-            if a.act == ActionTypes.msg_add:
-                messages.append(
-                    ConvCreateMessage(
-                        body=a.body, msg_format=a.msg_format, action_id=a.id, parent=a.parent, files=a.core_files()
+            elif a.act == ActionTypes.msg_add:
+                actions.append(
+                    Action(
+                        act=ActionTypes.msg_add,
+                        actor_id=actor_id,
+                        id=a.id,
+                        body=a.body,
+                        msg_format=a.msg_format,
+                        parent=a.parent,
+                        files=a.core_files(),
                     )
                 )
             elif a.act == ActionTypes.prt_add and a.participant != actor_email:
-                participants[a.participant] = a.id
+                actions.append(Action(act=ActionTypes.prt_add, actor_id=actor_id, id=a.id, participant=a.participant))
 
-        actor_id = await get_create_user(self.conns, actor_email, UserTypes.remote_em2)
         conv_id, _ = await create_conv(
             conns=self.conns,
             creator_email=actor_email,
-            creator_id=actor_id,
-            subject=publish_action.body,
-            publish=True,
-            messages=messages,
-            participants=participants,
-            ts=publish_action.ts,
+            actions=actions,
             given_conv_key=self.request.match_info['conv'],
             leader_node=em2_node,
         )

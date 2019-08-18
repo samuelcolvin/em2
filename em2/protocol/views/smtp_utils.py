@@ -11,17 +11,7 @@ from bs4 import BeautifulSoup
 from buildpg.asyncpg import BuildPgConnection
 
 from em2.background import push_all, push_multiple
-from em2.core import (
-    Action,
-    ActionTypes,
-    Connections,
-    ConvCreateMessage,
-    MsgFormat,
-    UserTypes,
-    apply_actions,
-    create_conv,
-    get_create_user,
-)
+from em2.core import Action, ActionTypes, Connections, MsgFormat, UserTypes, apply_actions, create_conv, get_create_user
 from em2.utils.smtp import find_smtp_files
 
 logger = logging.getLogger('em2.protocol.views.smtp')
@@ -167,21 +157,20 @@ class ProcessSMTP:
                 await pg.execute('update files set send=$1 where action=$2', send_id, add_action_pk)
                 await push_multiple(self.conns, conv_id, action_ids, transmit=False)
             else:
+                actions = [Action(act=ActionTypes.prt_add, actor_id=actor_id, participant=r) for r in recipients]
+
+                actions += [
+                    Action(
+                        act=ActionTypes.msg_add,
+                        actor_id=actor_id,
+                        body=body.strip(),
+                        msg_format=MsgFormat.html if is_html else MsgFormat.plain,
+                        files=files,
+                    ),
+                    Action(act=ActionTypes.conv_publish, actor_id=actor_id, ts=timestamp, body=msg['Subject'] or '-'),
+                ]
                 conv_id, conv_key = await create_conv(
-                    conns=self.conns,
-                    creator_email=actor_email,
-                    creator_id=actor_id,
-                    subject=msg['Subject'] or '-',
-                    publish=True,
-                    messages=[
-                        ConvCreateMessage(
-                            body=body.strip(), msg_format=MsgFormat.html if is_html else MsgFormat.plain, files=files
-                        )
-                    ],
-                    participants={r: None for r in recipients},
-                    ts=timestamp,
-                    spam=spam,
-                    warnings=warnings,
+                    conns=self.conns, creator_email=actor_email, actions=actions, spam=spam, warnings=warnings
                 )
                 send_id, add_action_pk = await pg.fetchrow(
                     """
