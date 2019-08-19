@@ -260,6 +260,7 @@ class Em2Push(ExecView):
                 *[self.em2.check_local(a.participant) for a in m.actions if a.act == ActionTypes.prt_add]
             )
             if not any(are_local):
+                # TODO custom error code
                 raise JsonErrors.HTTPBadRequest('no participants on this em2 node')
             try:
                 await self.published_conv(publish_action, m, em2_node)
@@ -277,7 +278,7 @@ class Em2Push(ExecView):
             conv_id, last_action_id, leader_node = r
 
             if leader_node and leader_node != em2_node:
-                raise JsonErrors.HTTPBadRequest('request em2 node does not match current em2 node')
+                raise JsonErrors.HTTPBadRequest("request em2 node does not match conversation's em2 node")
         else:
             # conversation doesn't exist and there's no publish_action, need the whole conversation
             raise JsonErrors.HTTP470('full conversation required')  # TODO better error

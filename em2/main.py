@@ -45,12 +45,12 @@ async def create_app(settings: Settings = None):
     middleware = () if settings.domain == 'localhost' else (error_middleware,)
     app = Application(middlewares=middleware, client_max_size=settings.max_request_size)
 
+    app['settings'] = settings
     app.update(
-        settings=settings,
         middleware_should_warn=should_warn,
-        ui_app=await create_app_ui(settings),
-        protocol_app=await create_app_protocol(settings),
-        auth_app=await create_app_auth(settings),
+        ui_app=await create_app_ui(app),
+        protocol_app=await create_app_protocol(app),
+        auth_app=await create_app_auth(app),
     )
     app.on_startup.append(startup)
     app.on_startup.append(startup_populate_subapps)
@@ -63,9 +63,9 @@ async def create_app(settings: Settings = None):
         app.add_subapp('/em2/', app['protocol_app'])
         app.add_subapp('/auth/', app['auth_app'])
         routes_description = (
-            '  http://localhost:8000/ui/ - user interface routes\n'
-            '  http://localhost:8000/em2/ - em2 protocol routes\n'
-            '  http://localhost:8000/auth/ - auth routes\n'
+            f'  http://localhost:{settings.local_port}/ui/ - user interface routes\n'
+            f'  http://localhost:{settings.local_port}/em2/ - em2 protocol routes\n'
+            f'  http://localhost:{settings.local_port}/auth/ - auth routes\n'
         )
         app['expected_origin'] = 'http://localhost:3000'
     else:

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from aiodns import DNSResolver
 from aiohttp import web
 from atoolbox.middleware import pg_middleware
@@ -20,11 +22,14 @@ async def startup(app):
     )
 
 
-async def create_app_protocol(settings=None):
+async def create_app_protocol(main_app: Optional[web.Application]):
+    settings: Settings = main_app['settings']
     app = web.Application(middlewares=[pg_middleware])
 
     settings = settings or Settings()
-    app.update(name='auth', settings=settings, signing_key=get_signing_key(settings.signing_secret_key))
+    app.update(
+        name='protocol', main_app=main_app, settings=settings, signing_key=get_signing_key(settings.signing_secret_key)
+    )
     app.on_startup.append(startup)
     app.add_routes(
         [

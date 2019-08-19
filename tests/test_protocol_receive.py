@@ -388,7 +388,7 @@ async def test_wrong_node(em2_cli: Em2TestClient, db_conn):
     await db_conn.execute("update conversations set leader_node='foobar.com'")
 
     r = await em2_cli.create_conv(expected_status=400)
-    assert await r.json() == {'message': 'request em2 node does not match current em2 node'}
+    assert await r.json() == {'message': "request em2 node does not match conversation's em2 node"}
     assert await db_conn.fetchval('select count(*) from conversations') == 1
 
 

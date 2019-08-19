@@ -85,7 +85,7 @@ class MakeUrl:
     def get_url(self, name: str, *, query=None, **kwargs) -> str:
         path = self.get_path(name, query=query, **kwargs)
         if self.settings.domain == 'localhost':
-            host = f'http://{self.settings.domain}:8000'
+            host = f'http://{self.settings.domain}:{self.settings.port}'
         else:
             app_name, _ = self._split_name(name)
             host = f'https://{app_name}.{self.settings.domain}'
@@ -94,7 +94,7 @@ class MakeUrl:
     @staticmethod
     def _split_name(name: str) -> Tuple[str, str]:
         try:
-            app_name, route_name = name.split(':')
+            app_name, route_name = name.split(':', 1)
         except ValueError:
             raise RuntimeError('no app name, use format "<app name>:<route name>"')
         else:
@@ -124,3 +124,10 @@ def internal_request_check(request):
 
 def internal_request_headers(settings):
     return {'Authentication': settings.internal_auth_key}
+
+
+def this_em2_node(settings: Settings):
+    if settings.domain == 'localhost':
+        return f'{settings.domain}:{settings.local_port}/em2'
+    else:
+        return f'em2.{settings.domain}'

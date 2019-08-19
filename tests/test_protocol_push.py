@@ -15,12 +15,11 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
     await factory.create_user()
     conv = await factory.create_conv(participants=[{'email': 'whatever@example.org'}], publish=True)
     assert 4 == await db_conn.fetchval('select count(*) from actions')
-    await worker.run_check(max_burst_jobs=2)
-    assert await worker.run_check()
+    assert await worker.run_check(max_burst_jobs=2) == 2
 
     assert dummy_server.log == [
         f'GET /v1/route/?email=whatever@example.org > 200',
-        f'POST /em2/v1/push/{conv.key}/?node=em2.localhost > 200',
+        f'POST /em2/v1/push/{conv.key}/?node=localhost:{factory.cli.server.port}/em2 > 200',
     ]
 
     assert len(dummy_server.app['em2push']) == 1
@@ -31,7 +30,10 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
     signing_key = get_signing_key(settings.signing_secret_key)
 
     body = data['body']
-    to_sign = f'POST {dummy_server.server_name}/em2/v1/push/{conv.key}/?node=em2.localhost {ts}\n{body}'.encode()
+    to_sign = (
+        f'POST {dummy_server.server_name}/em2/v1/push/{conv.key}/?node=localhost:{factory.cli.server.port}/em2 '
+        f'{ts}\n{body}'
+    ).encode()
     signing_key.verify_key.verify(to_sign, bytes.fromhex(sig))
 
     assert json.loads(body) == {

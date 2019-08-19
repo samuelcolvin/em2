@@ -92,7 +92,7 @@ class Pusher:
         this_em2_node = self.em2.this_em2_node()
         await asyncio.gather(*[self.em2_send_node(data, n, this_em2_node, conversation) for n in em2_nodes])
 
-    async def em2_send_node(self, data: bytes, em2_node: str, this_em2_node: str, conversation):
+    async def em2_send_node(self, data: bytes, em2_node: str, this_em2_node: str, conversation: str):
         try:
             await self.em2.post(f'{em2_node}/v1/push/{conversation}/', data=data, params={'node': this_em2_node})
         except HttpError:
