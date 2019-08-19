@@ -110,7 +110,7 @@ async def _fix_db_conn(loop, settings, main_db_create):
     tr = conn.transaction()
     await tr.start()
 
-    yield conn
+    yield DummyPgPool(conn)
 
     await tr.rollback()
     await conn.close()
@@ -166,7 +166,7 @@ def _fix_resolver(dummy_server: DummyServer):
 @pytest.fixture(name='cli')
 async def _fix_cli(settings, db_conn, aiohttp_server, redis, resolver):
     app = await create_app(settings=settings)
-    app['pg'] = DummyPgPool(db_conn)
+    app['pg'] = db_conn
     app['protocol_app']['resolver'] = resolver
     server = await aiohttp_server(app)
     settings.local_port = server.port
@@ -380,7 +380,7 @@ async def _fix_worker_ctx(redis, settings, db_conn, dummy_server, resolver):
     session = ClientSession(timeout=ClientTimeout(total=10))
     ctx = dict(
         settings=settings,
-        pg=DummyPgPool(db_conn),
+        pg=db_conn,
         client_session=session,
         resolver=resolver,
         redis=redis,
@@ -410,7 +410,7 @@ async def _fix_ses_worker(redis, settings, db_conn, resolver):
     session = ClientSession(timeout=ClientTimeout(total=10))
     ctx = dict(
         settings=settings,
-        pg=DummyPgPool(db_conn),
+        pg=db_conn,
         client_session=session,
         resolver=resolver,
         signing_key=get_signing_key(settings.signing_secret_key),
@@ -588,8 +588,8 @@ def _fix_alt_settings_session(settings_session):
 
     return settings_session.copy(
         update={
-            'DATABASE_URL': f'postgres://postgres@localhost:5432/{pg_db}',
-            'REDISCLOUD_URL': f'redis://localhost:6379/{redis_db}',
+            'pg_dsn': f'postgres://postgres@localhost:5432/{pg_db}',
+            'redis_settings_default': f'redis://localhost:6379/{redis_db}',
         }
     )
 
@@ -619,7 +619,7 @@ async def _fix_alt_db_conn(loop, alt_settings, alt_db_create):
     tr = conn.transaction()
     await tr.start()
 
-    yield conn
+    yield DummyPgPool(conn)
 
     await tr.rollback()
     await conn.close()
@@ -640,10 +640,15 @@ async def _fix_alt_redis(loop, alt_settings):
     await redis.wait_closed()
 
 
+@pytest.fixture(name='alt_conns')
+def _fix_alt_conns(alt_db_conn, alt_redis, alt_settings):
+    return Connections(alt_db_conn, alt_redis, alt_settings)
+
+
 @pytest.fixture(name='alt_server')
 async def _fix_alt_server(alt_settings, alt_db_conn, aiohttp_server, alt_redis, resolver: TestDNSResolver):
     app = await create_app(settings=alt_settings)
-    app['pg'] = DummyPgPool(alt_db_conn)
+    app['pg'] = alt_db_conn
     app['protocol_app']['resolver'] = resolver
     server = await aiohttp_server(app)
     resolver.alt_server = server

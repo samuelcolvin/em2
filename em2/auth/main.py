@@ -1,5 +1,3 @@
-from typing import Optional
-
 from aiohttp import web
 from atoolbox.middleware import pg_middleware
 from cryptography import fernet
@@ -12,7 +10,7 @@ from .utils import mk_password
 from .views.main import FinishSession, Login, UpdateSession, check_address, em2_route
 
 
-async def create_app_auth(main_app: Optional[web.Application]):
+async def create_app_auth(main_app: web.Application):
     settings: Settings = main_app['settings']
     routes = [
         web.get('/v1/route/', em2_route, name='em2-route'),

@@ -1,5 +1,3 @@
-from typing import Optional
-
 from aiodns import DNSResolver
 from aiohttp import web
 from atoolbox.middleware import pg_middleware
@@ -22,7 +20,7 @@ async def startup(app):
     )
 
 
-async def create_app_protocol(main_app: Optional[web.Application]):
+async def create_app_protocol(main_app: web.Application):
     settings: Settings = main_app['settings']
     app = web.Application(middlewares=[pg_middleware])
 
