@@ -1,3 +1,4 @@
+import re
 import secrets
 from typing import Tuple
 
@@ -101,12 +102,12 @@ class MakeUrl:
             return app_name, route_name
 
 
-def full_url(settings: Settings, app: str, path: str):
+def full_url(settings: Settings, app: str, path: str = ''):
     if app == 'protocol':
         app = 'em2'
 
     assert app in {'em2', 'auth', 'ui'}, f'unknown app {app!r}, should be "em2", "auth", or "ui"'
-    assert path.startswith('/'), f'part should start with /, not {path!r}'
+    assert path == '' or path.startswith('/'), f'part should start with /, not {path!r}'
 
     if settings.domain == 'localhost':
         root = f'http://localhost:{settings.local_port}/{app}'
@@ -126,8 +127,8 @@ def internal_request_headers(settings):
     return {'Authentication': settings.internal_auth_key}
 
 
-def this_em2_node(settings: Settings):
-    if settings.domain == 'localhost':
-        return f'{settings.domain}:{settings.local_port}/em2'
-    else:
-        return f'em2.{settings.domain}'
+remove_http = re.compile('^https?://')
+
+
+def this_em2_node(settings: Settings) -> str:
+    return remove_http.sub('', full_url(settings, 'em2'))

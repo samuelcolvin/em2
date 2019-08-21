@@ -728,6 +728,7 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
         elif act == ActionTypes.subject_modify:
             subject = action['body']
         elif act == ActionTypes.msg_add:
+            # FIXME add actor to message
             d = {
                 'ref': action_id,
                 'body': action['body'],

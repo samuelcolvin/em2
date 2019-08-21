@@ -1,18 +1,16 @@
 from arq import Worker
 from pytest_toolbox.comparison import CloseToNow
 
-from em2.core import construct_conv
+from em2.core import Action, ActionTypes, construct_conv
 
 from .conftest import Factory
 
 
-async def test_publish_em2(factory: Factory, worker: Worker, alt_server, alt_db_conn, alt_conns):
+async def test_publish_em2(factory: Factory, worker: Worker, alt_cli, alt_db_conn, alt_conns):
     await factory.create_user(email='testing@local.example.com')
 
     recipient = 'recipient@alt.example.com'
-    await alt_db_conn.fetchval(
-        "insert into auth_users (email, account_status) values ($1, 'active') returning id", recipient
-    )
+    await alt_db_conn.fetchval("insert into auth_users (email, account_status) values ($1, 'active')", recipient)
     assert await alt_db_conn.fetchval('select count(*) from conversations') == 0
     conv = await factory.create_conv(participants=[{'email': recipient}], publish=True)
     assert await worker.run_check(max_burst_jobs=2) == 2
@@ -25,5 +23,38 @@ async def test_publish_em2(factory: Factory, worker: Worker, alt_server, alt_db_
         'subject': 'Test Subject',
         'created': CloseToNow(),
         'messages': [{'ref': 3, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True}],
+        'participants': {'testing@local.example.com': {'id': 1}, 'recipient@alt.example.com': {'id': 2}},
+    }
+
+
+async def test_em2_reply(factory: Factory, worker: Worker, alt_factory: Factory, alt_conns):
+    await factory.create_user(email='testing@local.example.com')
+
+    recipient = 'recipient@alt.example.com'
+    await alt_factory.create_user(email=recipient)
+    assert await alt_conns.main.fetchval('select count(*) from users') == 1
+
+    conv = await factory.create_conv(participants=[{'email': recipient}], publish=True)
+    assert await worker.run_check() == 2
+    assert await alt_conns.main.fetchval('select count(*) from conversations') == 1
+    assert await alt_conns.main.fetchval('select count(*) from actions') == 4
+
+    action = Action(actor_id=factory.user.id, act=ActionTypes.msg_add, body='msg 2')
+    await factory.act(conv.id, action)
+    assert await worker.run_check() == 4
+
+    action = Action(actor_id=alt_factory.user.id, act=ActionTypes.msg_add, body='msg 2')
+    alt_conv_key = await alt_conns.main.fetchval('select id from conversations where key=$1', conv.key)
+    await alt_factory.act(alt_conv_key, action)
+
+    conv = await construct_conv(alt_conns, alt_factory.user.id, conv.key)
+    assert conv == {
+        'subject': 'Test Subject',
+        'created': CloseToNow(),
+        'messages': [
+            {'ref': 3, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True},
+            {'ref': 5, 'body': 'msg 2', 'created': CloseToNow(), 'format': 'markdown', 'active': True},
+            {'ref': 6, 'body': 'msg 2', 'created': CloseToNow(), 'format': 'markdown', 'active': True},
+        ],
         'participants': {'testing@local.example.com': {'id': 1}, 'recipient@alt.example.com': {'id': 2}},
     }

@@ -14,6 +14,7 @@ from aiohttp import ClientSession, ClientTimeout
 from aiohttp.test_utils import TestClient, teardown_test_loop
 from aioredis import create_redis
 from arq import ArqRedis, Worker
+from arq.connections import RedisSettings
 from atoolbox.db.helpers import DummyPgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
 from buildpg import Values
@@ -370,8 +371,8 @@ class Factory:
         return action_ids
 
 
-@pytest.fixture
-async def factory(redis, cli, url):
+@pytest.fixture(name='factory')
+async def _fix_factory(redis, cli, url):
     return Factory(redis, cli, url)
 
 
@@ -589,7 +590,7 @@ def _fix_alt_settings_session(settings_session):
     return settings_session.copy(
         update={
             'pg_dsn': f'postgres://postgres@localhost:5432/{pg_db}',
-            'redis_settings_default': f'redis://localhost:6379/{redis_db}',
+            'redis_settings': RedisSettings(database=redis_db),
         }
     )
 
@@ -645,13 +646,26 @@ def _fix_alt_conns(alt_db_conn, alt_redis, alt_settings):
     return Connections(alt_db_conn, alt_redis, alt_settings)
 
 
-@pytest.fixture(name='alt_server')
-async def _fix_alt_server(alt_settings, alt_db_conn, aiohttp_server, alt_redis, resolver: TestDNSResolver):
+@pytest.fixture(name='alt_cli')
+async def _fix_alt_cli(alt_settings, alt_db_conn, aiohttp_server, alt_redis, resolver: TestDNSResolver):
     app = await create_app(settings=alt_settings)
     app['pg'] = alt_db_conn
     app['protocol_app']['resolver'] = resolver
     server = await aiohttp_server(app)
     resolver.alt_server = server
     alt_settings.local_port = server.port
+    cli = UserTestClient(server)
 
-    return server
+    yield cli
+
+    await cli.close()
+
+
+@pytest.fixture(name='alt_url')
+def _fix_alt_url(alt_cli: UserTestClient):
+    return MakeUrl(alt_cli.server.app).get_path
+
+
+@pytest.fixture(name='alt_factory')
+async def _fix_alt_factory(alt_redis, alt_cli, alt_url):
+    return Factory(alt_redis, alt_cli, alt_url)
