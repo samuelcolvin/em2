@@ -36,7 +36,7 @@ async def test_clean_email(conns, db_conn, create_email, send_to_remote):
         """,
         headers={'In-Reply-To': message_id},
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
     assert 2 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     body = await db_conn.fetchval("select body from actions where act='message:add' order by pk desc limit 1")
     assert body == (
@@ -64,7 +64,7 @@ async def test_attachment_content_id(conns, factory: Factory, db_conn, create_em
             )
         ],
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     assert 'This is the <b>message</b>.' == await db_conn.fetchval("select body from actions where act='message:add'")
 
@@ -93,7 +93,7 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
             attachment('testing2.txt', 'text/plain', 'hello2', {'Content-ID': 'testing-hello2'}),
         ],
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     assert 'This is the <b>message</b>.' == await db_conn.fetchval("select body from actions where act='message:add'")
 
@@ -188,7 +188,7 @@ async def test_get_file(conns, factory: Factory, db_conn, create_email, attachme
         html_body='This is the <b>message</b>.',
         attachments=[attachment('testing.txt', 'text/plain', 'hello', {'Content-ID': 'testing-hello2'})],
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/s3-test-path')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/s3-test-path')
 
     assert 1 == await db_conn.fetchval("select count(*) from files")
 
@@ -346,7 +346,7 @@ async def test_reply_attachment(factory, conns, db_conn, create_email, send_to_r
         headers={'In-Reply-To': message_id},
         attachments=[attachment('testing.txt', 'text/plain', 'hello', {'Content-ID': 'foobar'})],
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
     data = json.loads(await conv_actions_json(conns, factory.user.id, factory.conv.key))
     assert data[-1] == {
         'id': 5,
@@ -419,7 +419,7 @@ async def test_image_extraction(conns, db_conn, create_email, send_to_remote, wo
         """,
         headers={'In-Reply-To': message_id},
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
     assert 2 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     body = await db_conn.fetchval("select body from actions where act='message:add' order by pk desc limit 1")
     assert body == (
@@ -469,10 +469,21 @@ async def test_image_extraction_many(conns, db_conn, create_email, send_to_remot
         ),
         headers={'In-Reply-To': message_id},
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
     assert 2 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
 
     assert await worker.run_check() == 5
     assert len(dummy_server.log) == 20
 
     assert await db_conn.fetchval('select count(*) from image_cache') == 10
+
+
+async def test_send_to_many(conns, factory: Factory, db_conn, create_email, create_image):
+    await factory.create_user()
+
+    recipients = ['b@ex.com', 'testing-1@example.com', 'a@ex.com', 'd@ex.com', 'c@ex.com']
+    msg = create_email(html_body='This is the <b>message</b>.', to=recipients)
+    await process_smtp(conns, msg, recipients, 's3://foobar/whatever')
+    v = await db_conn.fetch('select email from participants p join users u on p.user_id = u.id order by p.id')
+    prt_addrs = [r[0] for r in v]
+    assert prt_addrs == ['sender@example.net'] + recipients

@@ -20,7 +20,7 @@ SMTP = 'SMTP'
 
 async def push_actions(ctx, actions_data: str, users: List[Tuple[str, UserTypes]]):
     pusher = Pusher(ctx)
-    return await pusher.split_destinations(actions_data, users)
+    return await pusher.push(actions_data, users)
 
 
 class Pusher:
@@ -33,7 +33,7 @@ class Pusher:
         self.redis: ArqRedis = ctx['redis']
         self.em2 = Em2Comms(self.settings, self.session, ctx['signing_key'], self.redis, ctx['resolver'])
 
-    async def split_destinations(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
+    async def push(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
         results = await asyncio.gather(*[self.resolve_user(*u) for u in users])
         retry_users, smtp_addresses, em2_nodes = set(), set(), set()
         for node, email in filter(None, results):

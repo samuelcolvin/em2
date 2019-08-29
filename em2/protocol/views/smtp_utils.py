@@ -46,9 +46,14 @@ async def remove_participants(conn: BuildPgConnection, conv_id: int, ts: datetim
     return [r_[0] for r_ in r]
 
 
-async def get_email_recipients(to: List[str], cc: List[str], message_id: str, conn: BuildPgConnection) -> Set[str]:
-    recipients = email.utils.getaddresses(to + cc)
-    recipients = {a for n, a in recipients}
+async def get_email_recipients(to: List[str], cc: List[str], message_id: str, conn: BuildPgConnection) -> List[str]:
+    recipients = []
+    addr_set = set()
+    for _, addr in email.utils.getaddresses(to + cc):
+        if addr not in addr_set:
+            recipients.append(addr)
+            addr_set.add(addr)
+
     if not recipients:
         logger.warning('email with no recipient, ignoring %s', message_id)
         raise HTTPBadRequest(text='no recipient, ignoring')
@@ -63,7 +68,7 @@ async def get_email_recipients(to: List[str], cc: List[str], message_id: str, co
 async def process_smtp(
     conns: Connections,
     msg: EmailMessage,
-    recipients: Set[str],
+    recipients: List[str],
     storage: str,
     *,
     spam: bool = None,
@@ -83,11 +88,11 @@ class ProcessSMTP:
     def __init__(self, conns: Connections):
         self.conns: Connections = conns
 
-    async def run(self, msg: EmailMessage, recipients: Set[str], storage: str, spam: bool, warnings: dict):
+    async def run(self, msg: EmailMessage, recipients: List[str], storage: str, spam: bool, warnings: dict):
         # TODO deal with non multipart
         _, actor_email = email.utils.parseaddr(msg['From'])
         if not actor_email:
-            logger.warning('invalid smtp msg: "From" header', exc_info=True, extra={msg: msg})
+            logger.warning('invalid smtp msg: "From" header', extra={msg: msg})
             raise InvalidEmailMsg('invalid "From" header')
         actor_email = actor_email.lower()
 
@@ -124,7 +129,8 @@ class ProcessSMTP:
                 else:
                     all_action_ids = []
 
-                new_prts = recipients - existing_prts
+                # note: this could change the order of new participants to not match the SMTP headers, doesn't matter?
+                new_prts = set(recipients) - existing_prts
 
                 msg_format = MsgFormat.html if is_html else MsgFormat.plain
                 body = (body or '').strip()
