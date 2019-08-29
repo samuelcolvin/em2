@@ -1,3 +1,4 @@
+import re
 import secrets
 from typing import Tuple
 
@@ -85,7 +86,7 @@ class MakeUrl:
     def get_url(self, name: str, *, query=None, **kwargs) -> str:
         path = self.get_path(name, query=query, **kwargs)
         if self.settings.domain == 'localhost':
-            host = f'http://{self.settings.domain}:8000'
+            host = f'http://{self.settings.domain}:{self.settings.port}'
         else:
             app_name, _ = self._split_name(name)
             host = f'https://{app_name}.{self.settings.domain}'
@@ -94,19 +95,19 @@ class MakeUrl:
     @staticmethod
     def _split_name(name: str) -> Tuple[str, str]:
         try:
-            app_name, route_name = name.split(':')
+            app_name, route_name = name.split(':', 1)
         except ValueError:
             raise RuntimeError('no app name, use format "<app name>:<route name>"')
         else:
             return app_name, route_name
 
 
-def full_url(settings: Settings, app: str, path: str):
+def full_url(settings: Settings, app: str, path: str = ''):
     if app == 'protocol':
         app = 'em2'
 
     assert app in {'em2', 'auth', 'ui'}, f'unknown app {app!r}, should be "em2", "auth", or "ui"'
-    assert path.startswith('/'), f'part should start with /, not {path!r}'
+    assert path == '' or path.startswith('/'), f'part should start with /, not {path!r}'
 
     if settings.domain == 'localhost':
         root = f'http://localhost:{settings.local_port}/{app}'
@@ -124,3 +125,10 @@ def internal_request_check(request):
 
 def internal_request_headers(settings):
     return {'Authentication': settings.internal_auth_key}
+
+
+remove_http = re.compile('^https?://')
+
+
+def this_em2_node(settings: Settings) -> str:
+    return remove_http.sub('', full_url(settings, 'em2'))

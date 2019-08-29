@@ -19,7 +19,7 @@ from pydantic import BaseModel, PositiveInt, ValidationError, constr
 from yarl import URL
 
 from em2.settings import Settings
-from em2.utils.web import full_url, internal_request_headers
+from em2.utils.web import full_url, internal_request_headers, this_em2_node
 
 logger = logging.getLogger('em2.core')
 # could try another subdomain with a random part incase people are using em2-platform
@@ -75,8 +75,7 @@ class Em2Comms:
         self.resolver = resolver
 
     def this_em2_node(self):
-        # TODO different for test? include proto?
-        return f'em2.{self.settings.domain}'
+        return this_em2_node(self.settings)
 
     async def check_signature(self, node, request) -> None:  # noqa: C901 (ignore complexity)
         try:
@@ -138,7 +137,7 @@ class Em2Comms:
 
         r = await self.get(em2_domain + '/v1/route/', sign=False, params={'email': email}, model=RouteModel)
 
-        node = r.model.node.rstrip('/')
+        node = r.model.node
         # 31_104_000 is one year, got a valid em2 node, assume it'll last for a long time
         await self.redis.setex(user_node_key, 31_104_000, node)
         return node
@@ -225,6 +224,7 @@ class Em2Comms:
         else:
             headers = None
 
+        logger.debug('em2-request %s %s', method, url_)
         try:
             async with self.session.request(method, url_, data=data_, headers=headers) as r:
                 response_data = await r.text()
@@ -238,14 +238,14 @@ class Em2Comms:
                     return ResponseSummary(r.status, response_headers, m)
 
         except (ClientError, OSError, asyncio.TimeoutError, ValidationError) as e:
-            exc = f'{e.__class__.__name__}: {e}'
+            exc = repr(e)
         else:
             exc = f'bad response: {r.status}'
 
         logger.warning(
             'error on %s to %s, %s',
             method,
-            url,
+            url_,
             exc,
             extra={
                 'data': {
@@ -258,7 +258,7 @@ class Em2Comms:
                 }
             },
         )
-        raise HttpError(f'error on {method} to {url}, {exc}')
+        raise HttpError(f'error on {method} to {url_}, {exc}')
 
 
 def body_to_sign(method: str, url: URL, ts: str, data: Optional[bytes]) -> bytes:

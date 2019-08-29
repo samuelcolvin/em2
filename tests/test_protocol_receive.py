@@ -135,7 +135,8 @@ async def test_append_to_conv(em2_cli: Em2TestClient, conns):
 
     conv_key = await conns.main.fetchval('select key from conversations')
     ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
-    actions = [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@example.org', 'body': 'another message'}]
+    a = 'actor@example.org'
+    actions = [{'id': 5, 'act': 'message:add', 'ts': ts, 'actor': a, 'body': 'another message'}]
     await em2_cli.push_actions(conv_key, actions)
 
     assert await conns.main.fetchval('select count(*) from conversations') == 1
@@ -147,14 +148,15 @@ async def test_append_to_conv(em2_cli: Em2TestClient, conns):
         'messages': [
             {
                 'ref': 3,
+                'author': a,
                 'body': 'test message',
                 'created': '2032-06-06T12:00:00+00:00',
                 'format': 'markdown',
                 'active': True,
             },
-            {'ref': 5, 'body': 'another message', 'created': ts, 'format': 'markdown', 'active': True},
+            {'ref': 5, 'author': a, 'body': 'another message', 'created': ts, 'format': 'markdown', 'active': True},
         ],
-        'participants': {'actor@example.org': {'id': 1}, 'recipient@example.com': {'id': 2}},
+        'participants': {a: {'id': 1}, 'recipient@example.com': {'id': 2}},
     }
 
 
@@ -185,12 +187,14 @@ async def test_create_append(em2_cli, conns, factory: Factory):
             {
                 'ref': 4,
                 'body': 'x',
+                'author': a,
                 'created': '2032-06-06T12:00:00+00:00',
                 'format': 'markdown',
                 'active': True,
                 'children': [
                     {
                         'ref': 6,
+                        'author': 'another@example.org',
                         'body': 'more',
                         'created': '2032-06-06T12:00:00+00:00',
                         'format': 'markdown',
@@ -388,7 +392,7 @@ async def test_wrong_node(em2_cli: Em2TestClient, db_conn):
     await db_conn.execute("update conversations set leader_node='foobar.com'")
 
     r = await em2_cli.create_conv(expected_status=400)
-    assert await r.json() == {'message': 'request em2 node does not match current em2 node'}
+    assert await r.json() == {'message': "request em2 node does not match conversation's em2 node"}
     assert await db_conn.fetchval('select count(*) from conversations') == 1
 
 
@@ -493,8 +497,18 @@ async def test_modify_message(em2_cli: Em2TestClient, conns):
     assert conv == {
         'subject': 'Test Subject',
         'created': ts,
-        'messages': [{'ref': 6, 'body': 'whatever', 'created': ts, 'format': 'markdown', 'active': True}],
-        'participants': {'actor@example.org': {'id': 1}, 'recipient@example.com': {'id': 2}},
+        'messages': [
+            {
+                'ref': 6,
+                'author': a,
+                'body': 'whatever',
+                'created': ts,
+                'format': 'markdown',
+                'active': True,
+                'editors': [a],
+            }
+        ],
+        'participants': {a: {'id': 1}, 'recipient@example.com': {'id': 2}},
     }
 
 
@@ -512,7 +526,9 @@ async def test_delete_message(em2_cli: Em2TestClient, conns):
     assert conv == {
         'subject': 'Test Subject',
         'created': ts,
-        'messages': [{'ref': 6, 'body': 'test message', 'created': ts, 'format': 'markdown', 'active': False}],
+        'messages': [
+            {'ref': 6, 'author': a, 'body': 'test message', 'created': ts, 'format': 'markdown', 'active': False}
+        ],
         'participants': {'actor@example.org': {'id': 1}, 'recipient@example.com': {'id': 2}},
     }
 
@@ -531,7 +547,16 @@ async def test_prt_remove(em2_cli: Em2TestClient, conns):
     assert conv == {
         'subject': 'Test Subject',
         'created': ts,
-        'messages': [{'ref': 3, 'body': 'test message', 'created': ts, 'format': 'markdown', 'active': True}],
+        'messages': [
+            {
+                'ref': 3,
+                'author': 'actor@example.org',
+                'body': 'test message',
+                'created': ts,
+                'format': 'markdown',
+                'active': True,
+            }
+        ],
         'participants': {'actor@example.org': {'id': 1}, 'recipient@example.com': {'id': 2}},
     }
 
@@ -552,7 +577,9 @@ async def test_prt_remove_invalid(em2_cli: Em2TestClient, conns):
     assert conv == {
         'subject': 'Test Subject',
         'created': ts,
-        'messages': [{'ref': 3, 'body': 'test message', 'created': ts, 'format': 'markdown', 'active': True}],
+        'messages': [
+            {'ref': 3, 'author': a, 'body': 'test message', 'created': ts, 'format': 'markdown', 'active': True}
+        ],
         'participants': {'actor@example.org': {'id': 1}, 'recipient@example.com': {'id': 2}},
     }
 

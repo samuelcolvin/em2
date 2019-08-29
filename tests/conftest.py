@@ -14,6 +14,7 @@ from aiohttp import ClientSession, ClientTimeout
 from aiohttp.test_utils import TestClient, teardown_test_loop
 from aioredis import create_redis
 from arq import ArqRedis, Worker
+from arq.connections import RedisSettings
 from atoolbox.db.helpers import DummyPgPool
 from atoolbox.test_utils import DummyServer, create_dummy_server
 from buildpg import Values
@@ -76,16 +77,6 @@ def _fix_settings_session():
     )
 
 
-@pytest.fixture(scope='session', name='clean_db')
-def _fix_clean_db(settings_session):
-    # loop fixture has function scope so can't be used here.
-    from atoolbox.db import prepare_database
-
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(prepare_database(settings_session, True))
-    teardown_test_loop(loop)
-
-
 @pytest.fixture(name='dummy_server')
 async def _fix_dummy_server(loop, aiohttp_server):
     ctx = {'smtp': [], 's3_files': {}, 'webpush': [], 'em2push': []}
@@ -101,8 +92,18 @@ def _fix_settings(dummy_server: DummyServer, tmpdir, settings_session):
     return settings_session.copy(update=update)
 
 
+@pytest.fixture(scope='session', name='main_db_create')
+def _fix_main_db_create(settings_session):
+    # loop fixture has function scope so can't be used here.
+    from atoolbox.db import prepare_database
+
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(prepare_database(settings_session, True))
+    teardown_test_loop(loop)
+
+
 @pytest.fixture(name='db_conn')
-async def _fix_db_conn(loop, settings, clean_db):
+async def _fix_db_conn(loop, settings, main_db_create):
     from buildpg import asyncpg
 
     conn = await asyncpg.connect_b(dsn=settings.pg_dsn, loop=loop)
@@ -110,7 +111,7 @@ async def _fix_db_conn(loop, settings, clean_db):
     tr = conn.transaction()
     await tr.start()
 
-    yield conn
+    yield DummyPgPool(conn)
 
     await tr.rollback()
     await conn.close()
@@ -121,8 +122,8 @@ def _fix_conns(db_conn, redis, settings):
     return Connections(db_conn, redis, settings)
 
 
-@pytest.yield_fixture
-async def redis(loop, settings):
+@pytest.yield_fixture(name='redis')
+async def _fix_redis(loop, settings):
     addr = settings.redis_settings.host, settings.redis_settings.port
 
     redis = await create_redis(addr, db=settings.redis_settings.database, encoding='utf8', commands_factory=ArqRedis)
@@ -158,13 +159,19 @@ class UserTestClient(TestClient):
         return await r.json()
 
 
+@pytest.fixture(name='resolver')
+def _fix_resolver(dummy_server: DummyServer):
+    return TestDNSResolver(dummy_server)
+
+
 @pytest.fixture(name='cli')
-async def _fix_cli(settings, db_conn, aiohttp_server, redis, dummy_server):
+async def _fix_cli(settings, db_conn, aiohttp_server, redis, resolver):
     app = await create_app(settings=settings)
-    app['pg'] = DummyPgPool(db_conn)
-    app['protocol_app']['resolver'] = TestDNSResolver(dummy_server)
+    app['pg'] = db_conn
+    app['protocol_app']['resolver'] = resolver
     server = await aiohttp_server(app)
     settings.local_port = server.port
+    resolver.main_server = server
     cli = UserTestClient(server)
 
     yield cli
@@ -364,19 +371,19 @@ class Factory:
         return action_ids
 
 
-@pytest.fixture
-async def factory(redis, cli, url):
+@pytest.fixture(name='factory')
+async def _fix_factory(redis, cli, url):
     return Factory(redis, cli, url)
 
 
 @pytest.yield_fixture(name='worker_ctx')
-async def _fix_worker_ctx(redis, settings, db_conn, dummy_server):
+async def _fix_worker_ctx(redis, settings, db_conn, dummy_server, resolver):
     session = ClientSession(timeout=ClientTimeout(total=10))
     ctx = dict(
         settings=settings,
-        pg=DummyPgPool(db_conn),
+        pg=db_conn,
         client_session=session,
-        resolver=TestDNSResolver(dummy_server),
+        resolver=resolver,
         redis=redis,
         signing_key=get_signing_key(settings.signing_secret_key),
     )
@@ -400,13 +407,13 @@ async def _fix_worker(redis, worker_ctx):
 
 
 @pytest.yield_fixture(name='ses_worker')
-async def _fix_ses_worker(redis, settings, db_conn, dummy_server):
+async def _fix_ses_worker(redis, settings, db_conn, resolver):
     session = ClientSession(timeout=ClientTimeout(total=10))
     ctx = dict(
         settings=settings,
-        pg=DummyPgPool(db_conn),
+        pg=db_conn,
         client_session=session,
-        resolver=TestDNSResolver(dummy_server),
+        resolver=resolver,
         signing_key=get_signing_key(settings.signing_secret_key),
     )
     ctx.update(smtp_handler=SesSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
@@ -566,3 +573,99 @@ def _fix_web_push_sub(dummy_server):
             'auth': 'x' * 32,
         },
     }
+
+
+@pytest.fixture(scope='session', name='alt_settings_session')
+def _fix_alt_settings_session(settings_session):
+    pg_db = 'em2_test_alt'
+    redis_db = 3
+
+    test_worker = os.getenv('PYTEST_XDIST_WORKER')
+    if test_worker:
+        worker_id = int(test_worker.replace('gw', ''))
+        redis_db = worker_id + 8
+        if worker_id:
+            pg_db = f'em2_test_alt_{worker_id}'
+
+    return settings_session.copy(
+        update={
+            'pg_dsn': f'postgres://postgres@localhost:5432/{pg_db}',
+            'redis_settings': RedisSettings(database=redis_db),
+        }
+    )
+
+
+@pytest.fixture(name='alt_settings')
+def _fix_alt_settings(dummy_server: DummyServer, tmpdir, alt_settings_session):
+    update = {f: f'{dummy_server.server_name}/{f}/' for f in replaced_url_fields}
+    return alt_settings_session.copy(update=update)
+
+
+@pytest.fixture(scope='session', name='alt_db_create')
+def _fix_alt_db_create(alt_settings_session):
+    # loop fixture has function scope so can't be used here.
+    from atoolbox.db import prepare_database
+
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(prepare_database(alt_settings_session, True))
+    teardown_test_loop(loop)
+
+
+@pytest.fixture(name='alt_db_conn')
+async def _fix_alt_db_conn(loop, alt_settings, alt_db_create):
+    from buildpg import asyncpg
+
+    conn = await asyncpg.connect_b(dsn=alt_settings.pg_dsn, loop=loop)
+
+    tr = conn.transaction()
+    await tr.start()
+
+    yield DummyPgPool(conn)
+
+    await tr.rollback()
+    await conn.close()
+
+
+@pytest.yield_fixture(name='alt_redis')
+async def _fix_alt_redis(loop, alt_settings):
+    addr = alt_settings.redis_settings.host, alt_settings.redis_settings.port
+
+    redis = await create_redis(
+        addr, db=alt_settings.redis_settings.database, encoding='utf8', commands_factory=ArqRedis
+    )
+    await redis.flushdb()
+
+    yield redis
+
+    redis.close()
+    await redis.wait_closed()
+
+
+@pytest.fixture(name='alt_conns')
+def _fix_alt_conns(alt_db_conn, alt_redis, alt_settings):
+    return Connections(alt_db_conn, alt_redis, alt_settings)
+
+
+@pytest.fixture(name='alt_cli')
+async def _fix_alt_cli(alt_settings, alt_db_conn, aiohttp_server, alt_redis, resolver: TestDNSResolver):
+    app = await create_app(settings=alt_settings)
+    app['pg'] = alt_db_conn
+    app['protocol_app']['resolver'] = resolver
+    server = await aiohttp_server(app)
+    resolver.alt_server = server
+    alt_settings.local_port = server.port
+    cli = UserTestClient(server)
+
+    yield cli
+
+    await cli.close()
+
+
+@pytest.fixture(name='alt_url')
+def _fix_alt_url(alt_cli: UserTestClient):
+    return MakeUrl(alt_cli.server.app).get_path
+
+
+@pytest.fixture(name='alt_factory')
+async def _fix_alt_factory(alt_redis, alt_cli, alt_url):
+    return Factory(alt_redis, alt_cli, alt_url)

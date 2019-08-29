@@ -343,8 +343,22 @@ async def test_object_simple(factory: Factory, conns):
         'subject': 'Test Subject',
         'created': CloseToNow(),
         'messages': [
-            {'ref': 2, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True},
-            {'ref': 4, 'body': 'This is a reply', 'created': CloseToNow(), 'format': 'markdown', 'active': True},
+            {
+                'ref': 2,
+                'author': 'testing-1@example.com',
+                'body': 'Test Message',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': True,
+            },
+            {
+                'ref': 4,
+                'author': 'testing-1@example.com',
+                'body': 'This is a reply',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': True,
+            },
         ],
         'participants': {'testing-1@example.com': {'id': 1}},
     }
@@ -369,9 +383,17 @@ async def test_object_children(factory: Factory, conns):
         'subject': 'Test Subject',
         'created': CloseToNow(),
         'messages': [
-            {'ref': 9, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': False},
+            {
+                'ref': 9,
+                'author': 'testing-1@example.com',
+                'body': 'Test Message',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': False,
+            },
             {
                 'ref': 4,
+                'author': 'testing-1@example.com',
                 'body': 'This is a reply',
                 'created': CloseToNow(),
                 'format': 'markdown',
@@ -380,11 +402,20 @@ async def test_object_children(factory: Factory, conns):
                     {
                         'ref': 8,
                         'body': 'mod1',
+                        'author': 'testing-1@example.com',
                         'created': CloseToNow(),
                         'format': 'markdown',
                         'active': True,
+                        'editors': ['testing-1@example.com'],
                         'children': [
-                            {'ref': 6, 'body': 'child2', 'created': CloseToNow(), 'format': 'markdown', 'active': True}
+                            {
+                                'ref': 6,
+                                'author': 'testing-1@example.com',
+                                'body': 'child2',
+                                'created': CloseToNow(),
+                                'format': 'markdown',
+                                'active': True,
+                            }
                         ],
                     }
                 ],
@@ -406,7 +437,16 @@ async def test_object_add_remove_participants(factory: Factory, conns):
     assert obj == {
         'subject': 'Test Subject',
         'created': CloseToNow(),
-        'messages': [{'ref': 2, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True}],
+        'messages': [
+            {
+                'ref': 2,
+                'author': 'testing-1@example.com',
+                'body': 'Test Message',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': True,
+            }
+        ],
         'participants': {'testing-1@example.com': {'id': 1}, 'new@ex.com': {'id': 4}},
     }
 
@@ -530,11 +570,19 @@ async def test_publish_seen(factory: Factory, db_conn, conns):
     assert 4 == await db_conn.fetchval('select count(*) from actions')
 
     obj = await construct_conv(conns, user.id, conv.id)
-
     assert obj == {
         'subject': 'Test Subject',
         'created': CloseToNow(),
-        'messages': [{'ref': 2, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True}],
+        'messages': [
+            {
+                'ref': 2,
+                'author': 'testing-1@example.com',
+                'body': 'Test Message',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': True,
+            }
+        ],
         'participants': {'testing-1@example.com': {'id': 1}},
     }
 
@@ -663,3 +711,36 @@ async def test_prt_remove_cant_act(factory: Factory, db_conn):
 
     with pytest.raises(JsonErrors.HTTPBadRequest):
         await factory.act(conv.id, Action(actor_id=new_user_id, act=ActionTypes.msg_add, body='This is a **test**'))
+
+
+async def test_msg_modify_editors(factory: Factory, conns):
+    user = await factory.create_user()
+    conv = await factory.create_conv(publish=True)
+
+    em = 'new@example.com'
+    await factory.act(conv.id, Action(actor_id=user.id, act=ActionTypes.prt_add, participant=em))
+
+    new_user_id = await conns.main.fetchval('select id from users where email=$1', em)
+
+    assert [5] == await factory.act(conv.id, Action(actor_id=new_user_id, act=ActionTypes.msg_lock, follows=2))
+
+    action = Action(actor_id=new_user_id, act=ActionTypes.msg_modify, follows=5, body='modified body')
+    assert [6] == await factory.act(conv.id, action)
+
+    obj = await construct_conv(conns, user.id, conv.id)
+    assert obj == {
+        'subject': 'Test Subject',
+        'created': CloseToNow(),
+        'messages': [
+            {
+                'ref': 6,
+                'author': 'testing-1@example.com',
+                'body': 'modified body',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': True,
+                'editors': ['new@example.com'],
+            }
+        ],
+        'participants': {'testing-1@example.com': {'id': 1}, 'new@example.com': {'id': 4}},
+    }

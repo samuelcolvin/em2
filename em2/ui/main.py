@@ -39,8 +39,8 @@ def pg_middleware_check(request):
     return request['view_name'] not in no_pg_conn
 
 
-async def create_app_ui(settings=None):
-    settings = settings or Settings()
+async def create_app_ui(main_app: web.Application):
+    settings: Settings = main_app['settings']
     conv_match = r'{conv:[a-f0-9]{10,64}}'
     s = r'/{session_id:\d+}/'
     routes = [
@@ -78,6 +78,7 @@ async def create_app_ui(settings=None):
     app = web.Application(middlewares=middleware)
     app.update(
         name='ui',
+        main_app=main_app,
         settings=settings,
         auth_fernet=fernet.Fernet(settings.auth_key),
         pg_middleware_check=pg_middleware_check,

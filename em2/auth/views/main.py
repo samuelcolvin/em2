@@ -12,9 +12,16 @@ from atoolbox.utils import JsonErrors
 from buildpg import V
 from pydantic import BaseModel, EmailStr, IPvAnyAddress, constr
 
-from em2.utils.web import internal_request_check
+from em2.utils.web import internal_request_check, this_em2_node
 
 logger = logging.getLogger('em2.auth')
+
+
+async def em2_route(request):
+    """
+    Currently no logic here, just always use the only em2 protocol node.
+    """
+    return json_response(node=this_em2_node(request.app['settings']))
 
 
 def session_event(action_type, *, request=None, ip=None, user_agent=None) -> Tuple[str, int]:

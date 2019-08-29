@@ -722,14 +722,17 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
     for action in actions:
         act: ActionTypes = action['act']
         action_id: int = action['id']
+        actor: str = action['actor']
         if act in {ActionTypes.conv_publish, ActionTypes.conv_create}:
             subject = action['body']
             created = action['ts']
         elif act == ActionTypes.subject_modify:
             subject = action['body']
         elif act == ActionTypes.msg_add:
+            # FIXME add actor to message
             d = {
                 'ref': action_id,
+                'author': actor,
                 'body': action['body'],
                 'created': action['ts'],
                 'format': action['msg_format'],
@@ -745,6 +748,10 @@ def _construct_conv_actions(actions: List[Dict[str, Any]]) -> Dict[str, Any]:  #
             message['ref'] = action_id
             if act == ActionTypes.msg_modify:
                 message['body'] = action['body']
+                if 'editors' in message:
+                    message['editors'].append(actor)
+                else:
+                    message['editors'] = [actor]
             elif act == ActionTypes.msg_delete:
                 message['active'] = False
             elif act == ActionTypes.msg_recover:
