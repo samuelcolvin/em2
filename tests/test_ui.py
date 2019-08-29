@@ -303,7 +303,17 @@ async def test_create_then_publish(cli, factory: Factory, db_conn, conns):
     assert obj1 == {
         'subject': 'Test Subject',
         'created': CloseToNow(),
-        'messages': [{'ref': 5, 'body': 'msg changed', 'created': CloseToNow(), 'format': 'markdown', 'active': True}],
+        'messages': [
+            {
+                'ref': 5,
+                'author': 'testing-1@example.com',
+                'body': 'msg changed',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': True,
+                'editors': ['testing-1@example.com'],
+            }
+        ],
         'participants': {'testing-1@example.com': {'id': 1}},
     }
     assert 5 == await db_conn.fetchval('select count(*) from actions where conv=$1', conv.id)
@@ -315,7 +325,16 @@ async def test_create_then_publish(cli, factory: Factory, db_conn, conns):
     assert obj2 == {
         'subject': 'Test Subject',
         'created': CloseToNow(),
-        'messages': [{'ref': 2, 'body': 'msg changed', 'created': CloseToNow(), 'format': 'markdown', 'active': True}],
+        'messages': [
+            {
+                'ref': 2,
+                'author': user.email,
+                'body': 'msg changed',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': True,
+            }
+        ],
         'participants': {'testing-1@example.com': {'id': 1}},
     }
     assert 3 == await db_conn.fetchval('select count(*) from actions where conv=$1', conv.id)

@@ -118,6 +118,7 @@ async def test_ses_new_email(factory: Factory, db_conn, conns, cli, url, create_
         'messages': [
             {
                 'ref': 3,
+                'author': 'sender@example.net',
                 'body': 'this is an html <b>message</b>.',
                 'created': '2032-01-01T12:00:00+00:00',
                 'format': 'html',
@@ -156,9 +157,17 @@ async def test_ses_reply(factory: Factory, db_conn, conns, cli, url, create_ses_
         'subject': 'Test Subject',
         'created': CloseToNow(),
         'messages': [
-            {'ref': 3, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True},
+            {
+                'ref': 3,
+                'author': 'testing-1@example.com',
+                'body': 'Test Message',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': True,
+            },
             {
                 'ref': 5,
+                'author': 'sender@example.net',
                 'body': 'This is a <u>reply</u>.',
                 'created': '2032-01-01T12:00:00+00:00',
                 'format': 'html',
@@ -188,9 +197,17 @@ async def test_ses_reply_different_email(factory: Factory, db_conn, conns, cli, 
         'subject': 'Test Subject',
         'created': CloseToNow(),
         'messages': [
-            {'ref': 3, 'body': 'Test Message', 'created': CloseToNow(), 'format': 'markdown', 'active': True},
+            {
+                'ref': 3,
+                'author': 'testing-1@example.com',
+                'body': 'Test Message',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': True,
+            },
             {
                 'ref': 6,
+                'author': 'different@example.net',
                 'body': 'This is a <u>reply</u>.',
                 'created': '2032-01-01T12:00:00+00:00',
                 'format': 'html',

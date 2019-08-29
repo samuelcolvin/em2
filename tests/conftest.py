@@ -583,7 +583,7 @@ def _fix_alt_settings_session(settings_session):
     test_worker = os.getenv('PYTEST_XDIST_WORKER')
     if test_worker:
         worker_id = int(test_worker.replace('gw', ''))
-        redis_db = worker_id + 3
+        redis_db = worker_id + 8
         if worker_id:
             pg_db = f'em2_test_alt_{worker_id}'
 
