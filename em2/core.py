@@ -119,7 +119,7 @@ async def get_conv_for_user(
             """
             select c.id, c.publish_ts, c.creator, p.removal_action_id from conversations as c
             join participants p on c.id=p.conv
-            where p.user_id = $1 and c.id = $2
+            where c.live is true and p.user_id = $1 and c.id = $2
             order by c.created_ts desc
             """,
             user_id,
@@ -130,7 +130,7 @@ async def get_conv_for_user(
             """
             select c.id, c.publish_ts, c.creator, p.removal_action_id from conversations c
             join participants p on c.id=p.conv
-            where p.user_id=$1 and c.key like $2
+            where c.live is true and p.user_id=$1 and c.key like $2
             order by c.created_ts desc
             limit 1
             """,
@@ -788,6 +788,7 @@ async def create_conv(  # noqa: 901
     actions: List[Action],
     given_conv_key: Optional[str] = None,
     leader_node: str = None,
+    live: bool = True,
     spam: bool = False,
     warnings: Dict[str, str] = None,
 ) -> Tuple[int, str]:
@@ -802,14 +803,16 @@ async def create_conv(  # noqa: 901
     :param actions: list of actions: add message, add participant, publish or create
     :param given_conv_key: given conversation key, checked to confirm it matches generated conv key if given
     :param leader_node: node of the leader of this conversation, black if this node
+    :param live: whether to mark the conversation has live
     :param spam: whether conversation is spam
     :param warnings: warnings about the conversation
     :return: tuple conversation id and key
     """
     main_action: Optional[Action] = None
 
-    # lookup from email address of participants to IDs of the actions used when adding that prt
+    # don this way since order is important when creating participants and prt_add actions
     other_prt_emails: List[str] = []
+    # lookup from email address of participants to IDs of the actions used when adding that prt
     prt_action_lookup: Dict[str, Optional[int]] = {}
     messages: List[Action] = []
 
@@ -834,8 +837,8 @@ async def create_conv(  # noqa: 901
     async with conns.main.transaction():
         conv_id = await conns.main.fetchval(
             """
-            insert into conversations (key, creator, publish_ts, created_ts, updated_ts, leader_node)
-            values                    ($1,  $2     , $3        , $4        , $4        , $5         )
+            insert into conversations (key, creator, publish_ts, created_ts, updated_ts, leader_node, live)
+            values                    ($1,  $2     , $3        , $4        , $4        , $5         , $6)
             on conflict (key) do nothing
             returning id
             """,
@@ -844,6 +847,7 @@ async def create_conv(  # noqa: 901
             ts if publish else None,
             ts,
             leader_node,
+            live,
         )
         if conv_id is None:
             raise JsonErrors.HTTPConflict(message='key conflicts with existing conversation')

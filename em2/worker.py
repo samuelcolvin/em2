@@ -12,6 +12,7 @@ from em2.protocol.files import download_push_file
 from em2.protocol.push import push_actions
 from em2.protocol.smtp import BaseSmtpHandler, smtp_send
 from em2.protocol.smtp.images import get_images
+from em2.protocol.smtp.receive import post_receipt
 from em2.settings import Settings
 from em2.ui.views.files import delete_stale_upload
 from em2.utils.db import Connections
@@ -30,6 +31,7 @@ async def startup(ctx):
     smtp_handler_cls: Type[BaseSmtpHandler] = import_string(settings.smtp_handler)
     smtp_handler = smtp_handler_cls(ctx)
     await smtp_handler.startup()
+    # FIXME "Connections(ctx['pg']..." looks wrong, conns should bet setup in job with acquired connection
     ctx.update(smtp_handler=smtp_handler, conns=Connections(ctx['pg'], ctx['redis'], settings))
 
 
@@ -37,7 +39,7 @@ async def shutdown(ctx):
     await asyncio.gather(ctx['client_session'].close(), ctx['pg'].close(), ctx['smtp_handler'].shutdown())
 
 
-functions = [smtp_send, push_actions, delete_stale_upload, web_push, get_images, download_push_file]
+functions = [smtp_send, push_actions, delete_stale_upload, web_push, post_receipt, get_images, download_push_file]
 worker_settings = dict(functions=functions, on_startup=startup, on_shutdown=shutdown)
 
 

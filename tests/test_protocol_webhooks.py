@@ -2,6 +2,7 @@ import base64
 import json
 from datetime import datetime, timezone
 
+from arq import Worker
 from pytest_toolbox.comparison import AnyInt, CloseToNow
 
 from em2.core import construct_conv
@@ -94,7 +95,7 @@ async def test_ses_invalid_sig(cli, url, sns_data):
     assert r.status == 403
 
 
-async def test_ses_new_email(factory: Factory, db_conn, conns, cli, url, create_ses_email):
+async def test_ses_new_email(factory: Factory, db_conn, conns, cli, url, create_ses_email, worker: Worker):
     await factory.create_user()
     assert 0 == await db_conn.fetchval('select count(*) from sends')
     assert 0 == await db_conn.fetchval('select count(*) from conversations')
@@ -103,6 +104,7 @@ async def test_ses_new_email(factory: Factory, db_conn, conns, cli, url, create_
 
     r = await cli.post(url('protocol:webhook-ses', token='testing'), json=create_ses_email())
     assert r.status == 204, await r.text()
+    assert await worker.run_check() == 2
 
     assert 1 == await db_conn.fetchval('select count(*) from sends')
     assert 1 == await db_conn.fetchval('select count(*) from conversations')

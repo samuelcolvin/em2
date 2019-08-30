@@ -3,12 +3,13 @@ from email.message import EmailMessage
 
 import pytest
 from aiohttp.web_exceptions import HTTPGatewayTimeout
+from arq import Worker
 from arq.jobs import Job
 from pytest_toolbox.comparison import RegexStr
 
 from em2.background import push_all
 from em2.core import File, conv_actions_json, get_flag_counts
-from em2.protocol.views.smtp_utils import InvalidEmailMsg, process_smtp
+from em2.protocol.smtp.receive import InvalidEmailMsg, process_smtp
 from em2.utils.smtp import CopyToTemp, find_smtp_files
 
 from .conftest import Factory
@@ -83,7 +84,7 @@ async def test_attachment_content_id(conns, factory: Factory, db_conn, create_em
     }
 
 
-async def test_attachment_actions(conns, factory: Factory, db_conn, redis, create_email, attachment):
+async def test_attachment_actions(conns, factory: Factory, db_conn, redis, create_email, attachment, worker: Worker):
     await factory.create_user()
 
     msg = create_email(
@@ -94,6 +95,7 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
         ],
     )
     await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
+    assert await worker.run_check(max_burst_jobs=1) == 1
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     assert 'This is the <b>message</b>.' == await db_conn.fetchval("select body from actions where act='message:add'")
 
@@ -114,7 +116,8 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
         'name': 'testing1.txt',
         'content_type': 'text/plain',
     }
-    conv_id, conv_key = await db_conn.fetchrow('select id, key from conversations')
+    conv_id, conv_key, leader_node = await db_conn.fetchrow('select id, key, leader_node from conversations')
+    assert leader_node is None
     data = json.loads(await conv_actions_json(conns, factory.user.id, conv_id))
     assert data == [
         {
@@ -168,7 +171,7 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
     push_data = list(data)
     push_data[-1]['extra_body'] = False
     push_data[-2]['extra_body'] = False
-    assert len(await redis.keys('arq:job:*')) == 1
+    assert len(await redis.keys('arq:job:*')) == 1  # web_push created by post_receipt
     await push_all(conns, conv_id, transmit=True)
     arq_keys = await redis.keys('arq:job:*')
     assert len(arq_keys) == 3
@@ -181,7 +184,7 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
             assert ws_data['actions'] == push_data
 
 
-async def test_get_file(conns, factory: Factory, db_conn, create_email, attachment, cli, dummy_server):
+async def test_get_file(conns, factory: Factory, db_conn, create_email, attachment, cli, dummy_server, worker: Worker):
     await factory.create_user()
 
     msg = create_email(
@@ -189,10 +192,12 @@ async def test_get_file(conns, factory: Factory, db_conn, create_email, attachme
         attachments=[attachment('testing.txt', 'text/plain', 'hello', {'Content-ID': 'testing-hello2'})],
     )
     await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/s3-test-path')
+    assert await worker.run_check() == 2
 
     assert 1 == await db_conn.fetchval("select count(*) from files")
 
-    conv_key = await db_conn.fetchval('select key from conversations')
+    conv_key, leader_node = await db_conn.fetchrow('select key, leader_node from conversations')
+    assert leader_node is None
     data = json.loads(await conv_actions_json(conns, factory.user.id, conv_key))
     assert data[2]['files'] == [
         {
@@ -277,14 +282,15 @@ def test_finding_attachment(create_email, attachment, create_image):
     ]
 
 
-async def test_spam(conns, db_conn, create_email, factory: Factory, cli):
+async def test_spam(conns, db_conn, create_email, factory: Factory, cli, worker: Worker):
     user = await factory.create_user()
 
     counts = await get_flag_counts(conns, user.id)
     assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 0, 'spam': 0, 'deleted': 0}
 
     msg = create_email(html_body='this is spam')
-    await process_smtp(conns, msg, {user.email}, 's3://foobar/whatever', spam=True, warnings={'testing': 'xxx'})
+    await process_smtp(conns, msg, [user.email], 's3://foobar/whatever', spam=True, warnings={'testing': 'xxx'})
+    assert await worker.run_check() == 2
 
     assert True is await db_conn.fetchval('select spam from participants where user_id = $1', user.id)
     assert None is await db_conn.fetchval('select spam from participants where user_id != $1', user.id)
@@ -487,3 +493,22 @@ async def test_send_to_many(conns, factory: Factory, db_conn, create_email, crea
     v = await db_conn.fetch('select email from participants p join users u on p.user_id = u.id order by p.id')
     prt_addrs = [r[0] for r in v]
     assert prt_addrs == ['sender@example.net'] + recipients
+
+
+async def test_leader_selection(conns, factory: Factory, db_conn, create_email, worker: Worker, dummy_server):
+    await factory.create_user()
+
+    to = ['foobar@any.example.com', 'xyz@example.org', 'testing-1@example.com']
+    msg = create_email(html_body='This is the <b>message</b>.', to=to)
+    await process_smtp(conns, msg, to, 's3://foobar/s3-test-path')
+
+    live, leader_node = await db_conn.fetchrow('select live, leader_node from conversations')
+    assert live is False
+    assert leader_node is None
+    assert await worker.run_check() == 2
+
+    live, leader_node = await db_conn.fetchrow('select live, leader_node from conversations')
+    assert live is True
+    assert leader_node == dummy_server.server_name.replace('http://', '') + '/em2'
+
+    assert dummy_server.log == ['GET /v1/route/?email=xyz@example.org > 200']

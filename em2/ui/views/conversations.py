@@ -84,6 +84,7 @@ class ConvList(View):
         # FIXME this doesn't get conversation where the user has been removed
         where = funcs.AND(
             V('p.user_id') == self.session.user_id,
+            V('c.live') == V('true'),
             funcs.OR(V('publish_ts').is_not(V('null')), V('creator') == self.session.user_id),
         )
 
@@ -149,7 +150,7 @@ class ConvDetails(View):
         coalesce(p.label_ids, '{}') labels
       from conversations c
       join participants p on c.id = p.conv
-      where c.key like $1 and p.user_id=$2
+      where c.live is true and c.key like $1 and p.user_id=$2
     ) conversation
     """
 

@@ -43,6 +43,7 @@ create table conversations (
   publish_ts timestamptz,
   last_action_id int not null default 0 check (last_action_id >= 0),
   leader_node varchar (255),  -- null when this node is leader,
+  live bool not null,  -- used when conversations are created but not yet ready to be read, also perhaps for deletion
   details json
 );
 create index idx_conversations_key on conversations using gin (key gin_trgm_ops);
