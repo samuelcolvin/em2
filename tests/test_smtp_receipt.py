@@ -498,7 +498,7 @@ async def test_send_to_many(conns, factory: Factory, db_conn, create_email, crea
 async def test_leader_selection(conns, factory: Factory, db_conn, create_email, worker: Worker, dummy_server):
     await factory.create_user()
 
-    to = ['foobar@any.example.com', 'xyz@example.org', 'testing-1@example.com']
+    to = ['foobar@any.example.com', 'xyz@em2-ext.example.com', 'testing-1@example.com']
     msg = create_email(html_body='This is the <b>message</b>.', to=to)
     await process_smtp(conns, msg, to, 's3://foobar/s3-test-path')
 
@@ -511,4 +511,4 @@ async def test_leader_selection(conns, factory: Factory, db_conn, create_email, 
     assert live is True
     assert leader_node == dummy_server.server_name.replace('http://', '') + '/em2'
 
-    assert dummy_server.log == ['GET /v1/route/?email=xyz@example.org > 200']
+    assert dummy_server.log == ['GET /v1/route/?email=xyz@em2-ext.example.com > 200']

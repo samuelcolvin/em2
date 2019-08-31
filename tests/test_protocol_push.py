@@ -13,12 +13,12 @@ from .conftest import Factory
 
 async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_server: DummyServer, settings: Settings):
     await factory.create_user()
-    conv = await factory.create_conv(participants=[{'email': 'whatever@example.org'}], publish=True)
+    conv = await factory.create_conv(participants=[{'email': 'whatever@em2-ext.example.com'}], publish=True)
     assert 4 == await db_conn.fetchval('select count(*) from actions')
     assert await worker.run_check(max_burst_jobs=2) == 2
 
     assert dummy_server.log == [
-        f'GET /v1/route/?email=whatever@example.org > 200',
+        f'GET /v1/route/?email=whatever@em2-ext.example.com > 200',
         f'POST /em2/v1/push/{conv.key}/?node=localhost:{factory.cli.server.port}/em2 > 200',
     ]
 
@@ -50,7 +50,7 @@ async def test_publish_em2(factory: Factory, db_conn, worker: Worker, dummy_serv
                 'act': 'participant:add',
                 'ts': CloseToNow(),
                 'actor': 'testing-1@example.com',
-                'participant': 'whatever@example.org',
+                'participant': 'whatever@em2-ext.example.com',
             },
             {
                 'id': 3,

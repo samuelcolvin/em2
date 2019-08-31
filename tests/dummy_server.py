@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 async def em2_routing(request):
     email = request.query.get('email')
-    if email == 'diff@example.org':
+    if email == 'diff@em2-ext.example.com':
         return json_response(node=request.headers['host'] + '/different')
     else:
         return json_response(node=request.headers['host'] + '/em2')
