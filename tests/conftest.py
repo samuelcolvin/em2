@@ -364,7 +364,7 @@ class Factory:
         )
 
     async def act(self, conv_id: int, action: Action) -> List[int]:
-        conv_id, action_ids = await apply_actions(self.conns, conv_id, [action])
+        action_ids = await apply_actions(self.conns, conv_id, [action])
 
         if action_ids:
             await push_multiple(self.conns, conv_id, action_ids)

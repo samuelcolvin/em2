@@ -261,26 +261,25 @@ class ConvAct(ExecView):
             extra = Extra.forbid
 
     async def execute(self, m: Model):
-        conv_id, action_ids = await apply_actions(
-            conns=self.conns, conv_ref=self.request.match_info['conv'], actions=[a async for a in self.raw_actions(m)]
-        )
+        c = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
+        assert c.leader is None
+        action_ids = await apply_actions(self.conns, c.id, [a async for a in self.raw_actions(c.id, m)])
 
         if action_ids:
-            await push_multiple(self.conns, conv_id, action_ids)
+            await push_multiple(self.conns, c.id, action_ids)
         return {'action_ids': action_ids}
 
-    async def raw_actions(self, m: Model):
+    async def raw_actions(self, conv_id: int, m: Model):
         for a in m.actions:
             files = None
             if a.files:
-                c = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
                 async with S3(self.settings) as s3_client:
                     files = await asyncio.gather(
-                        *(self.prepare_file(s3_client, c.id, content_id) for content_id in a.files)
+                        *(self.prepare_file(s3_client, conv_id, content_id) for content_id in a.files)
                     )
             yield Action(actor_id=self.session.user_id, files=files, **a.dict(exclude={'files'}))
 
-    async def prepare_file(self, s3_client, conv_id, content_id: str):
+    async def prepare_file(self, s3_client, conv_id: int, content_id: str):
         storage_path = await self.redis.get(file_upload_cache_key(conv_id, content_id))
         if not storage_path:
             raise JsonErrors.HTTPBadRequest(f'no file found for content id {content_id!r}')
