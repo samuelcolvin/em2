@@ -744,3 +744,14 @@ async def test_msg_modify_editors(factory: Factory, conns):
         ],
         'participants': {'testing-1@example.com': {'id': 1}, 'new@example.com': {'id': 4}},
     }
+
+
+async def test_msg_add_not_live(factory: Factory, db_conn):
+    user = await factory.create_user()
+    conv = await factory.create_conv()
+    await factory.act(conv.id, Action(actor_id=user.id, act=ActionTypes.msg_add, body='This is a **test**'))
+
+    await db_conn.fetchval('update conversations set live=false')
+
+    with pytest.raises(JsonErrors.HTTPNotFound):
+        await factory.act(conv.id, Action(actor_id=user.id, act=ActionTypes.msg_add, body='This is a **test**'))

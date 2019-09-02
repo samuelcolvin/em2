@@ -11,8 +11,8 @@ async def test_update_conv(db_conn):
     ts = datetime.utcnow()
     conv_id = await db_conn.fetchval(
         """
-        insert into conversations (key, creator, created_ts, updated_ts)
-        values ('key', $1, $2, $2) returning id
+        insert into conversations (key, creator, created_ts, updated_ts, live)
+        values ('key', $1, $2, $2, true) returning id
         """,
         user1_id,
         ts,
@@ -65,7 +65,10 @@ async def test_last_action_id(db_conn):
     user_id = await db_conn.fetchval("insert into users (email) values ('testing-1@example.com') returning id")
     ts = datetime.utcnow()
     conv_id = await db_conn.fetchval(
-        "insert into conversations (key, creator, created_ts, updated_ts) values ('key', $1, $2, $2) returning id",
+        """
+        insert into conversations (key, creator, created_ts, updated_ts, live)
+        values ('key', $1, $2, $2, true) returning id
+        """,
         user_id,
         ts,
     )

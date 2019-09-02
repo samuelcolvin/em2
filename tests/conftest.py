@@ -223,7 +223,7 @@ class Em2TestClient(TestClient):
         self,
         *,
         em2_node=None,
-        actor='actor@example.org',
+        actor='actor@em2-ext.example.com',
         subject='Test Subject',
         recipient='recipient@example.com',
         msg='test message',

@@ -1,6 +1,7 @@
 from urllib.parse import urlencode
 
 import pytest
+from arq import Worker
 from pytest_toolbox.comparison import CloseToNow
 
 from em2.core import Action, ActionTypes, get_flag_counts
@@ -488,11 +489,12 @@ async def test_add_remove_add_prt(factory: Factory, conns):
     assert flags == {'inbox': 1, 'unseen': 1, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 1, 'spam': 0, 'deleted': 0}
 
 
-async def test_spam_seen(factory: Factory, conns, cli, url, create_ses_email):
+async def test_spam_seen(factory: Factory, conns, cli, url, create_ses_email, worker: Worker):
     user = await factory.create_user()
 
     msg = create_ses_email(to=(user.email,), receipt_extra=dict(spamVerdict={'status': 'FAIL'}))
     r = await cli.post(url('protocol:webhook-ses', token='testing'), json=msg)
+    assert await worker.run_check() == 2
     assert r.status == 204, await r.text()
 
     counts = await get_flag_counts(conns, user.id)

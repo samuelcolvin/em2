@@ -29,6 +29,7 @@ async def test_create_conv(cli, factory: Factory, db_conn):
         'publish_ts': None,
         'last_action_id': 3,  # add participant, add message, publish
         'leader_node': None,
+        'live': True,
         'details': RegexStr(r'\{.*\}'),
     }
     assert json.loads(conv['details']) == {
@@ -79,6 +80,7 @@ async def test_create_conv_participants(cli, factory: Factory, db_conn):
         'publish_ts': None,
         'last_action_id': 5,
         'leader_node': None,
+        'live': True,
         'details': RegexStr(r'\{.*\}'),
     }
     assert json.loads(conv['details']) == {
@@ -121,6 +123,7 @@ async def test_create_conv_publish(cli, factory: Factory, db_conn):
         'publish_ts': CloseToNow(),
         'last_action_id': 3,  # add participant, add message, publish
         'leader_node': None,
+        'live': True,
         'details': RegexStr(r'\{.*\}'),
     }
     assert json.loads(conv['details']) == {
@@ -528,3 +531,15 @@ async def test_removed_get_list(factory: Factory, cli):
     assert obj['removed'] is True
     assert obj['last_action_id'] == 6
     assert obj['details']['prev'] == 'This is a test'
+
+
+async def test_conv_list_live(cli, factory: Factory, db_conn):
+    await factory.create_user()
+    await factory.create_conv()
+
+    obj = await cli.get_json(factory.url('ui:list'))
+    assert len(obj['conversations']) == 1
+    await db_conn.execute('update conversations set live=false')
+
+    obj = await cli.get_json(factory.url('ui:list'))
+    assert len(obj['conversations']) == 0

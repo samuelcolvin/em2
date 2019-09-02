@@ -166,6 +166,7 @@ push_sql_multiple = push_sql_template.format('where a.conv=$1 and a.id=any($2)')
 
 
 async def push_all(conns: Connections, conv_id: int, *, transmit=True):
+    # FIXME: rename these to notify*?
     actions_data = await conns.main.fetchval(push_sql_all, conv_id)
     await _push_local(conns, conv_id, actions_data)
     if transmit:

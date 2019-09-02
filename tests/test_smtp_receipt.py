@@ -2,13 +2,14 @@ import json
 from email.message import EmailMessage
 
 import pytest
-from aiohttp.web_exceptions import HTTPGatewayTimeout
+from aiohttp.web_exceptions import HTTPBadRequest, HTTPGatewayTimeout
+from arq import Worker
 from arq.jobs import Job
 from pytest_toolbox.comparison import RegexStr
 
 from em2.background import push_all
 from em2.core import File, conv_actions_json, get_flag_counts
-from em2.protocol.views.smtp_utils import InvalidEmailMsg, process_smtp
+from em2.protocol.smtp.receive import InvalidEmailMsg, get_email_recipients, process_smtp
 from em2.utils.smtp import CopyToTemp, find_smtp_files
 
 from .conftest import Factory
@@ -36,7 +37,7 @@ async def test_clean_email(conns, db_conn, create_email, send_to_remote):
         """,
         headers={'In-Reply-To': message_id},
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
     assert 2 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     body = await db_conn.fetchval("select body from actions where act='message:add' order by pk desc limit 1")
     assert body == (
@@ -64,7 +65,7 @@ async def test_attachment_content_id(conns, factory: Factory, db_conn, create_em
             )
         ],
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     assert 'This is the <b>message</b>.' == await db_conn.fetchval("select body from actions where act='message:add'")
 
@@ -83,7 +84,7 @@ async def test_attachment_content_id(conns, factory: Factory, db_conn, create_em
     }
 
 
-async def test_attachment_actions(conns, factory: Factory, db_conn, redis, create_email, attachment):
+async def test_attachment_actions(conns, factory: Factory, db_conn, redis, create_email, attachment, worker: Worker):
     await factory.create_user()
 
     msg = create_email(
@@ -93,7 +94,8 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
             attachment('testing2.txt', 'text/plain', 'hello2', {'Content-ID': 'testing-hello2'}),
         ],
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
+    assert await worker.run_check(max_burst_jobs=1) == 1
     assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     assert 'This is the <b>message</b>.' == await db_conn.fetchval("select body from actions where act='message:add'")
 
@@ -114,7 +116,8 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
         'name': 'testing1.txt',
         'content_type': 'text/plain',
     }
-    conv_id, conv_key = await db_conn.fetchrow('select id, key from conversations')
+    conv_id, conv_key, leader_node = await db_conn.fetchrow('select id, key, leader_node from conversations')
+    assert leader_node is None
     data = json.loads(await conv_actions_json(conns, factory.user.id, conv_id))
     assert data == [
         {
@@ -168,7 +171,7 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
     push_data = list(data)
     push_data[-1]['extra_body'] = False
     push_data[-2]['extra_body'] = False
-    assert len(await redis.keys('arq:job:*')) == 1
+    assert len(await redis.keys('arq:job:*')) == 1  # web_push created by post_receipt
     await push_all(conns, conv_id, transmit=True)
     arq_keys = await redis.keys('arq:job:*')
     assert len(arq_keys) == 3
@@ -181,18 +184,20 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
             assert ws_data['actions'] == push_data
 
 
-async def test_get_file(conns, factory: Factory, db_conn, create_email, attachment, cli, dummy_server):
+async def test_get_file(conns, factory: Factory, db_conn, create_email, attachment, cli, dummy_server, worker: Worker):
     await factory.create_user()
 
     msg = create_email(
         html_body='This is the <b>message</b>.',
         attachments=[attachment('testing.txt', 'text/plain', 'hello', {'Content-ID': 'testing-hello2'})],
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/s3-test-path')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/s3-test-path')
+    assert await worker.run_check() == 2
 
     assert 1 == await db_conn.fetchval("select count(*) from files")
 
-    conv_key = await db_conn.fetchval('select key from conversations')
+    conv_key, leader_node = await db_conn.fetchrow('select key, leader_node from conversations')
+    assert leader_node is None
     data = json.loads(await conv_actions_json(conns, factory.user.id, conv_key))
     assert data[2]['files'] == [
         {
@@ -277,14 +282,15 @@ def test_finding_attachment(create_email, attachment, create_image):
     ]
 
 
-async def test_spam(conns, db_conn, create_email, factory: Factory, cli):
+async def test_spam(conns, db_conn, create_email, factory: Factory, cli, worker: Worker):
     user = await factory.create_user()
 
     counts = await get_flag_counts(conns, user.id)
     assert counts == {'inbox': 0, 'unseen': 0, 'draft': 0, 'sent': 0, 'archive': 0, 'all': 0, 'spam': 0, 'deleted': 0}
 
     msg = create_email(html_body='this is spam')
-    await process_smtp(conns, msg, {user.email}, 's3://foobar/whatever', spam=True, warnings={'testing': 'xxx'})
+    await process_smtp(conns, msg, [user.email], 's3://foobar/whatever', spam=True, warnings={'testing': 'xxx'})
+    assert await worker.run_check() == 2
 
     assert True is await db_conn.fetchval('select spam from participants where user_id = $1', user.id)
     assert None is await db_conn.fetchval('select spam from participants where user_id != $1', user.id)
@@ -346,7 +352,7 @@ async def test_reply_attachment(factory, conns, db_conn, create_email, send_to_r
         headers={'In-Reply-To': message_id},
         attachments=[attachment('testing.txt', 'text/plain', 'hello', {'Content-ID': 'foobar'})],
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
     data = json.loads(await conv_actions_json(conns, factory.user.id, factory.conv.key))
     assert data[-1] == {
         'id': 5,
@@ -419,7 +425,7 @@ async def test_image_extraction(conns, db_conn, create_email, send_to_remote, wo
         """,
         headers={'In-Reply-To': message_id},
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
     assert 2 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
     body = await db_conn.fetchval("select body from actions where act='message:add' order by pk desc limit 1")
     assert body == (
@@ -469,10 +475,137 @@ async def test_image_extraction_many(conns, db_conn, create_email, send_to_remot
         ),
         headers={'In-Reply-To': message_id},
     )
-    await process_smtp(conns, msg, {'testing-1@example.com'}, 's3://foobar/whatever')
+    await process_smtp(conns, msg, ['testing-1@example.com'], 's3://foobar/whatever')
     assert 2 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
 
     assert await worker.run_check() == 5
     assert len(dummy_server.log) == 20
 
     assert await db_conn.fetchval('select count(*) from image_cache') == 10
+
+
+async def test_send_to_many(conns, factory: Factory, db_conn, create_email, create_image):
+    await factory.create_user()
+
+    recipients = ['b@ex.com', 'testing-1@example.com', 'a@ex.com', 'd@ex.com', 'c@ex.com']
+    msg = create_email(html_body='This is the <b>message</b>.', to=recipients)
+    await process_smtp(conns, msg, recipients, 's3://foobar/whatever')
+    v = await db_conn.fetch('select email from participants p join users u on p.user_id = u.id order by p.id')
+    prt_addrs = [r[0] for r in v]
+    assert prt_addrs == ['sender@example.net'] + recipients
+
+
+async def test_leader_selection_em2(conns, factory: Factory, db_conn, create_email, worker: Worker, dummy_server):
+    await factory.create_user()
+
+    to = ['foobar@any.example.com', 'xyz@em2-ext.example.com', 'testing-1@example.com']
+    msg = create_email(html_body='This is the <b>message</b>.', to=to)
+    await process_smtp(conns, msg, to, 's3://foobar/s3-test-path')
+
+    live, leader_node = await db_conn.fetchrow('select live, leader_node from conversations')
+    assert live is False
+    assert leader_node is None
+    assert await worker.run_check() == 2
+
+    live, leader_node = await db_conn.fetchrow('select live, leader_node from conversations')
+    assert live is True
+    assert leader_node == dummy_server.server_name.replace('http://', '') + '/em2'
+
+    assert dummy_server.log == ['GET /v1/route/?email=xyz@em2-ext.example.com > 200']
+    assert 'remote_other' == await db_conn.fetchval('select user_type from users where email=$1', to[0])
+    assert 'remote_em2' == await db_conn.fetchval('select user_type from users where email=$1', to[1])
+
+
+async def test_leader_selection_local(conns, factory: Factory, db_conn, create_email, worker: Worker, dummy_server):
+    await factory.create_user()
+
+    to = ['testing-1@example.com', 'xyz@em2-ext.example.com']
+    msg = create_email(html_body='This is the <b>message</b>.', to=to)
+    await process_smtp(conns, msg, to, 's3://foobar/s3-test-path')
+
+    assert await worker.run_check() == 2
+
+    live, leader_node = await db_conn.fetchrow('select live, leader_node from conversations')
+    assert live is True
+    assert leader_node is None
+
+    assert dummy_server.log == []
+
+
+async def test_leader_selection_new(conns, factory: Factory, db_conn, create_email, worker: Worker, dummy_server):
+    await factory.create_user()
+
+    msg = create_email(html_body='This is the <b>message</b>.', to=[factory.user.email])
+    await process_smtp(conns, msg, [factory.user.email], 's3://foobar/s3-test-path')
+
+    assert 'UPDATE 1' == await db_conn.execute("update users set user_type='new' where email=$1", factory.user.email)
+
+    assert await worker.run_check() == 2
+
+    live, leader_node = await db_conn.fetchrow('select live, leader_node from conversations')
+    assert live is True
+    assert leader_node is None
+
+    assert dummy_server.log == []
+    assert 'local' == await db_conn.fetchval('select user_type from users where email=$1', factory.user.email)
+
+
+async def test_leader_selection_em2_other(conns, factory: Factory, db_conn, create_email, worker: Worker, dummy_server):
+    await factory.create_user()
+
+    to = ['xyz@em2-ext.example.com', 'testing-1@example.com']
+    msg = create_email(html_body='This is the <b>message</b>.', to=to)
+    await process_smtp(conns, msg, to, 's3://foobar/s3-test-path')
+
+    assert 'UPDATE 1' == await db_conn.execute("update users set user_type='remote_em2' where email=$1", to[0])
+
+    assert await worker.run_check() == 2
+
+    live, leader_node = await db_conn.fetchrow('select live, leader_node from conversations')
+    assert live is True
+    assert leader_node == dummy_server.server_name.replace('http://', '') + '/em2'
+
+    assert dummy_server.log == ['GET /v1/route/?email=xyz@em2-ext.example.com > 200']
+    assert 'remote_em2' == await db_conn.fetchval('select user_type from users where email=$1', to[0])
+
+
+async def test_leader_selection_error(
+    conns, factory: Factory, db_conn, create_email, worker: Worker, dummy_server, caplog
+):
+    await factory.create_user()
+
+    to = ['error@em2-ext.example.com']
+    msg = create_email(html_body='This is the <b>message</b>.', to=to)
+    await process_smtp(conns, msg, to, 's3://foobar/s3-test-path')
+    assert 1 == await db_conn.fetchval('select count(*) from conversations')
+    conv_id = await db_conn.fetchval('select id from conversations')
+
+    assert await worker.run_check() == 2
+
+    live, leader_node = await db_conn.fetchrow('select live, leader_node from conversations')
+    assert live is True
+    assert leader_node is None
+
+    assert dummy_server.log == ['GET /v1/route/?email=error@em2-ext.example.com > 503']
+    assert 'new' == await db_conn.fetchval('select user_type from users where email=$1', to[0])
+
+    assert f'unable to select leader for conv {conv_id}' in caplog.text
+    assert '/v1/route/?email=error@em2-ext.example.com, bad response: 503' in caplog.text
+
+
+async def test_get_email_recipients_okay(db_conn, factory: Factory):
+    await factory.create_user(email='foo@ex.com')
+    r = await get_email_recipients(['foo@ex.com', 'bar@ex.com'], ['x@ex.com', 'bar@ex.com'], 'x', db_conn)
+    assert r == ['foo@ex.com', 'bar@ex.com', 'x@ex.com']
+
+
+async def test_get_email_recipients_none(db_conn):
+    with pytest.raises(HTTPBadRequest) as exc_info:
+        await get_email_recipients([], [], 'x', db_conn)
+    assert exc_info.value._body == b'no recipient, ignoring'
+
+
+async def test_get_email_recipients_not_local(db_conn):
+    with pytest.raises(HTTPBadRequest) as exc_info:
+        await get_email_recipients(['foo@ex.com', 'bar@ex.com'], [], 'x', db_conn)
+    assert exc_info.value._body == b'no local recipient, ignoring'

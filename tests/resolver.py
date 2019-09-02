@@ -23,7 +23,7 @@ class TestDNSResolver(DNSResolver):
         super().__init__(nameservers, loop, **kwargs)
 
     async def query(self, host: str, qtype: str):
-        if (host, qtype) == ('em2-platform.example.org', 'CNAME'):
+        if (host, qtype) == ('em2-platform.em2-ext.example.com', 'CNAME'):
             # including port is a big corruption of dns, but helpful in tests
             domain = re.sub('^http://', '', self._dummy_server.server_name)
         elif (host, qtype) == ('em2-platform.local.example.com', 'CNAME'):

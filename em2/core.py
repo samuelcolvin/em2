@@ -119,7 +119,7 @@ async def get_conv_for_user(
             """
             select c.id, c.publish_ts, c.creator, p.removal_action_id from conversations as c
             join participants p on c.id=p.conv
-            where p.user_id = $1 and c.id = $2
+            where c.live is true and p.user_id = $1 and c.id = $2
             order by c.created_ts desc
             """,
             user_id,
@@ -130,7 +130,7 @@ async def get_conv_for_user(
             """
             select c.id, c.publish_ts, c.creator, p.removal_action_id from conversations c
             join participants p on c.id=p.conv
-            where p.user_id=$1 and c.key like $2
+            where c.live is true and p.user_id=$1 and c.key like $2
             order by c.created_ts desc
             limit 1
             """,
@@ -788,6 +788,7 @@ async def create_conv(  # noqa: 901
     actions: List[Action],
     given_conv_key: Optional[str] = None,
     leader_node: str = None,
+    live: bool = True,
     spam: bool = False,
     warnings: Dict[str, str] = None,
 ) -> Tuple[int, str]:
@@ -802,14 +803,17 @@ async def create_conv(  # noqa: 901
     :param actions: list of actions: add message, add participant, publish or create
     :param given_conv_key: given conversation key, checked to confirm it matches generated conv key if given
     :param leader_node: node of the leader of this conversation, black if this node
+    :param live: whether to mark the conversation has live
     :param spam: whether conversation is spam
     :param warnings: warnings about the conversation
     :return: tuple conversation id and key
     """
     main_action: Optional[Action] = None
 
+    # don this way since order is important when creating participants and prt_add actions
+    other_prt_emails: List[str] = []
     # lookup from email address of participants to IDs of the actions used when adding that prt
-    participants: Dict[str, Optional[int]] = {}
+    prt_action_lookup: Dict[str, Optional[int]] = {}
     messages: List[Action] = []
 
     for action in actions:
@@ -818,7 +822,9 @@ async def create_conv(  # noqa: 901
         elif action.act == ActionTypes.msg_add:
             messages.append(action)
         elif action.act == ActionTypes.prt_add:
-            participants[action.participant] = action.id
+            other_prt_emails.append(action.participant)
+            if action.id:
+                prt_action_lookup[action.participant] = action.id
 
     assert main_action is not None, 'no publish or create action found'
     ts = main_action.ts or utcnow()
@@ -831,8 +837,8 @@ async def create_conv(  # noqa: 901
     async with conns.main.transaction():
         conv_id = await conns.main.fetchval(
             """
-            insert into conversations (key, creator, publish_ts, created_ts, updated_ts, leader_node)
-            values                    ($1,  $2     , $3        , $4        , $4        , $5         )
+            insert into conversations (key, creator, publish_ts, created_ts, updated_ts, leader_node, live)
+            values                    ($1,  $2     , $3        , $4        , $4        , $5         , $6)
             on conflict (key) do nothing
             returning id
             """,
@@ -841,6 +847,7 @@ async def create_conv(  # noqa: 901
             ts if publish else None,
             ts,
             leader_node,
+            live,
         )
         if conv_id is None:
             raise JsonErrors.HTTPConflict(message='key conflicts with existing conversation')
@@ -848,9 +855,9 @@ async def create_conv(  # noqa: 901
         await conns.main.execute(
             'insert into participants (conv, user_id, seen, inbox) (select $1, $2, true, null)', conv_id, creator_id
         )
-        if participants:
-            part_users = await get_create_multiple_users(conns, participants.keys())
-            other_user_emails, other_user_ids = zip(*part_users.items())
+        if other_prt_emails:
+            part_users = await get_create_multiple_users(conns, set(other_prt_emails))
+            other_user_ids = [part_users[u_email] for u_email in other_prt_emails]
             await conns.main.execute(
                 'insert into participants (conv, user_id, spam) (select $1, unnest($2::int[]), $3)',
                 conv_id,
@@ -858,7 +865,7 @@ async def create_conv(  # noqa: 901
                 True if spam else None,
             )
             user_ids = [creator_id] + list(other_user_ids)
-            action_ids = [1] + [participants[u_email] for u_email in other_user_emails]
+            action_ids = [1] + [prt_action_lookup.get(u_email) for u_email in other_prt_emails]
         else:
             part_users = {}
             other_user_ids = []
