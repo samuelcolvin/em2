@@ -17,6 +17,8 @@ async def em2_routing(request):
     email = request.query.get('email')
     if email == 'diff@em2-ext.example.com':
         return json_response(node=request.headers['host'] + '/different')
+    elif email == 'error@em2-ext.example.com':
+        return Response(text='error', status=503)
     else:
         return json_response(node=request.headers['host'] + '/em2')
 

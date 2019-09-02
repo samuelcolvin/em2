@@ -327,7 +327,6 @@ async def get_leader(ctx, conv_id: int, pg: BuildPgConnection) -> Optional[str]:
         join participants p on u.id = p.user_id
         where p.conv=$1 and u.user_type != 'remote_other'
         order by p.id
-        offset 1  -- first participant is always the creator
         """,
         conv_id,
     )
@@ -347,7 +346,7 @@ async def get_leader(ctx, conv_id: int, pg: BuildPgConnection) -> Optional[str]:
             # TODO this could cause problems where different nodes assume different leaders
             continue
 
-        new_user_type = UserTypes.remote_other if em2_node else UserTypes.remote_other
+        new_user_type = UserTypes.remote_em2 if em2_node else UserTypes.remote_other
         if user_type != new_user_type:
             await pg.execute('update users set user_type=$1, v=null where email=$2', new_user_type, email)
         if em2_node:
