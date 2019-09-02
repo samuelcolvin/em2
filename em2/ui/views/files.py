@@ -24,7 +24,7 @@ class GetFile(View):
         # in theory we might need to add action_id here to specify the file via content_id, but in practice probably
         # not necessary (until it is)
         conv_prefix = self.request.match_info['conv']
-        conv_id, last_action = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix)
+        c = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix)
 
         file_id, action_id, file_storage, storage_expires, send_id, send_storage = await or404(
             self.conn.fetchrow(
@@ -35,19 +35,19 @@ class GetFile(View):
                 left join sends s on f.send = s.id
                 where f.conv=$1 and f.content_id=$2
                 """,
-                conv_id,
+                c.id,
                 self.request.match_info['content_id'],
             ),
             msg='unable to find file',
         )
-        if last_action and action_id > last_action:
+        if c.last_action and action_id > c.last_action:
             raise JsonErrors.HTTPForbidden("You're not permitted to view this file")
 
         if file_storage and (storage_expires is None or storage_expires > (utcnow() + timedelta(seconds=30))):
             storage_ref = file_storage
         else:
             assert send_storage, "send_storage should be set if file_storage isn't"
-            storage_ref = await self.copy_to_temp(conv_id, send_id, file_id, send_storage)
+            storage_ref = await self.copy_to_temp(c.id, send_id, file_id, send_storage)
 
         _, bucket, path = parse_storage_uri(storage_ref)
         url = S3(s).signed_download_url(bucket, path)
@@ -73,7 +73,7 @@ class GetHtmlImage(View):
             raise JsonErrors.HTTPBadRequest('invalid url')
 
         conv_prefix = self.request.match_info['conv']
-        conv_id, last_action = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix)
+        c = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix)
 
         # does this query use indexes correctly?
         action_id, storage, error = await or404(
@@ -84,12 +84,12 @@ class GetHtmlImage(View):
                 where i.conv=$1 and i.url=$2 and i.action = a.pk
                 returning a.id, storage, error
                 """,
-                conv_id,
+                c.id,
                 url,
             ),
             msg='unable to find image',
         )
-        if last_action and action_id > last_action:
+        if c.last_action and action_id > c.last_action:
             raise JsonErrors.HTTPForbidden("You're not permitted to view this file")
 
         if error:
@@ -121,12 +121,12 @@ class UploadFile(View):
             raise HTTPNotImplemented(text="Storage keys not set, can't upload files")
 
         conv_prefix = self.request.match_info['conv']
-        conv_id, last_action = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix)
-        if last_action:
+        c = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix)
+        if c.last_action:
             raise JsonErrors.HTTPForbidden(message='file attachment not permitted')
 
         m = parse_request_query(self.request, self.QueryModel)
-        conv_key = await self.conn.fetchval('select key from conversations where id=$1', conv_id)
+        conv_key = await self.conn.fetchval('select key from conversations where id=$1', c.id)
         content_id = str(uuid4())
 
         bucket = s.s3_file_bucket
@@ -139,9 +139,9 @@ class UploadFile(View):
             size=m.size,
         )
         storage_path = 's3://{}/{}'.format(bucket, d['fields']['Key'])
-        await self.redis.setex(file_upload_cache_key(conv_id, content_id), upload_pending_ttl, storage_path)
+        await self.redis.setex(file_upload_cache_key(c.id, content_id), upload_pending_ttl, storage_path)
         await self.redis.enqueue_job(
-            'delete_stale_upload', conv_id, content_id, storage_path, _defer_by=upload_pending_ttl
+            'delete_stale_upload', c.id, content_id, storage_path, _defer_by=upload_pending_ttl
         )
         return json_response(content_id=content_id, **d)
 

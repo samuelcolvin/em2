@@ -107,17 +107,25 @@ def draft_conv_key() -> str:
     return secrets.token_hex(10)  # string length will be 20
 
 
-async def get_conv_for_user(
-    conns: Connections, user_id: int, conv_ref: StrInt, *, req_pub: bool = None
-) -> Tuple[int, Optional[int]]:
+@dataclass
+class ConvSummary:
+    id: int
+    publish_ts: datetime
+    leader: Optional[str]
+    last_action: Optional[int]
+
+
+async def get_conv_for_user(conns: Connections, user_id: int, conv_ref: StrInt) -> ConvSummary:
     """
-    Get a conversation id for a user based on the beginning of the conversation key, if the user has been
-    removed from the conversation the id of the last action they can see will also be returned.
+    :param conns: connections
+    :param user_id: ID of the user
+    :param conv_ref: conversation id or key prefix
+    :return: ConvSummary
     """
     if isinstance(conv_ref, int):
         query = conns.main.fetchrow(
             """
-            select c.id, c.publish_ts, c.creator, p.removal_action_id from conversations as c
+            select c.id, c.publish_ts, c.leader_node, c.creator, p.removal_action_id from conversations as c
             join participants p on c.id=p.conv
             where c.live is true and p.user_id = $1 and c.id = $2
             order by c.created_ts desc
@@ -128,7 +136,7 @@ async def get_conv_for_user(
     else:
         query = conns.main.fetchrow(
             """
-            select c.id, c.publish_ts, c.creator, p.removal_action_id from conversations c
+            select c.id, c.publish_ts, c.leader_node, c.creator, p.removal_action_id from conversations c
             join participants p on c.id=p.conv
             where c.live is true and p.user_id=$1 and c.key like $2
             order by c.created_ts desc
@@ -139,14 +147,11 @@ async def get_conv_for_user(
         )
 
     # TODO we should use a custom error here, not just 404: Conversation not found
-    conv_id, publish_ts, creator, last_action = await or404(query, msg='Conversation not found')
+    conv_id, publish_ts, leader, creator, last_action = await or404(query, msg='Conversation not found')
 
     if not publish_ts and user_id != creator:
         raise JsonErrors.HTTPForbidden('conversation is unpublished and you are not the creator')
-    if req_pub is not None and bool(publish_ts) != req_pub:
-        msg = 'Conversation not yet published' if req_pub else 'Conversation already published'
-        raise JsonErrors.HTTPBadRequest(msg)
-    return conv_id, last_action
+    return ConvSummary(conv_id, publish_ts, leader, last_action)
 
 
 async def update_conv_users(conns: Connections, conv_id: int) -> List[int]:
@@ -228,18 +233,19 @@ class _Act:
         self.warnings = json.dumps(warnings) if warnings else None  # FIXME moved to action
 
     async def prepare(self, conv_ref: StrInt, actor_id: int) -> Tuple[int, int, int]:
-        self.conv_id, last_action = await get_conv_for_user(self.conns, actor_id, conv_ref)
+        c = await get_conv_for_user(self.conns, actor_id, conv_ref)
+        self.conv_id = c.id
 
         # we must be in a transaction
         # this is a hard check that conversations can only have one act applied at a time
         creator = await self.conns.main.fetchval(
             'select creator from conversations where id=$1 for no key update', self.conv_id
         )
-        return last_action, self.conv_id, creator
+        return c.last_action, self.conv_id, creator
 
     async def new_actor(self, actor_id: int):
-        _, last_action = await get_conv_for_user(self.conns, actor_id, self.conv_id)
-        return last_action
+        c = await get_conv_for_user(self.conns, actor_id, self.conv_id)
+        return c.last_action
 
     async def run(self, action: Action, last_action: int) -> Tuple[Optional[int], Optional[int]]:
         if action.act is ActionTypes.seen:
@@ -536,7 +542,7 @@ async def apply_actions(
     from_deleted, from_archive, already_inbox = [], [], []
     async with conns.main.transaction():
         # IMPORTANT must not do anything that could be slow (eg. networking) inside this transaction,
-        # as the conv is locked for update from prepare onwards
+        # as the conv is locked for update from prepare() onwards
         actor_user_id = actions[0].actor_id
         last_action, conv_id, creator_id = await act_cls.prepare(conv_ref, actor_user_id)
 
@@ -662,13 +668,13 @@ async def user_flag_moves(
 async def conv_actions_json(
     conns: Connections, user_id: int, conv_ref: StrInt, *, since_id: int = None, inc_seen: bool = False
 ):
-    conv_id, last_action = await get_conv_for_user(conns, user_id, conv_ref)
-    where_logic = V('a.conv') == conv_id
-    if last_action:
-        where_logic &= V('a.id') <= last_action
+    c = await get_conv_for_user(conns, user_id, conv_ref)
+    where_logic = V('a.conv') == c.id
+    if c.last_action:
+        where_logic &= V('a.id') <= c.last_action
 
     if since_id:
-        await or404(conns.main.fetchval('select 1 from actions where conv=$1 and id=$2', conv_id, since_id))
+        await or404(conns.main.fetchval('select 1 from actions where conv=$1 and id=$2', c.id, since_id))
         where_logic &= V('a.id') > since_id
 
     if not inc_seen:

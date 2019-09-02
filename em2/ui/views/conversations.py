@@ -273,10 +273,10 @@ class ConvAct(ExecView):
         for a in m.actions:
             files = None
             if a.files:
-                conv_id, _ = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
+                c = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
                 async with S3(self.settings) as s3_client:
                     files = await asyncio.gather(
-                        *(self.prepare_file(s3_client, conv_id, content_id) for content_id in a.files)
+                        *(self.prepare_file(s3_client, c.id, content_id) for content_id in a.files)
                     )
             yield Action(actor_id=self.session.user_id, files=files, **a.dict(exclude={'files'}))
 
@@ -314,11 +314,13 @@ class ConvPublish(ExecView):
 
     async def execute(self, action: Model):
         conv_prefix = self.request.match_info['conv']
-        conv_id, _ = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix, req_pub=False)
+        c = await get_conv_for_user(self.conns, self.session.user_id, conv_prefix)
+        if c.publish_ts:
+            raise JsonErrors.HTTPBadRequest('Conversation already published')
 
         # could do more efficiently than this, but would require duplicate logic
         conv_summary = await construct_conv(self.conns, self.session.user_id, conv_prefix)
-        old_key = await self.conns.main.fetchval('select key from conversations where id=$1', conv_id)
+        old_key = await self.conns.main.fetchval('select key from conversations where id=$1', c.id)
 
         ts = utcnow()
         conv_key = generate_conv_key(self.session.email, ts, conv_summary['subject'])
@@ -327,32 +329,32 @@ class ConvPublish(ExecView):
                 # this is a hard check that conversations can't be published multiple times,
                 # "for no key update" locks the row during this transaction
                 publish_ts = await self.conn.fetchval(
-                    'select publish_ts from conversations where id=$1 for no key update', conv_id
+                    'select publish_ts from conversations where id=$1 for no key update', c.id
                 )
                 # this prevents a race condition if ConvPublish is called concurrently
                 if publish_ts:
                     raise JsonErrors.HTTPBadRequest('Conversation already published')
                 await self.conn.execute(
                     'update conversations set publish_ts=current_timestamp, last_action_id=0, key=$2 where id=$1',
-                    conv_id,
+                    c.id,
                     conv_key,
                 )
 
             # TODO, maybe in future we'll need a record of these old actions?
-            await self.conn.execute('delete from actions where conv=$1', conv_id)
+            await self.conn.execute('delete from actions where conv=$1', c.id)
 
             await self.conn.execute(
                 """
                 insert into actions (conv, act, actor, ts, participant_user)
                 (select $1, 'participant:add', $2, $3, user_id from participants where conv=$1)
                 """,
-                conv_id,
+                c.id,
                 self.session.user_id,
                 ts,
             )
             files = []
             for msg in conv_summary['messages']:
-                files += await self.add_msg(msg, conv_id, ts)
+                files += await self.add_msg(msg, c.id, ts)
 
             if files:
                 await self.conns.main.execute_b(
@@ -364,12 +366,12 @@ class ConvPublish(ExecView):
                 insert into actions (conv, act           , actor, ts, body)
                 values              ($1  , 'conv:publish', $2   , $3, $4)
                 """,
-                conv_id,
+                c.id,
                 self.session.user_id,
                 ts,
                 conv_summary['subject'],
             )
-            user_ids = await update_conv_users(self.conns, conv_id)
+            user_ids = await update_conv_users(self.conns, c.id)
 
         other_user_ids = set(user_ids) - {self.session.user_id}
         updates = (
@@ -380,8 +382,8 @@ class ConvPublish(ExecView):
             ),
         )
         await update_conv_flags(self.conns, *updates)
-        await search_publish_conv(self.conns, conv_id, old_key, conv_key)
-        await push_all(self.conns, conv_id)
+        await search_publish_conv(self.conns, c.id, old_key, conv_key)
+        await push_all(self.conns, c.id)
         return dict(key=conv_key)
 
     async def add_msg(self, msg_info: Dict[str, Any], conv_id: int, ts: datetime, parent: int = None) -> List[Values]:
@@ -422,7 +424,7 @@ class SetConvFlag(View):
 
     async def call(self):
         flag = parse_request_query(self.request, self.QueryModel).flag
-        conv_id, _ = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
+        c = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
         async with self.conn.transaction():
             participant_id, inbox, seen, deleted, spam, self_created, draft = await self.conn.fetchrow(
                 """
@@ -431,7 +433,7 @@ class SetConvFlag(View):
                 join conversations c on p.conv = c.id
                 where conv=$1 and user_id=$2 for no key update
                 """,
-                conv_id,
+                c.id,
                 self.session.user_id,
             )
             sent = self_created and not draft

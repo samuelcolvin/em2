@@ -27,12 +27,12 @@ class AddRemoveLabel(View):
         ):
             raise JsonErrors.HTTPBadRequest('you do not have this label')
 
-        conv_id, _ = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
+        c = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
         async with self.conn.transaction():
             participant_id, has_label = await self.conn.fetchrow(
                 'select id, label_ids @> $1 from participants where conv=$2 and user_id=$3 for no key update',
                 [m.label_id],
-                conv_id,
+                c.id,
                 self.session.user_id,
             )
             if m.action == self.AddRemoveQueryModel.AddRemove.add:
