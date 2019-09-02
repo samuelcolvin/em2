@@ -21,6 +21,7 @@ from em2.core import (
 )
 from em2.protocol.core import HttpError, InvalidSignature
 from em2.utils.core import MsgFormat
+from em2.utils.db import or404
 from em2.utils.storage import check_content_type
 
 from .utils import ExecView
@@ -41,7 +42,7 @@ async def signing_verification(request):
 
 
 class ActionCore(BaseModel):
-    id: conint(gt=0)
+    id: Optional[conint(gt=0)]
     ts: datetime
     actor: EmailStr
 
@@ -246,17 +247,11 @@ class _PushBase(ExecView):
 
 class Em2Push(_PushBase):
     class Model(PushModel):
-        actions: List[
-            Union[
-                ParticipantModel,
-                ParticipantRemoveModel,
-                MessageAddModel,
-                MessageModifyModel,
-                PublishModel,
-                SubjectModifyModel,
-                FollowModel,
-            ]
-        ]
+        @validator('actions', whole=True)
+        def check_action_ids(cls, actions):
+            if not all(a.id for a in actions):
+                raise ValueError('action ids may not be null')
+            return actions
 
         @validator('actions', whole=True)
         def check_publish_action(cls, actions):
@@ -373,3 +368,53 @@ class Em2Push(_PushBase):
             given_conv_key=self.request.match_info['conv'],
             leader_node=em2_node,
         )
+
+
+class Em2FollowerPush(_PushBase):
+    class Model(PushModel):
+        actions: List[
+            Union[
+                ParticipantModel,
+                ParticipantRemoveModel,
+                MessageAddModel,
+                MessageModifyModel,
+                SubjectModifyModel,
+                FollowModel,
+            ]
+        ]
+
+        class Config:
+            allow_publish = False
+
+    async def execute_trans(self, m: Model, em2_node: str) -> Tuple[Optional[int], bool, Optional[List[int]]]:
+        conversation = self.request.match_info['conv']
+        # lock the conversation here so simultaneous requests executing the same action ids won't cause errors
+        conv_id, last_action_id, leader_node = await or404(
+            self.conns.main.fetchrow(
+                'select id, last_action_id, leader_node from conversations where key=$1 for no key update', conversation
+            ),
+            msg='conversation not found',
+        )
+
+        if leader_node is not None:
+            raise JsonErrors.HTTPBadRequest(f'conversation leader must be this node, not {leader_node!r}')
+
+        expected_last_action = m.actions[0].id
+        if last_action_id + 1 != expected_last_action:
+            raise JsonErrors.HTTP470(f'action id conflict, expected {expected_last_action}')
+
+        actor_emails = {a.actor for a in m.actions}
+        actor_user_ids = await get_create_multiple_users(self.conns, actor_emails)
+        actions = [
+            Action(actor_id=actor_user_ids[a.actor], files=a.core_files(), **a.dict(exclude={'actor', 'files'}))
+            for a in m.actions
+        ]
+
+        try:
+            action_ids = await apply_actions(self.conns, conv_id, actions)
+        except JsonErrors.HTTPNotFound:
+            # happens when an actor hasn't yet been added to the conversation, any other times?
+            # TODO any other errors?
+            raise JsonErrors.HTTPBadRequest('actor does not have permission to update this conversation')
+        else:
+            return conv_id, True, action_ids
