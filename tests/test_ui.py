@@ -7,10 +7,10 @@ from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
 from em2.core import Action, ActionTypes, construct_conv
 
-from .conftest import Factory
+from .conftest import Em2TestClient, Factory, UserTestClient
 
 
-async def test_create_conv(cli, factory: Factory, db_conn):
+async def test_create_conv(cli: UserTestClient, factory: Factory, db_conn):
     user = await factory.create_user()
 
     r = await cli.post_json(factory.url('ui:create'), {'subject': 'Sub', 'message': 'Msg'}, status=201)
@@ -53,7 +53,7 @@ async def test_create_conv(cli, factory: Factory, db_conn):
     assert participants == ['testing-1@example.com']
 
 
-async def test_create_conv_participants(cli, factory: Factory, db_conn):
+async def test_create_conv_participants(cli: UserTestClient, factory: Factory, db_conn):
     user = await factory.create_user()
 
     r = await cli.post_json(
@@ -104,7 +104,7 @@ async def test_create_conv_participants(cli, factory: Factory, db_conn):
     assert participants == {'foobar@example.com', 'another@example.com', 'testing-1@example.com'}
 
 
-async def test_create_conv_publish(cli, factory: Factory, db_conn):
+async def test_create_conv_publish(cli: UserTestClient, factory: Factory, db_conn):
     user = await factory.create_user()
 
     r = await cli.post_json(factory.url('ui:create'), {'subject': 'Sub', 'message': 'Msg', 'publish': True}, status=201)
@@ -137,7 +137,7 @@ async def test_create_conv_publish(cli, factory: Factory, db_conn):
     }
 
 
-async def test_conv_list(cli, factory: Factory, db_conn):
+async def test_conv_list(cli: UserTestClient, factory: Factory, db_conn):
     await factory.create_user()
     conv = await factory.create_conv()
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
@@ -174,7 +174,7 @@ async def test_conv_list(cli, factory: Factory, db_conn):
     }
 
 
-async def test_labels_conv_list(cli, factory: Factory, db_conn):
+async def test_labels_conv_list(cli: UserTestClient, factory: Factory, db_conn):
     await factory.create_user()
     conv = await factory.create_conv()
 
@@ -186,7 +186,7 @@ async def test_labels_conv_list(cli, factory: Factory, db_conn):
     assert obj['conversations'][0]['labels'] == label_ids
 
 
-async def test_conv_actions(cli, factory: Factory, db_conn):
+async def test_conv_actions(cli: UserTestClient, factory: Factory, db_conn):
     await factory.create_user()
     conv = await factory.create_conv()
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
@@ -212,7 +212,7 @@ async def test_conv_actions(cli, factory: Factory, db_conn):
     ]
 
 
-async def test_act(cli, factory: Factory):
+async def test_act(cli: UserTestClient, factory: Factory):
     await factory.create_user()
     conv = await factory.create_conv()
 
@@ -233,7 +233,7 @@ async def test_act(cli, factory: Factory):
     }
 
 
-async def test_conv_details(cli, factory: Factory, db_conn):
+async def test_conv_details(cli: UserTestClient, factory: Factory, db_conn):
     await factory.create_user()
     conv = await factory.create_conv()
     assert 1 == await db_conn.fetchval('select count(*) from conversations')
@@ -266,7 +266,7 @@ async def test_conv_details(cli, factory: Factory, db_conn):
     }
 
 
-async def test_seen(cli, factory: Factory):
+async def test_seen(cli: UserTestClient, factory: Factory):
     await factory.create_user()
     conv = await factory.create_conv()
 
@@ -291,7 +291,7 @@ async def test_seen(cli, factory: Factory):
             await ws.receive(timeout=0.1)
 
 
-async def test_create_then_publish(cli, factory: Factory, db_conn, conns):
+async def test_create_then_publish(cli: UserTestClient, factory: Factory, db_conn, conns):
     user = await factory.create_user()
     conv = await factory.create_conv()
 
@@ -343,7 +343,7 @@ async def test_create_then_publish(cli, factory: Factory, db_conn, conns):
     assert 3 == await db_conn.fetchval('select count(*) from actions where conv=$1', conv.id)
 
 
-async def test_ws_create(cli, factory: Factory, db_conn):
+async def test_ws_create(cli: UserTestClient, factory: Factory, db_conn):
     user = await factory.create_user()
     assert 1 == await db_conn.fetchval('select v from users where id=$1', user.id)
     await factory.create_conv()
@@ -408,7 +408,7 @@ async def test_ws_create(cli, factory: Factory, db_conn):
     }
 
 
-async def test_ws_add_msg(cli, factory: Factory, db_conn):
+async def test_ws_add_msg(cli: UserTestClient, factory: Factory, db_conn):
     user = await factory.create_user()
     conv = await factory.create_conv()
     assert 2 == await db_conn.fetchval('select v from users where id=$1', user.id)
@@ -454,7 +454,7 @@ async def test_ws_add_msg(cli, factory: Factory, db_conn):
     }
 
 
-async def test_create_conv_many_participants(cli, factory: Factory):
+async def test_create_conv_many_participants(cli: UserTestClient, factory: Factory):
     await factory.create_user()
 
     prts = [{f'email': f'p-{i}@example.com'} for i in range(66)]
@@ -464,7 +464,7 @@ async def test_create_conv_many_participants(cli, factory: Factory):
     assert 'no more than 64 participants permitted' in await r.text()
 
 
-async def test_act_multiple(cli, factory: Factory, db_conn):
+async def test_act_multiple(cli: UserTestClient, factory: Factory, db_conn):
     user = await factory.create_user()
     conv = await factory.create_conv()
     assert 2 == await db_conn.fetchval('select v from users where id=$1', user.id)
@@ -533,7 +533,7 @@ async def test_removed_get_list(factory: Factory, cli):
     assert obj['details']['prev'] == 'This is a test'
 
 
-async def test_conv_list_live(cli, factory: Factory, db_conn):
+async def test_conv_list_live(cli: UserTestClient, factory: Factory, db_conn):
     await factory.create_user()
     await factory.create_conv()
 
@@ -543,3 +543,19 @@ async def test_conv_list_live(cli, factory: Factory, db_conn):
 
     obj = await cli.get_json(factory.url('ui:list'))
     assert len(obj['conversations']) == 0
+
+
+async def test_remote_loader(em2_cli: Em2TestClient, cli: UserTestClient, factory: Factory, db_conn, dummy_server):
+    await em2_cli.create_conv(subject='Testing Remote Leader')
+    live, leader_node = await db_conn.fetchrow('select live, leader_node from conversations')
+    assert live is True
+    assert leader_node == f'localhost:{dummy_server.server.port}/em2'
+    obj = await cli.get_json(factory.url('ui:list'))
+    assert len(obj['conversations']) == 1
+    assert obj['conversations'][0]['details']['sub'] == 'Testing Remote Leader'
+    # key = obj['conversations'][0]['key']
+
+    # data = {'actions': [{'act': 'message:add', 'body': 'reply'}]}
+    # r = await cli.post_json(factory.url('ui:act', conv=key), data)
+    # obj = await r.json()
+    # assert obj == {'action_ids': [4, 5, 6]}

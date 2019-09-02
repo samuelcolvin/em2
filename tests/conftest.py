@@ -229,6 +229,7 @@ class Em2TestClient(TestClient):
         msg='test message',
         expected_status=200,
     ):
+        # use recipient@example.com here so recipient can be changed in test errors
         if not await self._factory.conn.fetchval('select 1 from users where email=$1', 'recipient@example.com'):
             await self._factory.create_user(email='recipient@example.com')
         ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)

@@ -779,7 +779,7 @@ async def test_download_errors(em2_cli: Em2TestClient, db_conn, dummy_server: Du
     ]
 
 
-async def test_duplicate_file_content_id(em2_cli: Em2TestClient, db_conn, dummy_server: DummyServer):
+async def test_duplicate_file_content_id(em2_cli: Em2TestClient, db_conn):
     await em2_cli.create_conv()
 
     conv_key = await db_conn.fetchval('select key from conversations')

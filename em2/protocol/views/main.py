@@ -122,7 +122,65 @@ class FollowModel(ActionCore):
     follows: int
 
 
-class Em2Push(ExecView):
+class PushModel(BaseModel):
+    actions: List[
+        Union[
+            ParticipantModel,
+            ParticipantRemoveModel,
+            MessageAddModel,
+            MessageModifyModel,
+            PublishModel,
+            SubjectModifyModel,
+            FollowModel,
+        ]
+    ]
+
+    class Config:
+        allow_publish = False
+
+    @validator('actions', pre=True, whole=True)
+    def validate_actions(cls, actions):
+        if isinstance(actions, list):
+            return list(cls.action_gen(actions))
+        raise TypeError('actions must be a list')
+
+    @classmethod
+    def action_gen(cls, actions):
+        for i, action in enumerate(actions):
+            if not isinstance(action, dict):
+                raise ValueError(f'invalid action at index {i}, not dict')
+
+            act = action.get('act')
+            if act == ActionTypes.prt_add:
+                yield ParticipantModel(**action)
+            elif act == ActionTypes.prt_remove:
+                yield ParticipantRemoveModel(**action)
+            elif act == ActionTypes.msg_add:
+                yield MessageAddModel(**action)
+            elif act == ActionTypes.msg_modify:
+                yield MessageModifyModel(**action)
+            elif cls.__config__.allow_publish and act == ActionTypes.conv_publish:
+                yield PublishModel(**action)
+            elif act == ActionTypes.subject_modify:
+                yield SubjectModifyModel(**action)
+            elif act in follow_only_types:
+                yield FollowModel(**action)
+            else:
+                raise ValueError(f'invalid action at index {i}, no support for act {act!r}')
+
+    @validator('actions', whole=True)
+    def check_action_order(cls, actions):
+        if len(actions) == 0:
+            raise ValueError('at least one action is required')
+        next_action_id = actions[0].id
+        for a in actions[1:]:
+            next_action_id += 1
+            if a.id != next_action_id:
+                raise ValueError('action ids do not increment correctly')
+        return actions
+
+
+class _PushBase(ExecView):
     """
     Currently:
     * 200 means ok
@@ -134,76 +192,7 @@ class Em2Push(ExecView):
     Need to formalise this.
     """
 
-    class Model(BaseModel):
-        actions: List[
-            Union[
-                ParticipantModel,
-                ParticipantRemoveModel,
-                MessageAddModel,
-                MessageModifyModel,
-                PublishModel,
-                SubjectModifyModel,
-                FollowModel,
-            ]
-        ]
-
-        @validator('actions', pre=True, whole=True)
-        def validate_actions(cls, actions):
-            if isinstance(actions, list):
-                return list(cls.action_gen(actions))
-            raise ValueError('actions must be a list')
-
-        @classmethod
-        def action_gen(cls, actions):
-            for i, action in enumerate(actions):
-                if not isinstance(action, dict):
-                    raise ValueError(f'invalid action at index {i}, not dict')
-
-                act = action.get('act')
-                if act == ActionTypes.prt_add:
-                    yield ParticipantModel(**action)
-                elif act == ActionTypes.prt_remove:
-                    yield ParticipantRemoveModel(**action)
-                elif act == ActionTypes.msg_add:
-                    yield MessageAddModel(**action)
-                elif act == ActionTypes.msg_modify:
-                    yield MessageModifyModel(**action)
-                elif act == ActionTypes.conv_publish:
-                    yield PublishModel(**action)
-                elif act == ActionTypes.subject_modify:
-                    yield SubjectModifyModel(**action)
-                elif act in follow_only_types:
-                    yield FollowModel(**action)
-                else:
-                    raise ValueError(f'invalid action at index {i}, no support for act {act!r}')
-
-        @validator('actions', whole=True)
-        def check_actions(cls, actions):
-            if len(actions) == 0:
-                raise ValueError('at least one action is required')
-            next_action_id = actions[0].id
-            for a in actions[1:]:
-                next_action_id += 1
-                if a.id != next_action_id:
-                    raise ValueError('action ids do not increment correctly')
-
-            pub = next((a for a in actions if a.act == ActionTypes.conv_publish), None)
-            if pub:
-                if actions[0].id != 1:
-                    raise ValueError('when publishing, the first action must have ID=1')
-                for a in actions:
-                    if a.id > pub.id:
-                        break
-                    elif a.actor != pub.actor:
-                        raise ValueError('only a single actor should publish conversations')
-                    elif a.act not in {ActionTypes.msg_add, ActionTypes.prt_add, ActionTypes.conv_publish}:
-                        raise ValueError(
-                            'when publishing, only "participant:add", "message:add" and '
-                            '"conv:publish" actions are permitted'
-                        )
-            return actions
-
-    async def execute(self, m: Model):  # noqa: C901 (ignore complexity)
+    async def execute(self, m: PushModel):  # noqa: C901 (ignore complexity)
         try:
             em2_node = self.request.query['node']
         except KeyError:
@@ -250,6 +239,45 @@ class Em2Push(ExecView):
 
         for content_id in file_content_ids:
             await self.conns.redis.enqueue_job('download_push_file', conv_id, content_id)
+
+    async def execute_trans(self, m: PushModel, em2_node: str) -> Tuple[Optional[int], bool, Optional[List[int]]]:
+        raise NotImplementedError
+
+
+class Em2Push(_PushBase):
+    class Model(PushModel):
+        actions: List[
+            Union[
+                ParticipantModel,
+                ParticipantRemoveModel,
+                MessageAddModel,
+                MessageModifyModel,
+                PublishModel,
+                SubjectModifyModel,
+                FollowModel,
+            ]
+        ]
+
+        @validator('actions', whole=True)
+        def check_publish_action(cls, actions):
+            pub = next((a for a in actions if a.act == ActionTypes.conv_publish), None)
+            if pub:
+                if actions[0].id != 1:
+                    raise ValueError('when publishing, the first action must have ID=1')
+                for a in actions:
+                    if a.id > pub.id:
+                        break
+                    elif a.actor != pub.actor:
+                        raise ValueError('only a single actor should publish conversations')
+                    elif a.act not in {ActionTypes.msg_add, ActionTypes.prt_add, ActionTypes.conv_publish}:
+                        raise ValueError(
+                            'when publishing, only "participant:add", "message:add" and '
+                            '"conv:publish" actions are permitted'
+                        )
+            return actions
+
+        class Config:
+            allow_publish = True
 
     async def execute_trans(self, m: Model, em2_node: str) -> Tuple[Optional[int], bool, Optional[List[int]]]:
         publish_action = next((a for a in m.actions if a.act == ActionTypes.conv_publish), None)

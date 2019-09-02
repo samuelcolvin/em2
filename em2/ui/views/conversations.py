@@ -262,12 +262,14 @@ class ConvAct(ExecView):
 
     async def execute(self, m: Model):
         c = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
-        assert c.leader is None
-        action_ids = await apply_actions(self.conns, c.id, [a async for a in self.raw_actions(c.id, m)])
+        if c.leader:
+            raise NotImplementedError('need to cope with actions for remote leaders')
+        else:
+            action_ids = await apply_actions(self.conns, c.id, [a async for a in self.raw_actions(c.id, m)])
 
-        if action_ids:
-            await push_multiple(self.conns, c.id, action_ids)
-        return {'action_ids': action_ids}
+            if action_ids:
+                await push_multiple(self.conns, c.id, action_ids)
+            return {'action_ids': action_ids}
 
     async def raw_actions(self, conv_id: int, m: Model):
         for a in m.actions:
