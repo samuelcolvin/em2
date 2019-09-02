@@ -2,14 +2,14 @@ import json
 from email.message import EmailMessage
 
 import pytest
-from aiohttp.web_exceptions import HTTPGatewayTimeout
+from aiohttp.web_exceptions import HTTPBadRequest, HTTPGatewayTimeout
 from arq import Worker
 from arq.jobs import Job
 from pytest_toolbox.comparison import RegexStr
 
 from em2.background import push_all
 from em2.core import File, conv_actions_json, get_flag_counts
-from em2.protocol.smtp.receive import InvalidEmailMsg, process_smtp
+from em2.protocol.smtp.receive import InvalidEmailMsg, get_email_recipients, process_smtp
 from em2.utils.smtp import CopyToTemp, find_smtp_files
 
 from .conftest import Factory
@@ -591,3 +591,21 @@ async def test_leader_selection_error(
 
     assert f'unable to select leader for conv {conv_id}' in caplog.text
     assert '/v1/route/?email=error@em2-ext.example.com, bad response: 503' in caplog.text
+
+
+async def test_get_email_recipients_okay(db_conn, factory: Factory):
+    await factory.create_user(email='foo@ex.com')
+    r = await get_email_recipients(['foo@ex.com', 'bar@ex.com'], ['x@ex.com', 'bar@ex.com'], 'x', db_conn)
+    assert r == ['foo@ex.com', 'bar@ex.com', 'x@ex.com']
+
+
+async def test_get_email_recipients_none(db_conn):
+    with pytest.raises(HTTPBadRequest) as exc_info:
+        await get_email_recipients([], [], 'x', db_conn)
+    assert exc_info.value._body == b'no recipient, ignoring'
+
+
+async def test_get_email_recipients_not_local(db_conn):
+    with pytest.raises(HTTPBadRequest) as exc_info:
+        await get_email_recipients(['foo@ex.com', 'bar@ex.com'], [], 'x', db_conn)
+    assert exc_info.value._body == b'no local recipient, ignoring'
