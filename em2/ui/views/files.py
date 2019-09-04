@@ -126,13 +126,12 @@ class UploadFile(View):
             raise JsonErrors.HTTPForbidden(message='file attachment not permitted')
 
         m = parse_request_query(self.request, self.QueryModel)
-        conv_key = await self.conn.fetchval('select key from conversations where id=$1', c.id)
         content_id = str(uuid4())
 
         bucket = s.s3_file_bucket
         d = S3(s).signed_upload_url(
             bucket=bucket,
-            path=f'{conv_key}/{content_id}/',
+            path=f'{c.key}/{content_id}/',
             filename=m.filename,
             content_type=m.content_type,
             content_disp=True,

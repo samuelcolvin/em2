@@ -110,6 +110,7 @@ def draft_conv_key() -> str:
 @dataclass
 class ConvSummary:
     id: int
+    key: str
     publish_ts: Optional[datetime]
     leader: Optional[str]
     last_action: Optional[int]
@@ -125,7 +126,7 @@ async def get_conv_for_user(conns: Connections, user_id: int, conv_ref: StrInt) 
     if isinstance(conv_ref, int):
         query = conns.main.fetchrow(
             """
-            select c.id, c.publish_ts, c.leader_node, c.creator, p.removal_action_id from conversations as c
+            select c.id, c.key, c.publish_ts, c.leader_node, c.creator, p.removal_action_id from conversations as c
             join participants p on c.id=p.conv
             where c.live is true and p.user_id = $1 and c.id = $2
             order by c.created_ts desc
@@ -136,7 +137,7 @@ async def get_conv_for_user(conns: Connections, user_id: int, conv_ref: StrInt) 
     else:
         query = conns.main.fetchrow(
             """
-            select c.id, c.publish_ts, c.leader_node, c.creator, p.removal_action_id from conversations c
+            select c.id, c.key, c.publish_ts, c.leader_node, c.creator, p.removal_action_id from conversations c
             join participants p on c.id=p.conv
             where c.live is true and p.user_id=$1 and c.key like $2
             order by c.created_ts desc
@@ -147,11 +148,11 @@ async def get_conv_for_user(conns: Connections, user_id: int, conv_ref: StrInt) 
         )
 
     # TODO we should use a custom error here, not just 404: Conversation not found
-    conv_id, publish_ts, leader, creator, last_action = await or404(query, msg='Conversation not found')
+    conv_id, conv_key, publish_ts, leader, creator, last_action = await or404(query, msg='Conversation not found')
 
     if not publish_ts and user_id != creator:
         raise JsonErrors.HTTPForbidden('conversation is unpublished and you are not the creator')
-    return ConvSummary(conv_id, publish_ts, leader, last_action)
+    return ConvSummary(conv_id, conv_key, publish_ts, leader, last_action)
 
 
 async def update_conv_users(conns: Connections, conv_id: int) -> List[int]:

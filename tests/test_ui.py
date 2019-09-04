@@ -3,6 +3,7 @@ from asyncio import TimeoutError
 
 import pytest
 from aiohttp import WSMsgType
+from arq import Worker
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
 from em2.core import Action, ActionTypes, construct_conv
@@ -545,7 +546,9 @@ async def test_conv_list_live(cli: UserTestClient, factory: Factory, db_conn):
     assert len(obj['conversations']) == 0
 
 
-async def test_remote_loader(em2_cli: Em2TestClient, cli: UserTestClient, factory: Factory, db_conn, dummy_server):
+async def test_remote_loader(
+    em2_cli: Em2TestClient, cli: UserTestClient, factory: Factory, db_conn, dummy_server, worker: Worker
+):
     await em2_cli.create_conv(subject='Testing Remote Leader')
     live, leader_node = await db_conn.fetchrow('select live, leader_node from conversations')
     assert live is True
@@ -553,9 +556,11 @@ async def test_remote_loader(em2_cli: Em2TestClient, cli: UserTestClient, factor
     obj = await cli.get_json(factory.url('ui:list'))
     assert len(obj['conversations']) == 1
     assert obj['conversations'][0]['details']['sub'] == 'Testing Remote Leader'
-    # key = obj['conversations'][0]['key']
+    key = obj['conversations'][0]['key']
 
-    # data = {'actions': [{'act': 'message:add', 'body': 'reply'}]}
-    # r = await cli.post_json(factory.url('ui:act', conv=key), data)
-    # obj = await r.json()
-    # assert obj == {'action_ids': [4, 5, 6]}
+    data = {'actions': [{'act': 'message:add', 'body': 'reply'}]}
+    r = await cli.post_json(factory.url('ui:act', conv=key), data)
+    obj = await r.json()
+    assert obj  # TODO == {'action_ids': [4, 5, 6]}
+
+    assert await worker.run_check() == 2

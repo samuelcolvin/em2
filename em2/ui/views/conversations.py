@@ -262,10 +262,11 @@ class ConvAct(ExecView):
 
     async def execute(self, m: Model):
         c = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
+        actions = [a async for a in self.raw_actions(c.id, m)]
         if c.leader:
-            raise NotImplementedError('need to cope with actions for remote leaders')
+            await self.conns.redis.enqueue_job('follower_push_actions', c.key, c.leader, actions)
         else:
-            action_ids = await apply_actions(self.conns, c.id, [a async for a in self.raw_actions(c.id, m)])
+            action_ids = await apply_actions(self.conns, c.id, actions)
 
             if action_ids:
                 await push_multiple(self.conns, c.id, action_ids)
@@ -321,7 +322,7 @@ class ConvPublish(ExecView):
 
         # could do more efficiently than this, but would require duplicate logic
         conv_summary = await construct_conv(self.conns, self.session.user_id, conv_prefix)
-        old_key = await self.conns.main.fetchval('select key from conversations where id=$1', c.id)
+        old_key = c.key
 
         ts = utcnow()
         conv_key = generate_conv_key(self.session.email, ts, conv_summary['subject'])
