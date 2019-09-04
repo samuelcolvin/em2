@@ -213,13 +213,13 @@ class _PushBase(ExecView):
             nodes = set(await asyncio.gather(*[self.em2.get_em2_node(e) for e in actor_emails]))
         except HttpError:
             # this could be temporary due to error get em2 node
-            raise JsonErrors.HTTPUnauthorized('not all actors have an em2 nodes')
+            raise JsonErrors.HTTPUnauthorized('not all actors have an em2 node')
 
         if None in nodes:
             # this could be temporary due to an error getting the em2 node
-            raise JsonErrors.HTTPUnauthorized('not all actors have an em2 nodes')
+            raise JsonErrors.HTTPUnauthorized('not all actors have an em2 node')
         if nodes != {em2_node}:
-            raise JsonErrors.HTTPBadRequest("not all actors' em2 nodes match request node")
+            raise JsonErrors.HTTPBadRequest("not all actors' em2 nodes match the request node")
 
         file_content_ids = set()
         for a in m.actions:
@@ -383,25 +383,27 @@ class Em2FollowerPush(_PushBase):
             ]
         ]
 
+        @validator('actions', whole=True)
+        def check_action_ids(cls, actions):
+            if not all(a.id is None for a in actions):
+                raise ValueError('action ids must be null')
+            return actions
+
         class Config:
             allow_publish = False
 
     async def execute_trans(self, m: Model, em2_node: str) -> Tuple[Optional[int], bool, Optional[List[int]]]:
         conversation = self.request.match_info['conv']
         # lock the conversation here so simultaneous requests executing the same action ids won't cause errors
-        conv_id, last_action_id, leader_node = await or404(
+        conv_id, leader_node = await or404(
             self.conns.main.fetchrow(
-                'select id, last_action_id, leader_node from conversations where key=$1 for no key update', conversation
+                'select id, leader_node from conversations where key=$1 for no key update', conversation
             ),
             msg='conversation not found',
         )
 
         if leader_node is not None:
             raise JsonErrors.HTTPBadRequest(f'conversation leader must be this node, not {leader_node!r}')
-
-        expected_last_action = m.actions[0].id
-        if last_action_id + 1 != expected_last_action:
-            raise JsonErrors.HTTP470(f'action id conflict, expected {expected_last_action}')
 
         actor_emails = {a.actor for a in m.actions}
         actor_user_ids = await get_create_multiple_users(self.conns, actor_emails)
