@@ -195,6 +195,7 @@ class Em2TestClient(TestClient):
         self._dummy_server: DummyServer = dummy_server
         self._factory: Factory = factory
         self._url_func = MakeUrl(self.app).get_path
+        self.signing_key = get_signing_key(self._settings.signing_secret_key)
 
     async def post_json(self, path, data, *, expected_status=200):
         if not isinstance(data, (str, bytes)):
@@ -202,13 +203,12 @@ class Em2TestClient(TestClient):
 
         sign_ts = datetime.utcnow().isoformat()
         to_sign = f'POST http://127.0.0.1:{self.server.port}{path} {sign_ts}\n{data}'.encode()
-        signing_key = get_signing_key(self._settings.signing_secret_key)
         r = await self.post(
             path,
             data=data,
             headers={
                 'Content-Type': 'application/json',
-                'Signature': sign_ts + ',' + signing_key.sign(to_sign).signature.hex(),
+                'Signature': sign_ts + ',' + self.signing_key.sign(to_sign).signature.hex(),
             },
         )
         if expected_status:

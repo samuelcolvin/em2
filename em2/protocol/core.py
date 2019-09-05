@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Sequence, Type
 import aiodns
 import nacl.encoding
 from aiohttp import ClientError, ClientSession
+from aiohttp.hdrs import METH_GET, METH_POST
 from arq import ArqRedis
 from async_timeout import timeout
 from atoolbox import RequestError
@@ -24,6 +25,7 @@ from em2.utils.web import full_url, internal_request_headers, this_em2_node
 logger = logging.getLogger('em2.core')
 # could try another subdomain with a random part incase people are using em2-platform
 em2_subdomain = 'em2-platform'
+action_signed_fields = 'act', 'actor', 'ts', 'participant', 'body', 'msg_format', 'follows', 'parent'
 
 
 class HttpError(RuntimeError):
@@ -77,7 +79,7 @@ class Em2Comms:
     def this_em2_node(self):
         return this_em2_node(self.settings)
 
-    async def check_signature(self, node, request) -> None:  # noqa: C901 (ignore complexity)
+    async def check_body_signature(self, em2_node: str, request) -> None:
         try:
             sig = request.headers['Signature']
         except KeyError:
@@ -86,40 +88,22 @@ class Em2Comms:
         try:
             ts_str, signature = sig.split(',', 1)
             ts = datetime.strptime(ts_str, '%Y-%m-%dT%H:%M:%S.%f')
-            if len(signature) != 128:
-                raise ValueError
-            signature = bytes.fromhex(signature)
-        except ValueError:
-            raise InvalidSignature('Invalid "Signature" header format')
+        except ValueError as e:
+            raise InvalidSignature('Invalid "Signature" header format') from e
 
         now = datetime.utcnow()
         if not now - timedelta(seconds=30) < ts < now + timedelta(seconds=5):
             raise InvalidSignature('Signature expired')
 
         data = await request.read()
-        body = body_to_sign(request.method, request.url, ts_str, data)
+        to_sign = body_to_sign(request.method, request.url, ts_str, data)
+        return await self._check_signature(em2_node, signature, to_sign)
 
-        signing_verify_cache_key = f'node-signing-verify:{node}'
-        signing_verify_key = await self.redis.get(signing_verify_cache_key)
-        error = None
-        if signing_verify_key:
-            error = check_signature(signing_verify_key, signature, body)
-            if not error:
-                return
-
-        url = node + '/v1/signing/verification/'
-        try:
-            r = await self.get(url, sign=False, model=VerificationKeysModel)
-        except HttpError:
-            raise InvalidSignature(f'error getting signature from {url!r}')
-
-        for m in r.model.keys:
-            error = check_signature(m.key, signature, body)
-            if not error:
-                await self.redis.setex(signing_verify_cache_key, m.ttl, m.key)
-                return
-
-        raise InvalidSignature(error or 'No signature verification keys found')
+    async def check_actions_signature(
+        self, conv_key: str, em2_node: str, signature: str, actions: List[Dict[str, Any]]
+    ) -> None:
+        to_sign = actions_to_body(conv_key, actions)
+        return await self._check_signature(em2_node, signature, to_sign)
 
     async def get_em2_node(self, email) -> Optional[str]:
         user_node_key = f'user-node:{email}'
@@ -130,7 +114,7 @@ class Em2Comms:
 
         domain = email.rsplit('@', 1)[1]
         sub_domain = f'{em2_subdomain}.{domain}'
-        em2_domain = await self.cname_query(sub_domain)
+        em2_domain = await self._cname_query(sub_domain)
 
         if not em2_domain:
             return
@@ -141,23 +125,6 @@ class Em2Comms:
         # 31_104_000 is one year, got a valid em2 node, assume it'll last for a long time
         await self.redis.setex(user_node_key, 31_104_000, node)
         return node
-
-    async def cname_query(self, domain: str) -> str:
-        domain_key = f'dns-cname:{domain}'
-        ans = await self.redis.get(domain_key)
-        null = '-'
-        if ans:
-            return None if ans == null else ans
-
-        try:
-            with timeout(5):
-                v = await self.resolver.query(domain, 'CNAME')
-        except (aiodns.error.DNSError, ValueError, asyncio.TimeoutError) as e:
-            logger.debug('cname query error on %s, %r', domain, e)
-            await self.redis.setex(domain_key, 3600, null)
-        else:
-            await self.redis.setex(domain_key, 3600, v.cname)
-            return v.cname
 
     async def check_local(self, email):
         h = internal_request_headers(self.settings)
@@ -180,7 +147,7 @@ class Em2Comms:
         model: Type[BaseModel] = None,
         expected_statuses: Sequence[int] = (200,),
     ):
-        return await self._em2_request('GET', url, sign, params, data, model, expected_statuses)
+        return await self._em2_request(METH_GET, url, sign, params, data, model, expected_statuses)
 
     async def post(
         self,
@@ -192,7 +159,7 @@ class Em2Comms:
         model: Type[BaseModel] = None,
         expected_statuses: Sequence[int] = (200,),
     ):
-        return await self._em2_request('POST', url, sign, params, data, model, expected_statuses)
+        return await self._em2_request(METH_POST, url, sign, params, data, model, expected_statuses)
 
     async def _em2_request(
         self,
@@ -260,9 +227,61 @@ class Em2Comms:
         )
         raise HttpError(f'error on {method} to {url_}, {exc}')
 
+    async def _check_signature(self, em2_node: str, signature: str, to_sign: bytes) -> None:
+        try:
+            if len(signature) != 128:
+                raise ValueError
+            signature_b = bytes.fromhex(signature)
+        except ValueError as e:
+            raise InvalidSignature('Invalid signature format') from e
+
+        signing_verify_cache_key = f'node-signing-verify:{em2_node}'
+        signing_verify_key = await self.redis.get(signing_verify_cache_key)
+        error = None
+        if signing_verify_key:
+            error = check_signature(signing_verify_key, signature_b, to_sign)
+            if not error:
+                return
+
+        url = em2_node + '/v1/signing/verification/'
+        try:
+            r = await self.get(url, sign=False, model=VerificationKeysModel)
+        except HttpError:
+            raise InvalidSignature(f'error getting signature from {url!r}')
+
+        for m in r.model.keys:
+            error = check_signature(m.key, signature_b, to_sign)
+            if not error:
+                await self.redis.setex(signing_verify_cache_key, m.ttl, m.key)
+                return
+
+        raise InvalidSignature(error or 'No signature verification keys found')
+
+    async def _cname_query(self, domain: str) -> str:
+        domain_key = f'dns-cname:{domain}'
+        ans = await self.redis.get(domain_key)
+        null = '-'
+        if ans:
+            return None if ans == null else ans
+
+        try:
+            with timeout(5):
+                v = await self.resolver.query(domain, 'CNAME')
+        except (aiodns.error.DNSError, ValueError, asyncio.TimeoutError) as e:
+            logger.debug('cname query error on %s, %r', domain, e)
+            await self.redis.setex(domain_key, 3600, null)
+        else:
+            await self.redis.setex(domain_key, 3600, v.cname)
+            return v.cname
+
 
 def body_to_sign(method: str, url: URL, ts: str, data: Optional[bytes]) -> bytes:
     return f'{method} {url} {ts}\n'.encode() + (data or b'-')
+
+
+def actions_to_body(conv_key: str, actions: List[Dict[str, Any]]):
+    to_sign = f'v1\n{conv_key}\n' + '\n'.join(json.dumps([a.get(f) for f in action_signed_fields]) for a in actions)
+    return to_sign.encode()
 
 
 def check_signature(signing_verify_key: str, signature: bytes, body: bytes) -> str:

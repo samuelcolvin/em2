@@ -124,6 +124,8 @@ class FollowModel(ActionCore):
 
 
 class PushModel(BaseModel):
+    upstream_signature: constr(min_length=128, max_length=128) = None
+    upstream_em2_node: str = None
     actions: List[
         Union[
             ParticipantModel,
@@ -136,8 +138,11 @@ class PushModel(BaseModel):
         ]
     ]
 
-    class Config:
-        allow_publish = False
+    @validator('upstream_em2_node', pre=True, whole=True)
+    def validate_em2_node(cls, v, values):
+        if 'upstream_signature' in values and not v:
+            raise ValueError('"upstream_em2_node" must be set with "upstream_signature" is provided')
+        return v
 
     @validator('actions', pre=True, whole=True)
     def validate_actions(cls, actions):
@@ -180,6 +185,9 @@ class PushModel(BaseModel):
                 raise ValueError('action ids do not increment correctly')
         return actions
 
+    class Config:
+        allow_publish = False
+
 
 class _PushBase(ExecView):
     """
@@ -195,16 +203,30 @@ class _PushBase(ExecView):
 
     async def execute(self, m: PushModel):  # noqa: C901 (ignore complexity)
         try:
-            em2_node = self.request.query['node']
+            request_em2_node = self.request.query['node']
         except KeyError:
             raise JsonErrors.HTTPBadRequest("'node' get parameter missing")
 
         try:
-            await self.em2.check_signature(em2_node, self.request)
+            await self.em2.check_body_signature(request_em2_node, self.request)
         except InvalidSignature as e:
             msg = e.args[0]
-            logger.info('unauthorized em2 push msg="%s" em2-node="%s"', msg, em2_node)
+            logger.info('unauthorized em2 push msg="%s" em2-node="%s"', msg, request_em2_node)
             raise JsonErrors.HTTPUnauthorized(msg)
+
+        if m.upstream_signature:
+            data = await self.request.json()
+            try:
+                await self.em2.check_actions_signature(
+                    self.request.match_info['conv'], m.upstream_em2_node, m.upstream_signature, data['actions']
+                )
+            except InvalidSignature as e:
+                msg = e.args[0]
+                logger.info('unauthorized em2 push from upstream msg="%s" em2-node="%s"', msg, m.upstream_em2_node)
+                raise JsonErrors.HTTPUnauthorized(msg)
+            em2_node = m.upstream_em2_node
+        else:
+            em2_node = request_em2_node
 
         actor_emails = {a.actor for a in m.actions}
 
@@ -230,18 +252,18 @@ class _PushBase(ExecView):
                     file_content_ids.add(f.content_id)
 
         async with self.conns.main.transaction():
-            conv_id, transmit, action_ids = await self.execute_trans(m, em2_node)
+            conv_id, action_ids = await self.execute_trans(m, em2_node)
 
-        if conv_id is not None:
-            if action_ids is None:
-                await push_all(self.conns, conv_id, transmit=transmit)
-            else:
-                await push_multiple(self.conns, conv_id, action_ids, transmit=transmit)
+        if conv_id:
+            await self.re_push(conv_id, action_ids)
 
-        for content_id in file_content_ids:
-            await self.conns.redis.enqueue_job('download_push_file', conv_id, content_id)
+            for content_id in file_content_ids:
+                await self.conns.redis.enqueue_job('download_push_file', conv_id, content_id)
 
-    async def execute_trans(self, m: PushModel, em2_node: str) -> Tuple[Optional[int], bool, Optional[List[int]]]:
+    async def execute_trans(self, m: PushModel, em2_node: str) -> Tuple[Optional[int], Optional[List[int]]]:
+        raise NotImplementedError
+
+    async def re_push(self, conv_id: Optional[int], action_ids: Optional[List[int]]):
         raise NotImplementedError
 
 
@@ -274,7 +296,7 @@ class Em2Push(_PushBase):
         class Config:
             allow_publish = True
 
-    async def execute_trans(self, m: Model, em2_node: str) -> Tuple[Optional[int], bool, Optional[List[int]]]:
+    async def execute_trans(self, m: Model, em2_node: str) -> Tuple[Optional[int], Optional[List[int]]]:
         publish_action = next((a for a in m.actions if a.act == ActionTypes.conv_publish), None)
         push_all_actions = False
         if publish_action:
@@ -300,19 +322,18 @@ class Em2Push(_PushBase):
         if r:
             conv_id, last_action_id, leader_node = r
 
-            if leader_node and leader_node != em2_node:
+            if leader_node != em2_node:
                 raise JsonErrors.HTTPBadRequest("request em2 node does not match conversation's em2 node")
         else:
             # conversation doesn't exist and there's no publish_action, need the whole conversation
             raise JsonErrors.HTTP470('full conversation required')  # TODO better error
 
         actions_to_apply = [a for a in m.actions if a.id > last_action_id]
-        push_transmit = leader_node is None
         if not actions_to_apply:
             if push_all_actions:
-                return conv_id, push_transmit, None
+                return conv_id, None
             else:
-                return None, False, None
+                return None, None
 
         if last_action_id + 1 != actions_to_apply[0].id:
             raise JsonErrors.HTTP470('full conversation required')  # TODO better error
@@ -332,7 +353,7 @@ class Em2Push(_PushBase):
             raise JsonErrors.HTTPBadRequest('actor does not have permission to update this conversation')
 
         action_ids = None if push_all_actions else [a.id for a in actions]
-        return conv_id, push_transmit, action_ids
+        return conv_id, action_ids
 
     async def published_conv(self, publish_action: PublishModel, m: Model, em2_node: str):
         """
@@ -369,6 +390,12 @@ class Em2Push(_PushBase):
             leader_node=em2_node,
         )
 
+    async def re_push(self, conv_id: Optional[int], action_ids: Optional[List[int]]):
+        if action_ids is None:
+            await push_all(self.conns, conv_id, transmit=False)
+        else:
+            await push_multiple(self.conns, conv_id, action_ids, transmit=False)
+
 
 class Em2FollowerPush(_PushBase):
     class Model(PushModel):
@@ -392,7 +419,7 @@ class Em2FollowerPush(_PushBase):
         class Config:
             allow_publish = False
 
-    async def execute_trans(self, m: Model, em2_node: str) -> Tuple[Optional[int], bool, Optional[List[int]]]:
+    async def execute_trans(self, m: Model, em2_node: str) -> Tuple[Optional[int], Optional[List[int]]]:
         conversation = self.request.match_info['conv']
         # lock the conversation here so simultaneous requests executing the same action ids won't cause errors
         conv_id, leader_node = await or404(
@@ -419,4 +446,7 @@ class Em2FollowerPush(_PushBase):
             # TODO any other errors?
             raise JsonErrors.HTTPBadRequest('actor does not have permission to update this conversation')
         else:
-            return conv_id, True, action_ids
+            return conv_id, action_ids
+
+    async def re_push(self, conv_id: Optional[int], action_ids: Optional[List[int]]):
+        await push_multiple(self.conns, conv_id, action_ids, transmit=True)

@@ -1,6 +1,5 @@
 import json
 from datetime import datetime, timezone
-from operator import attrgetter
 
 import pytest
 from arq import ArqRedis
@@ -9,7 +8,7 @@ from pytest_toolbox.comparison import CloseToNow
 
 from em2.background import push_sql_all
 from em2.core import ActionTypes, construct_conv, generate_conv_key
-from em2.protocol.core import get_signing_key
+from em2.protocol.core import actions_to_body, get_signing_key
 
 from .conftest import Em2TestClient, Factory, Worker
 
@@ -104,31 +103,6 @@ async def test_push(em2_cli: Em2TestClient, settings, dummy_server: DummyServer,
             'msgs': 1,
         },
     }
-
-
-async def test_self_leader(factory: Factory, em2_cli: Em2TestClient, conns, redis):
-    await factory.create_user()
-    conv = await factory.create_conv(publish=True, participants=[{'email': 'actor@em2-ext.example.com'}])
-
-    assert await conns.main.fetchval('select count(*) from actions') == 4
-
-    assert len(await redis.queued_jobs()) == 2
-
-    ts = datetime(2032, 6, 6, 13, 0, tzinfo=timezone.utc).isoformat()
-    actions = [
-        {'id': 5, 'act': 'message:add', 'ts': ts, 'actor': 'actor@em2-ext.example.com', 'body': 'another message'}
-    ]
-    await em2_cli.push_actions(conv.key, actions)
-
-    assert await conns.main.fetchval('select count(*) from actions') == 5
-
-    jobs = sorted(list(await redis.queued_jobs())[2:], key=attrgetter('function'))
-    assert len(jobs) == 2
-    assert jobs[0].function == 'push_actions'
-    assert jobs[1].function == 'web_push'
-    arg = json.loads(jobs[0].args[0])
-    assert arg['conversation'] == conv.key
-    assert len(arg['actions']) == 1
 
 
 async def test_append_to_conv(em2_cli: Em2TestClient, conns):
@@ -235,12 +209,14 @@ async def test_no_signature(em2_cli, dummy_server: DummyServer):
     [
         ('x', 'Invalid "Signature" header format'),
         ('foo,bar', 'Invalid "Signature" header format'),
-        ('2010-06-01T00:00:00.000000,aaa', 'Invalid "Signature" header format'),
-        ('2010-06-01T00:00:00.000000,' + 'x' * 128, 'Invalid "Signature" header format'),
         ('2010-06-01T00:00:00.000000,' + '1' * 128, 'Signature expired'),
+        ('{now},aaa', 'Invalid signature format'),
+        ('{now},' + 'x' * 128, 'Invalid signature format'),
     ],
 )
 async def test_invalid_signature_format(em2_cli, dummy_server: DummyServer, sig, message):
+    if '{now}' in sig:
+        sig = sig.replace('{now}', datetime.utcnow().isoformat())
     a = 'actor@em2-ext.example.com'
     post_data = {'actions': [{'id': 1, 'act': 'participant:add', 'ts': 123, 'actor': a, 'participant': a}]}
     data = json.dumps(post_data)
@@ -890,3 +866,23 @@ async def test_follower_push_wrong_user(em2_cli: Em2TestClient, factory: Factory
     path = em2_cli.url('protocol:em2-follower-push', conv=conv.key, query={'node': em2_node})
     r = await em2_cli.post_json(path, data=data, expected_status=400)
     assert await r.json() == {'message': 'actor does not have permission to update this conversation'}
+
+
+async def test_push_with_upstream(em2_cli: Em2TestClient, factory: Factory, conns, dummy_server):
+    actor = 'actor@local.example.com'
+    await factory.create_user(email=actor)
+    conv = await factory.create_conv(publish=True)
+    assert await conns.main.fetchval('select count(*) from actions') == 3
+
+    ts = datetime.now().isoformat()
+    actions = [{'act': 'message:add', 'ts': ts, 'actor': actor, 'body': 'Test Message'}]
+    to_sign = actions_to_body(conv.key, actions)
+    data = {
+        'actions': actions,
+        'upstream_signature': em2_cli.signing_key.sign(to_sign).signature.hex(),
+        'upstream_em2_node': f'localhost:{em2_cli.server.port}/em2',
+    }
+    em2_node = f'localhost:{dummy_server.server.port}/em2'
+    path = em2_cli.url('protocol:em2-follower-push', conv=conv.key, query={'node': em2_node})
+    await em2_cli.post_json(path, data=data)
+    assert await conns.main.fetchval('select count(*) from actions') == 4
