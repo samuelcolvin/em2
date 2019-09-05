@@ -1,7 +1,7 @@
 import asyncio
-import dataclasses
 import json
 import logging
+from datetime import datetime
 from typing import Any, List, Set, Tuple
 
 from aiohttp import ClientSession
@@ -24,9 +24,9 @@ async def push_actions(ctx, actions_data: str, users: List[Tuple[str, UserTypes]
     return await pusher.push(actions_data, users)
 
 
-async def follower_push_actions(ctx, conv_key: str, leader_node: str, actions: List[Action]):
+async def follower_push_actions(ctx, conv_key: str, leader_node: str, interaction_id: str, actions: List[Action]):
     pusher = Pusher(ctx)
-    return await pusher.follower_push(conv_key, leader_node, actions)
+    return await pusher.follower_push(conv_key, leader_node, interaction_id, actions)
 
 
 class Pusher:
@@ -67,14 +67,42 @@ class Pusher:
             await self.em2_send(conversation, actions, em2_nodes)
         return f'retry={len(retry_users)} smtp={len(smtp_addresses)} em2={len(em2_nodes)}'
 
-    async def follower_push(self, conv_key: str, leader_node: str, actions: List[Action]):
-        data = [dataclasses.asdict(a) for a in actions]
-        this_em2_node = self.em2.this_em2_node()
+    async def follower_push(self, conv_key: str, leader_node: str, interaction_id: str, actions: List[Action]):
+        data = {'actions': await self.action2dict(conv_key, actions)}
         try:
-            await self.em2.post(f'{leader_node}/v1/push/{conv_key}/', data=data, params={'node': this_em2_node})
+            await self.em2.post(
+                f'{leader_node}/v1/follower-push/{conv_key}/', data=data, params={'node': self.em2.this_em2_node()}
+            )
         except HttpError:
             # TODO retry
             raise
+
+    async def action2dict(self, conv_key: str, actions: List[Action]):
+        ts = datetime.utcnow().isoformat()
+        v = await self.pg.fetch(
+            """
+            select u.id, u.email
+            from users u
+            join participants p on u.id = p.user_id
+            join conversations c on p.conv = c.id
+            where c.key=$1 and u.id=any($2)
+            """,
+            conv_key,
+            [a.actor_id for a in actions],
+        )
+        actor_lookup = {r[0]: r[1] for r in v}
+        d = []
+        extra_fields = 'body', 'extra_body', 'participant', 'msg_format', 'follows', 'parent', 'files'
+        for a in actions:
+            d.append(
+                {
+                    'ts': ts,
+                    'act': a.act.value,
+                    'actor': actor_lookup[a.actor_id],
+                    **{f: getattr(a, f) for f in extra_fields if getattr(a, f) is not None},
+                }
+            )
+        return d
 
     async def resolve_user(self, email: str, current_user_type: UserTypes):
         if current_user_type == UserTypes.new:

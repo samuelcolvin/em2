@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
+from uuid import uuid4
 
 from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
 from buildpg import MultipleValues, SetValues, V, Values, funcs
@@ -263,8 +264,10 @@ class ConvAct(ExecView):
     async def execute(self, m: Model):
         c = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
         actions = [a async for a in self.raw_actions(c.id, m)]
+        interaction_id = uuid4().hex
+        # debug(c)
         if c.leader:
-            await self.conns.redis.enqueue_job('follower_push_actions', c.key, c.leader, actions)
+            await self.conns.redis.enqueue_job('follower_push_actions', c.key, c.leader, interaction_id, actions)
         else:
             action_ids = await apply_actions(self.conns, c.id, actions)
 

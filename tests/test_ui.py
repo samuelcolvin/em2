@@ -564,3 +564,17 @@ async def test_remote_loader(
     assert obj  # TODO == {'action_ids': [4, 5, 6]}
 
     assert await worker.run_check() == 2
+    assert len(dummy_server.app['em2_follower_push']) == 1
+    push_data = json.loads(dummy_server.app['em2_follower_push'][0]['body'])
+    assert push_data == {
+        'actions': [
+            {
+                'ts': CloseToNow(),
+                'act': 'message:add',
+                'actor': 'recipient@example.com',
+                'body': 'reply',
+                'extra_body': False,
+                'msg_format': 'markdown',
+            }
+        ]
+    }

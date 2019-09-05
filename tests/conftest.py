@@ -8,6 +8,7 @@ from email.message import EmailMessage
 from enum import Enum
 from io import BytesIO
 from typing import List
+from uuid import uuid4
 
 import pytest
 from aiohttp import ClientSession, ClientTimeout
@@ -79,7 +80,7 @@ def _fix_settings_session():
 
 @pytest.fixture(name='dummy_server')
 async def _fix_dummy_server(loop, aiohttp_server):
-    ctx = {'smtp': [], 's3_files': {}, 'webpush': [], 'em2push': []}
+    ctx = {'smtp': [], 's3_files': {}, 'webpush': [], 'em2push': [], 'em2_follower_push': []}
     return await create_dummy_server(aiohttp_server, extra_routes=dummy_server.routes, extra_context=ctx)
 
 
@@ -365,11 +366,16 @@ class Factory:
         )
 
     async def act(self, conv_id: int, action: Action) -> List[int]:
-        action_ids = await apply_actions(self.conns, conv_id, [action])
+        key, leader = await self.conns.main.fetchrow('select key, leader_node from conversations where id=$1', conv_id)
+        interaction_id = uuid4().hex
+        if leader:
+            await self.conns.redis.enqueue_job('follower_push_actions', key, leader, interaction_id, [action])
+        else:
+            action_ids = await apply_actions(self.conns, conv_id, [action])
 
-        if action_ids:
-            await push_multiple(self.conns, conv_id, action_ids)
-        return action_ids
+            if action_ids:
+                await push_multiple(self.conns, conv_id, action_ids)
+            return action_ids
 
 
 @pytest.fixture(name='factory')
@@ -670,3 +676,33 @@ def _fix_alt_url(alt_cli: UserTestClient):
 @pytest.fixture(name='alt_factory')
 async def _fix_alt_factory(alt_redis, alt_cli, alt_url):
     return Factory(alt_redis, alt_cli, alt_url)
+
+
+@pytest.yield_fixture(name='alt_worker_ctx')
+async def _fix_alt_worker_ctx(alt_redis, alt_settings, alt_db_conn, resolver):
+    session = ClientSession(timeout=ClientTimeout(total=10))
+    ctx = dict(
+        settings=alt_settings,
+        pg=alt_db_conn,
+        client_session=session,
+        resolver=resolver,
+        redis=alt_redis,
+        signing_key=get_signing_key(alt_settings.signing_secret_key),
+    )
+    ctx.update(smtp_handler=LogSmtpHandler(ctx), conns=Connections(ctx['pg'], alt_redis, alt_settings))
+
+    yield ctx
+
+    await session.close()
+
+
+@pytest.yield_fixture(name='alt_worker')
+async def _fix_alt_worker(alt_redis, alt_worker_ctx):
+    worker = Worker(
+        functions=worker_settings['functions'], redis_pool=alt_redis, burst=True, poll_delay=0.01, ctx=alt_worker_ctx
+    )
+
+    yield worker
+
+    worker.pool = None
+    await worker.close()
