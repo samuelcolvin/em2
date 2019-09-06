@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List, Set, Tuple
 
 from aiohttp import ClientSession
@@ -12,16 +12,16 @@ from cryptography.fernet import Fernet
 from em2.core import Action, ActionTypes, UserTypes
 from em2.settings import Settings
 
-from .core import Em2Comms, HttpError
+from .core import Em2Comms, HttpError, actions_to_body
 
 logger = logging.getLogger('em2.push')
 RETRY = 'RT'
 SMTP = 'SMTP'
 
 
-async def push_actions(ctx, actions_data: str, users: List[Tuple[str, UserTypes]]):
+async def push_actions(ctx, actions_data: str, users: List[Tuple[str, UserTypes]], **extra: Any):
     pusher = Pusher(ctx)
-    return await pusher.push(actions_data, users)
+    return await pusher.push(actions_data, users, **extra)
 
 
 async def follower_push_actions(ctx, conv_key: str, leader_node: str, interaction_id: str, actions: List[Action]):
@@ -39,7 +39,7 @@ class Pusher:
         self.redis: ArqRedis = ctx['redis']
         self.em2 = Em2Comms(self.settings, self.session, ctx['signing_key'], self.redis, ctx['resolver'])
 
-    async def push(self, actions_data: str, users: List[Tuple[str, UserTypes]]):
+    async def push(self, actions_data: str, users: List[Tuple[str, UserTypes]], **extra: Any):
         results = await asyncio.gather(*[self.resolve_user(*u) for u in users])
         retry_users, smtp_addresses, em2_nodes = set(), set(), set()
         for node, email in filter(None, results):
@@ -52,7 +52,12 @@ class Pusher:
 
         if retry_users:
             await self.redis.enqueue_job(
-                'push_actions', actions_data, retry_users, _job_try=self.job_try + 1, _defer_by=self.job_try * 10
+                'push_actions',
+                actions_data,
+                retry_users,
+                **extra,
+                _job_try=self.job_try + 1,
+                _defer_by=self.job_try * 10,
             )
         data = json.loads(actions_data)
         conversation, actions = data['conversation'], data['actions']
@@ -64,21 +69,26 @@ class Pusher:
                 await self.redis.enqueue_job('smtp_send', conversation, actions)
         if em2_nodes:
             logger.info('%d em2 nodes to push action to', len(em2_nodes))
-            await self.em2_send(conversation, actions, em2_nodes)
+            await self.em2_send(conversation, actions, em2_nodes, **extra)
         return f'retry={len(retry_users)} smtp={len(smtp_addresses)} em2={len(em2_nodes)}'
 
     async def follower_push(self, conv_key: str, leader_node: str, interaction_id: str, actions: List[Action]):
-        data = {'actions': await self.action2dict(conv_key, actions)}
+        em2_node = self.em2.this_em2_node()
+        actions_dicts = await self.action2dict(conv_key, actions)
+        to_sign = actions_to_body(conv_key, actions_dicts)
+        data = {
+            'actions': actions_dicts,
+            'upstream_signature': self.em2.signing_key.sign(to_sign).signature.hex(),
+            'upstream_em2_node': em2_node,
+        }
         try:
-            await self.em2.post(
-                f'{leader_node}/v1/follower-push/{conv_key}/', data=data, params={'node': self.em2.this_em2_node()}
-            )
+            await self.em2.post(f'{leader_node}/v1/follower-push/{conv_key}/', data=data, params={'node': em2_node})
         except HttpError:
             # TODO retry
             raise
 
     async def action2dict(self, conv_key: str, actions: List[Action]):
-        ts = datetime.utcnow().isoformat()
+        ts = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
         v = await self.pg.fetch(
             """
             select u.id, u.email
@@ -130,8 +140,8 @@ class Pusher:
             await self.pg.execute('update users set user_type=$1, v=null where email=$2', user_type, email)
         return node, email
 
-    async def em2_send(self, conversation: str, actions: List[Any], em2_nodes: Set[str]):
-        data = json.dumps({'actions': actions}).encode()
+    async def em2_send(self, conversation: str, actions: List[Any], em2_nodes: Set[str], **extra: Any):
+        data = json.dumps({'actions': actions, **extra}).encode()
         this_em2_node = self.em2.this_em2_node()
         await asyncio.gather(*[self.em2_send_node(data, n, this_em2_node, conversation) for n in em2_nodes])
 

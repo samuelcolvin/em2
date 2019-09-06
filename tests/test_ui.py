@@ -567,6 +567,8 @@ async def test_remote_loader(
     assert len(dummy_server.app['em2_follower_push']) == 1
     push_data = json.loads(dummy_server.app['em2_follower_push'][0]['body'])
     assert push_data == {
+        'upstream_em2_node': f'localhost:{em2_cli.server.port}/em2',
+        'upstream_signature': RegexStr(r'[a-f0-9]{128}'),
         'actions': [
             {
                 'ts': CloseToNow(),
@@ -576,5 +578,5 @@ async def test_remote_loader(
                 'extra_body': False,
                 'msg_format': 'markdown',
             }
-        ]
+        ],
     }

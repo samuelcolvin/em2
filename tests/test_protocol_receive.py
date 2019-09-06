@@ -794,8 +794,14 @@ async def test_follower_push(em2_cli: Em2TestClient, factory: Factory, conns, du
     conv = await factory.create_conv(publish=True, participants=[{'email': alt_user}])
 
     ts = datetime.now().isoformat()
-    data = {'actions': [{'act': 'message:add', 'ts': ts, 'actor': alt_user, 'body': 'Test Message'}]}
+    actions = [{'act': 'message:add', 'ts': ts, 'actor': alt_user, 'body': 'Test Message'}]
+    to_sign = actions_to_body(conv.key, actions)
     em2_node = f'localhost:{dummy_server.server.port}/em2'
+    data = {
+        'actions': actions,
+        'upstream_signature': em2_cli.signing_key.sign(to_sign).signature.hex(),
+        'upstream_em2_node': em2_node,
+    }
     path = em2_cli.url('protocol:em2-follower-push', conv=conv.key, query={'node': em2_node})
     await em2_cli.post_json(path, data=data)
 
@@ -832,7 +838,16 @@ async def test_follower_push_wrong_leader(em2_cli: Em2TestClient, db_conn, dummy
 
     alt_user = 'user@em2-ext.example.com'
     ts = datetime.now().isoformat()
-    data = {'actions': [{'act': 'message:add', 'ts': ts, 'actor': alt_user, 'body': 'Test Message'}]}
+
+    actions = [{'act': 'message:add', 'ts': ts, 'actor': alt_user, 'body': 'Test Message'}]
+    to_sign = actions_to_body(conv_key, actions)
+    em2_node = f'localhost:{dummy_server.server.port}/em2'
+    data = {
+        'actions': actions,
+        'upstream_signature': em2_cli.signing_key.sign(to_sign).signature.hex(),
+        'upstream_em2_node': em2_node,
+    }
+
     em2_node = f'localhost:{dummy_server.server.port}/em2'
     path = em2_cli.url('protocol:em2-follower-push', conv=conv_key, query={'node': em2_node})
     r = await em2_cli.post_json(path, data=data, expected_status=400)
@@ -861,8 +876,14 @@ async def test_follower_push_wrong_user(em2_cli: Em2TestClient, factory: Factory
     conv = await factory.create_conv(publish=True, participants=[{'email': alt_user}])
 
     ts = datetime.now().isoformat()
-    data = {'actions': [{'act': 'message:add', 'ts': ts, 'actor': 'different@em2-ext.example.com', 'body': 'x'}]}
+    actions = [{'act': 'message:add', 'ts': ts, 'actor': 'different@em2-ext.example.com', 'body': 'x'}]
+    to_sign = actions_to_body(conv.key, actions)
     em2_node = f'localhost:{dummy_server.server.port}/em2'
+    data = {
+        'actions': actions,
+        'upstream_signature': em2_cli.signing_key.sign(to_sign).signature.hex(),
+        'upstream_em2_node': em2_node,
+    }
     path = em2_cli.url('protocol:em2-follower-push', conv=conv.key, query={'node': em2_node})
     r = await em2_cli.post_json(path, data=data, expected_status=400)
     assert await r.json() == {'message': 'actor does not have permission to update this conversation'}

@@ -225,7 +225,8 @@ class Em2Comms:
                 }
             },
         )
-        raise HttpError(f'error on {method} to {url_}, {exc}')
+        body = response_data[:200] if response_data else None
+        raise HttpError(f'error on {method} to {url_}, {exc}, body:\n{body}')
 
     async def _check_signature(self, em2_node: str, signature: str, to_sign: bytes) -> None:
         try:
@@ -279,12 +280,14 @@ def body_to_sign(method: str, url: URL, ts: str, data: Optional[bytes]) -> bytes
     return f'{method} {url} {ts}\n'.encode() + (data or b'-')
 
 
-def actions_to_body(conv_key: str, actions: List[Dict[str, Any]]):
-    to_sign = f'v1\n{conv_key}\n' + '\n'.join(json.dumps([a.get(f) for f in action_signed_fields]) for a in actions)
+def actions_to_body(conv_key: str, actions: List[Dict[str, Any]]) -> bytes:
+    to_sign = f'v1\n{conv_key}\n' + '\n'.join(
+        json.dumps([a.get(f) for f in action_signed_fields], separators=(',', ':')) for a in actions
+    )
     return to_sign.encode()
 
 
-def check_signature(signing_verify_key: str, signature: bytes, body: bytes) -> str:
+def check_signature(signing_verify_key: str, signature: bytes, body: bytes) -> Optional[str]:
     try:
         verify_key = nacl.signing.VerifyKey(signing_verify_key, encoder=nacl.encoding.HexEncoder)
     except binascii.Error:

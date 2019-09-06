@@ -77,23 +77,69 @@ async def test_em2_second_message(factory: Factory, worker: Worker, alt_factory:
 
 
 async def test_em2_reply(factory: Factory, worker: Worker, alt_factory: Factory, conns, alt_conns, alt_worker: Worker):
-    a = 'testing@local.example.com'
-    await factory.create_user(email=a)
+    sender = 'sender@local.example.com'
+    await factory.create_user(email=sender)
 
     recip = 'recipient@alt.example.com'
     await alt_factory.create_user(email=recip)
-    assert await alt_conns.main.fetchval('select count(*) from users') == 1
+
+    assert await conns.main.fetchval('select count(*) from conversations') == 0
+    assert await alt_conns.main.fetchval('select count(*) from conversations') == 0
 
     conv = await factory.create_conv(participants=[{'email': recip}], publish=True)
+
+    assert await conns.main.fetchval('select count(*) from conversations') == 1
+    assert await conns.main.fetchval('select count(*) from actions') == 4
+    assert await alt_conns.main.fetchval('select count(*) from conversations') == 0
+
     assert await worker.run_check() == 2
+
+    assert await conns.main.fetchval('select count(*) from conversations') == 1
+    assert await conns.main.fetchval('select count(*) from actions') == 4
+    assert await alt_conns.main.fetchval('select count(*) from conversations') == 1
+    assert await alt_conns.main.fetchval('select count(*) from actions') == 4
 
     assert await alt_worker.run_check() == 1
     action = Action(actor_id=alt_factory.user.id, act=ActionTypes.msg_add, body='msg 3')
     alt_conv_id = await alt_conns.main.fetchval('select id from conversations where key=$1', conv.key)
     await alt_factory.act(alt_conv_id, action)
+
+    assert await conns.main.fetchval('select count(*) from actions') == 4
+    assert await alt_conns.main.fetchval('select count(*) from actions') == 4
+
     assert await alt_worker.run_check() == 2
-    # FIXME, this should work
-    # assert await worker.run_check() == 3
-    #
-    # conv = await construct_conv(conns, factory.user.id, conv.key)
-    # debug(conv)
+
+    assert await conns.main.fetchval('select count(*) from actions') == 5
+    assert await alt_conns.main.fetchval('select count(*) from actions') == 4
+
+    assert await worker.run_check() == 4
+
+    assert await conns.main.fetchval('select count(*) from actions') == 5
+    assert await alt_conns.main.fetchval('select count(*) from actions') == 5
+
+    conv_summary = await construct_conv(conns, factory.user.id, conv.key)
+    assert conv_summary == {
+        'subject': 'Test Subject',
+        'created': CloseToNow(),
+        'messages': [
+            {
+                'ref': 3,
+                'author': 'sender@local.example.com',
+                'body': 'Test Message',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': True,
+            },
+            {
+                'ref': 5,
+                'author': 'recipient@alt.example.com',
+                'body': 'msg 3',
+                'created': CloseToNow(),
+                'format': 'markdown',
+                'active': True,
+            },
+        ],
+        'participants': {'sender@local.example.com': {'id': 1}, 'recipient@alt.example.com': {'id': 2}},
+    }
+    alt_conv_summary = await construct_conv(alt_conns, alt_factory.user.id, conv.key)
+    assert conv_summary == alt_conv_summary

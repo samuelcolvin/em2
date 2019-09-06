@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from asyncio import CancelledError
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import ujson
 from aiohttp.abc import Application
@@ -119,10 +119,10 @@ where conv=$1 and c.publish_ts is not null and u.user_type != 'local'
 """
 
 
-async def _push_remote(conns: Connections, conv_id: int, actions_data: str):
+async def _push_remote(conns: Connections, conv_id: int, actions_data: str, **extra: Any):
     remote_users = [tuple(r) for r in await conns.main.fetch(remote_users_sql, conv_id)]
     if remote_users:
-        await conns.redis.enqueue_job('push_actions', actions_data, remote_users)
+        await conns.redis.enqueue_job('push_actions', actions_data, remote_users, **extra)
 
 
 push_sql_template = """
@@ -173,8 +173,10 @@ async def push_all(conns: Connections, conv_id: int, *, transmit=True):
         await _push_remote(conns, conv_id, actions_data)
 
 
-async def push_multiple(conns: Connections, conv_id: int, action_ids: List[int], *, transmit=True):
+async def push_multiple(
+    conns: Connections, conv_id: int, action_ids: List[int], *, transmit: bool = True, **extra: Any
+):
     actions_data = await conns.main.fetchval(push_sql_multiple, conv_id, action_ids)
     await _push_local(conns, conv_id, actions_data)
     if transmit:
-        await _push_remote(conns, conv_id, actions_data)
+        await _push_remote(conns, conv_id, actions_data, **extra)
