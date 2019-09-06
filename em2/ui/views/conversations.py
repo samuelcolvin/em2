@@ -272,7 +272,9 @@ class ConvAct(ExecView):
 
             if action_ids:
                 await push_multiple(self.conns, c.id, action_ids)
-            return {'action_ids': action_ids}
+            else:
+                interaction_id = None
+        return {'interaction': interaction_id}
 
     async def raw_actions(self, conv_id: int, m: Model):
         for a in m.actions:

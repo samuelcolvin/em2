@@ -213,14 +213,13 @@ async def test_conv_actions(cli: UserTestClient, factory: Factory, db_conn):
     ]
 
 
-async def test_act(cli: UserTestClient, factory: Factory):
+async def test_act(cli: UserTestClient, factory: Factory, db_conn):
     await factory.create_user()
     conv = await factory.create_conv()
 
     data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}]}
-    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
-    obj = await r.json()
-    assert obj == {'action_ids': [4]}
+    await cli.post_json(factory.url('ui:act', conv=conv.key), data)
+    assert 4 == await db_conn.fetchval('select id from actions a where act=$1 order by pk desc', 'message:add')
 
     obj = await cli.get_json(factory.url('ui:get-actions', conv=conv.key))
     assert len(obj) == 4
@@ -267,7 +266,7 @@ async def test_conv_details(cli: UserTestClient, factory: Factory, db_conn):
     }
 
 
-async def test_seen(cli: UserTestClient, factory: Factory):
+async def test_seen(cli: UserTestClient, factory: Factory, db_conn):
     await factory.create_user()
     conv = await factory.create_conv()
 
@@ -277,7 +276,8 @@ async def test_seen(cli: UserTestClient, factory: Factory):
 
         r = await cli.post_json(factory.url('ui:act', conv=conv.key), {'actions': [{'act': 'seen'}]})
         obj = await r.json()
-        assert obj == {'action_ids': [4]}
+        assert obj == {'interaction': RegexStr(r'[a-f0-9]{32}')}
+        assert 4 == await db_conn.fetchval('select id from actions a where act=$1', 'seen')
 
         msg = await ws.receive(timeout=0.1)
         msg = json.loads(msg.data)
@@ -286,7 +286,7 @@ async def test_seen(cli: UserTestClient, factory: Factory):
 
         r = await cli.post_json(factory.url('ui:act', conv=conv.key), {'actions': [{'act': 'seen'}]})
         obj = await r.json()
-        assert obj == {'action_ids': []}
+        assert obj == {'interaction': None}
 
         with pytest.raises(TimeoutError):  # no ws message sent in this case
             await ws.receive(timeout=0.1)
@@ -297,11 +297,12 @@ async def test_create_then_publish(cli: UserTestClient, factory: Factory, db_con
     conv = await factory.create_conv()
 
     data = {'actions': [{'act': 'message:lock', 'follows': 2}]}
-    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
-    assert {'action_ids': [4]} == await r.json()
+    await cli.post_json(factory.url('ui:act', conv=conv.key), data)
+    assert 4 == await db_conn.fetchval('select id from actions a where act=$1', 'message:lock')
+
     data = {'actions': [{'act': 'message:modify', 'body': 'msg changed', 'follows': 4}]}
-    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
-    assert {'action_ids': [5]} == await r.json()
+    await cli.post_json(factory.url('ui:act', conv=conv.key), data)
+    assert 5 == await db_conn.fetchval('select id from actions a where act=$1', 'message:modify')
 
     obj1 = await construct_conv(conns, user.id, conv.key)
     assert obj1 == {
@@ -479,8 +480,17 @@ async def test_act_multiple(cli: UserTestClient, factory: Factory, db_conn):
     }
     r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
     obj = await r.json()
-    assert obj == {'action_ids': [4, 5, 6]}
+    assert obj == {'interaction': RegexStr(r'[a-f0-9]{32}')}
     assert 3 == await db_conn.fetchval('select v from users where id=$1', user.id)
+    assert 4 == await db_conn.fetchval(
+        'select a.id from actions a join users u on a.participant_user = u.id where email = $1', 'user-2@example.com'
+    )
+    assert 5 == await db_conn.fetchval(
+        'select a.id from actions a join users u on a.participant_user = u.id where email = $1', 'user-3@example.com'
+    )
+    assert 6 == await db_conn.fetchval(
+        'select a.id from actions a join users u on a.participant_user = u.id where email = $1', 'user-4@example.com'
+    )
 
 
 async def test_get_not_participant(factory: Factory, cli):
