@@ -569,6 +569,7 @@ async def test_remote_loader(
     assert push_data == {
         'upstream_em2_node': f'localhost:{em2_cli.server.port}/em2',
         'upstream_signature': RegexStr(r'[a-f0-9]{128}'),
+        'interaction_id': RegexStr(r'[a-f0-9]{32}'),
         'actions': [
             {
                 'ts': CloseToNow(),

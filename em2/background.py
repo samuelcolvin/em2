@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from asyncio import CancelledError
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import ujson
 from aiohttp.abc import Application
@@ -103,9 +103,10 @@ from (
 """
 
 
-async def _push_local(conns: Connections, conv_id: int, actions_data: str):
+async def _push_local(conns: Connections, conv_id: int, actions_data: str, interaction_id: Optional[str]):
     extra = await conns.main.fetchval(local_users_sql, conv_id)
-    actions_data_extra = actions_data[:-1] + ',' + extra[1:]
+    extra_json = f',"interaction_id": "{interaction_id}",' if interaction_id else ','
+    actions_data_extra = actions_data[:-1] + extra_json + extra[1:]
     await conns.redis.publish(channel_name(conns.redis), actions_data_extra)
     await conns.redis.enqueue_job('web_push', actions_data_extra)
 
@@ -165,18 +166,26 @@ push_sql_all = push_sql_template.format('where a.conv=$1 order by a.id')
 push_sql_multiple = push_sql_template.format('where a.conv=$1 and a.id=any($2)')
 
 
-async def push_all(conns: Connections, conv_id: int, *, transmit=True):
+async def push_all(conns: Connections, conv_id: int, *, transmit=True, **extra: Any):
     # FIXME: rename these to notify*?
     actions_data = await conns.main.fetchval(push_sql_all, conv_id)
-    await _push_local(conns, conv_id, actions_data)
+    await _push_local(conns, conv_id, actions_data, None)
     if transmit:
-        await _push_remote(conns, conv_id, actions_data)
+        await _push_remote(conns, conv_id, actions_data, **extra)
 
 
 async def push_multiple(
-    conns: Connections, conv_id: int, action_ids: List[int], *, transmit: bool = True, **extra: Any
+    conns: Connections,
+    conv_id: int,
+    action_ids: List[int],
+    *,
+    transmit: bool = True,
+    interaction_id: str = None,
+    **extra: Any,
 ):
     actions_data = await conns.main.fetchval(push_sql_multiple, conv_id, action_ids)
-    await _push_local(conns, conv_id, actions_data)
+    await _push_local(conns, conv_id, actions_data, interaction_id)
     if transmit:
+        if interaction_id:
+            extra['interaction_id'] = interaction_id
         await _push_remote(conns, conv_id, actions_data, **extra)

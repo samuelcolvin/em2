@@ -80,6 +80,7 @@ class Pusher:
             'actions': actions_dicts,
             'upstream_signature': self.em2.signing_key.sign(to_sign).signature.hex(),
             'upstream_em2_node': em2_node,
+            'interaction_id': interaction_id,
         }
         try:
             await self.em2.post(f'{leader_node}/v1/follower-push/{conv_key}/', data=data, params={'node': em2_node})

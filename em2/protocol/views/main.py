@@ -126,6 +126,7 @@ class FollowModel(ActionCore):
 class PushModel(BaseModel):
     upstream_signature: constr(min_length=128, max_length=128) = None
     upstream_em2_node: str = None
+    interaction_id: constr(min_length=32, max_length=32) = None
     actions: List[
         Union[
             ParticipantModel,
@@ -201,8 +202,6 @@ class _PushBase(ExecView):
     Need to formalise this.
     """
 
-    upstream_required = False
-
     async def execute(self, m: PushModel):  # noqa: C901 (ignore complexity)
         try:
             request_em2_node = self.request.query['node']
@@ -227,8 +226,6 @@ class _PushBase(ExecView):
                 logger.info('unauthorized em2 push from upstream msg="%s" em2-node="%s"', msg, m.upstream_em2_node)
                 raise JsonErrors.HTTPUnauthorized(msg + ' (upstream)')
             em2_node = m.upstream_em2_node
-        elif self.upstream_required:
-            raise JsonErrors.HTTPBadRequest('upstream node and signature required')
         else:
             em2_node = request_em2_node
 
@@ -402,9 +399,10 @@ class Em2Push(_PushBase):
 
 
 class Em2FollowerPush(_PushBase):
-    upstream_required = True
-
     class Model(PushModel):
+        upstream_signature: constr(min_length=128, max_length=128)
+        upstream_em2_node: str
+        interaction_id: constr(min_length=32, max_length=32)
         actions: List[
             Union[
                 ParticipantModel,
@@ -460,6 +458,7 @@ class Em2FollowerPush(_PushBase):
             conv_id,
             action_ids,
             transmit=True,
+            interaction_id=m.interaction_id,
             upstream_signature=m.upstream_signature,
             upstream_em2_node=m.upstream_em2_node,
         )

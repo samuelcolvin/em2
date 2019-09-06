@@ -801,6 +801,7 @@ async def test_follower_push(em2_cli: Em2TestClient, factory: Factory, conns, du
         'actions': actions,
         'upstream_signature': em2_cli.signing_key.sign(to_sign).signature.hex(),
         'upstream_em2_node': em2_node,
+        'interaction_id': '1' * 32,
     }
     path = em2_cli.url('protocol:em2-follower-push', conv=conv.key, query={'node': em2_node})
     await em2_cli.post_json(path, data=data)
@@ -846,6 +847,7 @@ async def test_follower_push_wrong_leader(em2_cli: Em2TestClient, db_conn, dummy
         'actions': actions,
         'upstream_signature': em2_cli.signing_key.sign(to_sign).signature.hex(),
         'upstream_em2_node': em2_node,
+        'interaction_id': '1' * 32,
     }
 
     em2_node = f'localhost:{dummy_server.server.port}/em2'
@@ -860,8 +862,13 @@ async def test_follower_push_with_id(em2_cli: Em2TestClient, factory: Factory, d
     conv = await factory.create_conv(publish=True, participants=[{'email': alt_user}])
 
     ts = datetime.now().isoformat()
-    data = {'actions': [{'id': 1, 'act': 'message:add', 'ts': ts, 'actor': 'actor@em2-ext.example.com', 'body': 'x'}]}
     em2_node = f'localhost:{dummy_server.server.port}/em2'
+    data = {
+        'actions': [{'id': 1, 'act': 'message:add', 'ts': ts, 'actor': 'actor@em2-ext.example.com', 'body': 'x'}],
+        'upstream_signature': '1' * 128,
+        'upstream_em2_node': em2_node,
+        'interaction_id': '1' * 32,
+    }
     path = em2_cli.url('protocol:em2-follower-push', conv=conv.key, query={'node': em2_node})
     r = await em2_cli.post_json(path, data=data, expected_status=400)
     assert await r.json() == {
@@ -883,6 +890,7 @@ async def test_follower_push_wrong_user(em2_cli: Em2TestClient, factory: Factory
         'actions': actions,
         'upstream_signature': em2_cli.signing_key.sign(to_sign).signature.hex(),
         'upstream_em2_node': em2_node,
+        'interaction_id': '1' * 32,
     }
     path = em2_cli.url('protocol:em2-follower-push', conv=conv.key, query={'node': em2_node})
     r = await em2_cli.post_json(path, data=data, expected_status=400)
@@ -902,6 +910,7 @@ async def test_push_with_upstream(em2_cli: Em2TestClient, factory: Factory, conn
         'actions': actions,
         'upstream_signature': em2_cli.signing_key.sign(to_sign).signature.hex(),
         'upstream_em2_node': f'localhost:{em2_cli.server.port}/em2',
+        'interaction_id': '1' * 32,
     }
     em2_node = f'localhost:{dummy_server.server.port}/em2'
     path = em2_cli.url('protocol:em2-follower-push', conv=conv.key, query={'node': em2_node})

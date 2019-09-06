@@ -265,7 +265,6 @@ class ConvAct(ExecView):
         c = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
         actions = [a async for a in self.raw_actions(c.id, m)]
         interaction_id = uuid4().hex
-        # debug(c)
         if c.leader:
             await self.conns.redis.enqueue_job('follower_push_actions', c.key, c.leader, interaction_id, actions)
         else:
