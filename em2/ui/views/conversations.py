@@ -271,7 +271,7 @@ class ConvAct(ExecView):
             action_ids = await apply_actions(self.conns, c.id, actions)
 
             if action_ids:
-                await push_multiple(self.conns, c.id, action_ids)
+                await push_multiple(self.conns, c.id, action_ids, interaction_id=interaction_id)
             else:
                 interaction_id = None
         return {'interaction': interaction_id}

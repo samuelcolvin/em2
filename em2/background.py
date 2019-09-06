@@ -105,7 +105,7 @@ from (
 
 async def _push_local(conns: Connections, conv_id: int, actions_data: str, interaction_id: Optional[str]):
     extra = await conns.main.fetchval(local_users_sql, conv_id)
-    extra_json = f',"interaction_id": "{interaction_id}",' if interaction_id else ','
+    extra_json = f',"interaction": "{interaction_id}",' if interaction_id else ','
     actions_data_extra = actions_data[:-1] + extra_json + extra[1:]
     await conns.redis.publish(channel_name(conns.redis), actions_data_extra)
     await conns.redis.enqueue_job('web_push', actions_data_extra)

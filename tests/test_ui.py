@@ -421,7 +421,9 @@ async def test_ws_add_msg(cli: UserTestClient, factory: Factory, db_conn):
         assert json.loads(msg.data) == {'user_v': 2}
 
         d = {'actions': [{'act': 'message:add', 'body': 'this is another message'}]}
-        await cli.post_json(factory.url('ui:act', conv=conv.key), d)
+        r = await cli.post_json(factory.url('ui:act', conv=conv.key), d)
+        obj = await r.json()
+        interaction = obj['interaction']
 
         msg = await ws.receive(timeout=0.1)
         assert msg.type == WSMsgType.text
@@ -432,6 +434,7 @@ async def test_ws_add_msg(cli: UserTestClient, factory: Factory, db_conn):
         'user_id': user.id,
         'user_email': user.email,
         'conversation': conv.key,
+        'interaction': interaction,
         'actions': [
             {
                 'id': 4,
