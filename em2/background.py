@@ -134,7 +134,9 @@ select json_build_object(
 from (
   select array_to_json(array_agg(json_strip_nulls(row_to_json(t)))) as actions
   from (
-    select a.id, a.act, a.ts, actor_user.email actor,
+    select a.id, a.act, actor_user.email actor,
+    -- use this exact formatting so actions_to_body always creates the exact same thing
+    to_char(a.ts at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') ts,
     left(a.body, 1024) body,
     case when a.body is null then null else length(a.body) > 1024 end extra_body,
     a.msg_format, a.warnings,

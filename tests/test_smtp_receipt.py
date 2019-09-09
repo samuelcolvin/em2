@@ -168,7 +168,7 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
             'body': 'Test Subject',
         },
     ]
-    push_data = list(data)
+    push_data = [{**a, **{'ts': '2032-01-01T12:00:00.000000Z'}} for a in data]
     push_data[-1]['extra_body'] = False
     push_data[-2]['extra_body'] = False
     assert len(await redis.keys('arq:job:*')) == 1  # web_push created by post_receipt
@@ -182,6 +182,8 @@ async def test_attachment_actions(conns, factory: Factory, db_conn, redis, creat
         if job_info.function == 'push_actions':
             ws_data = json.loads(job_info.args[0])
             assert ws_data['actions'] == push_data
+            return
+    raise RuntimeError('job not found')
 
 
 async def test_get_file(conns, factory: Factory, db_conn, create_email, attachment, cli, dummy_server, worker: Worker):

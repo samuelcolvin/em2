@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, List, Set, Tuple
 
 from aiohttp import ClientSession
@@ -89,7 +89,7 @@ class Pusher:
             raise
 
     async def action2dict(self, conv_key: str, actions: List[Action]):
-        ts = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
+        ts = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
         v = await self.pg.fetch(
             """
             select u.id, u.email

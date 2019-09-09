@@ -20,29 +20,30 @@ async def test_signing_verification(cli, url):
 
 async def test_push(em2_cli: Em2TestClient, settings, dummy_server: DummyServer, db_conn, redis, factory: Factory):
     user = await factory.create_user(email='recipient@example.com')
-    ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
+    ts = datetime(2032, 6, 6, 12, 0)
     conv_key = '8d69cb97ea2607ad5dcead82e7373d159289db11f9709c126e0ef8b2cf324d82'
     assert conv_key == generate_conv_key('actor@em2-ext.example.com', ts, 'Test Subject')
+    ts_str = ts.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
     post_data = {
         'actions': [
             {
                 'id': 1,
                 'act': 'participant:add',
-                'ts': ts.isoformat(),
+                'ts': ts_str,
                 'actor': 'actor@em2-ext.example.com',
                 'participant': 'actor@em2-ext.example.com',
             },
             {
                 'id': 2,
                 'act': 'participant:add',
-                'ts': ts.isoformat(),
+                'ts': ts_str,
                 'actor': 'actor@em2-ext.example.com',
                 'participant': 'recipient@example.com',
             },
             {
                 'id': 3,
                 'act': 'message:add',
-                'ts': ts.isoformat(),
+                'ts': ts_str,
                 'actor': 'actor@em2-ext.example.com',
                 'body': 'Test Message',
                 'extra_body': False,
@@ -51,7 +52,7 @@ async def test_push(em2_cli: Em2TestClient, settings, dummy_server: DummyServer,
             {
                 'id': 4,
                 'act': 'conv:publish',
-                'ts': ts.isoformat(),
+                'ts': ts_str,
                 'actor': 'actor@em2-ext.example.com',
                 'body': 'Test Subject',
                 'extra_body': False,
@@ -80,7 +81,7 @@ async def test_push(em2_cli: Em2TestClient, settings, dummy_server: DummyServer,
     )
     assert new_conv_key == conv_key
     assert creator == await db_conn.fetchval('select id from users where email=$1', 'actor@em2-ext.example.com')
-    assert publish_ts == ts
+    assert publish_ts == ts.replace(tzinfo=timezone.utc)
     assert last_action_id == 4
     assert leader_node == em2_node
     actions_data = await db_conn.fetchval(push_sql_all, conv_id)

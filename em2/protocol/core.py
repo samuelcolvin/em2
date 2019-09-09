@@ -284,7 +284,6 @@ def actions_to_body(conv_key: str, actions: List[Dict[str, Any]]) -> bytes:
     to_sign = f'v1\n{conv_key}\n' + '\n'.join(
         json.dumps([a.get(f) for f in action_signed_fields], separators=(',', ':')) for a in actions
     )
-    print(repr(to_sign))
     return to_sign.encode()
 
 
