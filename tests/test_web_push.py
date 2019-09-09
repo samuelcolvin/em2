@@ -72,7 +72,7 @@ async def test_web_push_unsubscribe(cli, factory: Factory, redis, dummy_server, 
     assert dummy_server.log == ['POST /status/410/ > 410']
 
 
-async def test_web_push_bad(cli, factory: Factory, redis, worker_ctx, dummy_server, web_push_sub):
+async def test_web_push_bad(cli, factory: Factory, redis, dummy_server, web_push_sub):
     web_push_sub['endpoint'] = web_push_sub['endpoint'].replace('/vapid/', '/status/500/')
     await factory.create_user()
 

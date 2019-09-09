@@ -124,8 +124,6 @@ class FollowModel(ActionCore):
 
 
 class PushModel(BaseModel):
-    upstream_signature: constr(min_length=128, max_length=128) = None
-    upstream_em2_node: str = None
     interaction_id: constr(min_length=32, max_length=32) = None
     actions: List[
         Union[
@@ -139,17 +137,13 @@ class PushModel(BaseModel):
         ]
     ]
 
-    @validator('upstream_em2_node', pre=True, whole=True)
-    def validate_em2_node(cls, v, values):
-        if 'upstream_signature' in values and not v:
-            raise ValueError('"upstream_em2_node" must be set with "upstream_signature" is provided')
-        return v
-
     @validator('actions', pre=True, whole=True)
     def validate_actions(cls, actions):
-        if isinstance(actions, list):
-            return list(cls.action_gen(actions))
-        raise TypeError('actions must be a list')
+        if not isinstance(actions, list):
+            raise TypeError('actions must be a list')
+        if len(actions) == 0:
+            raise ValueError('at least one action is required')
+        return list(cls.action_gen(actions))
 
     @classmethod
     def action_gen(cls, actions):
@@ -174,17 +168,6 @@ class PushModel(BaseModel):
                 yield FollowModel(**action)
             else:
                 raise ValueError(f'invalid action at index {i}, no support for act {act!r}')
-
-    @validator('actions', whole=True)
-    def check_action_order(cls, actions):
-        if len(actions) == 0:
-            raise ValueError('at least one action is required')
-        next_action_id = actions[0].id
-        for a in actions[1:]:
-            next_action_id += 1
-            if a.id != next_action_id:
-                raise ValueError('action ids do not increment correctly')
-        return actions
 
     class Config:
         allow_publish = False
@@ -224,7 +207,7 @@ class _PushBase(ExecView):
             except InvalidSignature as e:
                 msg = e.args[0]
                 logger.info('unauthorized em2 push from upstream msg="%s" em2-node="%s"', msg, m.upstream_em2_node)
-                raise JsonErrors.HTTPUnauthorized(msg + ' (upstream)')
+                raise JsonErrors.HTTPUnauthorized('Upstream signature: ' + msg)
             em2_node = m.upstream_em2_node
         else:
             em2_node = request_em2_node
@@ -270,14 +253,26 @@ class _PushBase(ExecView):
 
 class Em2Push(_PushBase):
     class Model(PushModel):
-        @validator('actions', whole=True)
-        def check_action_ids(cls, actions):
-            if not all(a.id for a in actions):
-                raise ValueError('action ids may not be null')
-            return actions
+        upstream_signature: constr(min_length=128, max_length=128) = None
+        upstream_em2_node: str = None
+
+        @validator('upstream_em2_node', pre=True, whole=True)
+        def validate_em2_node(cls, v, values):
+            if 'upstream_signature' in values and not v:
+                raise ValueError('"upstream_em2_node" must be set with "upstream_signature" is provided')
+            return v
 
         @validator('actions', whole=True)
         def check_publish_action(cls, actions):
+            if not all(a.id for a in actions):
+                raise ValueError('action ids may not be null')
+
+            next_action_id = actions[0].id
+            for a in actions[1:]:
+                next_action_id += 1
+                if a.id != next_action_id:
+                    raise ValueError('action ids do not increment correctly')
+
             pub = next((a for a in actions if a.act == ActionTypes.conv_publish), None)
             if pub:
                 if actions[0].id != 1:
