@@ -254,12 +254,14 @@ class _PushBase(ExecView):
 class Em2Push(_PushBase):
     class Model(PushModel):
         upstream_signature: constr(min_length=128, max_length=128) = None
-        upstream_em2_node: str = None
+        upstream_em2_node: Optional[str] = None
 
-        @validator('upstream_em2_node', pre=True, whole=True)
+        @validator('upstream_em2_node', whole=True, always=True)
         def validate_em2_node(cls, v, values):
-            if 'upstream_signature' in values and not v:
-                raise ValueError('"upstream_em2_node" must be set with "upstream_signature" is provided')
+            has_sig = bool(values.get('upstream_signature'))
+            has_node = bool(v)
+            if has_sig != has_node:
+                raise ValueError('"upstream_em2_node" and "upstream_signature" must both be provided, or neither')
             return v
 
         @validator('actions', whole=True)

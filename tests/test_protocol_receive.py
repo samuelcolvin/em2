@@ -829,6 +829,24 @@ async def test_push_with_upstream(em2_cli: Em2TestClient, factory: Factory, conn
     }
 
 
+async def test_push_without_upstream_sig(em2_cli: Em2TestClient, dummy_server):
+    a = 'recipient@example.com'
+    ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
+    conv_key = generate_conv_key(a, ts, 'Test Subject')
+    actions = [{'id': 1, 'act': 'participant:add', 'ts': ts.isoformat(), 'actor': a, 'participant': a}]
+
+    em2_node = f'localhost:{dummy_server.server.port}/em2'
+    data = {'actions': actions, 'upstream_em2_node': em2_node, 'interaction_id': '1' * 32}
+    path = em2_cli.url('protocol:em2-push', conv=conv_key, query={'node': em2_node})
+    r = await em2_cli.post_json(path, data=data, expected_status=400)
+    assert '\\"upstream_em2_node\\" and \\"upstream_signature\\" must both be provided, or neither' in await r.text()
+
+    data = {'actions': actions, 'upstream_signature': '1' * 128, 'interaction_id': '1' * 32}
+    path = em2_cli.url('protocol:em2-push', conv=conv_key, query={'node': em2_node})
+    r = await em2_cli.post_json(path, data=data, expected_status=400)
+    assert '\\"upstream_em2_node\\" and \\"upstream_signature\\" must both be provided, or neither' in await r.text()
+
+
 async def test_follower_push(em2_cli: Em2TestClient, factory: Factory, conns, dummy_server):
     await factory.create_user()
     alt_user = 'user@em2-ext.example.com'
