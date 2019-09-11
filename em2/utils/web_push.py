@@ -9,7 +9,7 @@ from typing import Optional
 import http_ece
 import ujson
 from aiohttp import ClientSession
-from atoolbox import RequestError
+from atoolbox import JsonErrors, RequestError
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
 from py_vapid import Vapid02 as Vapid
@@ -56,6 +56,8 @@ async def subscribe(conns: Connections, client_session: ClientSession, sub: Subs
         """,
         user_id,
     )
+    if not msg:
+        raise JsonErrors.HTTPUnauthorized('user not found')
     await _sub_post(conns, client_session, sub, user_id, msg)
 
 
