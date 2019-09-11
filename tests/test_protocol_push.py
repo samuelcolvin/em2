@@ -155,3 +155,16 @@ async def test_ignore_seen(factory: Factory, db_conn, ses_worker: Worker, dummy_
     assert dummy_server.app['smtp'][1]['part:text/html'] == (
         '<p>The following people have been added to the conversation: another@example.net</p>\n'
     )
+
+
+async def test_push_local_new(factory: Factory, db_conn, ses_worker: Worker):
+    await factory.create_user()
+    new_user = 'new-user@example.com'
+    await db_conn.execute("insert into auth_users (email, account_status) values ($1, 'active')", new_user)
+    await db_conn.execute('insert into users (email) values ($1)', new_user)
+
+    assert await db_conn.fetchval('select user_type from users where email=$1', new_user) == 'new'
+    await factory.create_conv(participants=[{'email': 'new-user@example.com'}], publish=True)
+    await ses_worker.async_run()
+    assert await ses_worker.run_check() == 2
+    assert await db_conn.fetchval('select user_type from users where email=$1', new_user) == 'local'
