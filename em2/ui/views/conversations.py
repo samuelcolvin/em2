@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
+from uuid import uuid4
 
 from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
 from buildpg import MultipleValues, SetValues, V, Values, funcs
@@ -261,26 +262,31 @@ class ConvAct(ExecView):
             extra = Extra.forbid
 
     async def execute(self, m: Model):
-        conv_id, action_ids = await apply_actions(
-            conns=self.conns, conv_ref=self.request.match_info['conv'], actions=[a async for a in self.raw_actions(m)]
-        )
+        c = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
+        actions = [a async for a in self.raw_actions(c.id, m)]
+        interaction_id = uuid4().hex
+        if c.leader:
+            await self.conns.redis.enqueue_job('follower_push_actions', c.key, c.leader, interaction_id, actions)
+        else:
+            action_ids = await apply_actions(self.conns, c.id, actions)
 
-        if action_ids:
-            await push_multiple(self.conns, conv_id, action_ids)
-        return {'action_ids': action_ids}
+            if action_ids:
+                await push_multiple(self.conns, c.id, action_ids, interaction_id=interaction_id)
+            else:
+                interaction_id = None
+        return {'interaction': interaction_id}
 
-    async def raw_actions(self, m: Model):
+    async def raw_actions(self, conv_id: int, m: Model):
         for a in m.actions:
             files = None
             if a.files:
-                c = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
                 async with S3(self.settings) as s3_client:
                     files = await asyncio.gather(
-                        *(self.prepare_file(s3_client, c.id, content_id) for content_id in a.files)
+                        *(self.prepare_file(s3_client, conv_id, content_id) for content_id in a.files)
                     )
             yield Action(actor_id=self.session.user_id, files=files, **a.dict(exclude={'files'}))
 
-    async def prepare_file(self, s3_client, conv_id, content_id: str):
+    async def prepare_file(self, s3_client, conv_id: int, content_id: str):
         storage_path = await self.redis.get(file_upload_cache_key(conv_id, content_id))
         if not storage_path:
             raise JsonErrors.HTTPBadRequest(f'no file found for content id {content_id!r}')
@@ -320,7 +326,7 @@ class ConvPublish(ExecView):
 
         # could do more efficiently than this, but would require duplicate logic
         conv_summary = await construct_conv(self.conns, self.session.user_id, conv_prefix)
-        old_key = await self.conns.main.fetchval('select key from conversations where id=$1', c.id)
+        old_key = c.key
 
         ts = utcnow()
         conv_key = generate_conv_key(self.session.email, ts, conv_summary['subject'])

@@ -21,6 +21,7 @@ from em2.core import (
 )
 from em2.protocol.core import HttpError, InvalidSignature
 from em2.utils.core import MsgFormat
+from em2.utils.db import or404
 from em2.utils.storage import check_content_type
 
 from .utils import ExecView
@@ -41,7 +42,7 @@ async def signing_verification(request):
 
 
 class ActionCore(BaseModel):
-    id: conint(gt=0)
+    id: Optional[conint(gt=0)]
     ts: datetime
     actor: EmailStr
 
@@ -122,7 +123,57 @@ class FollowModel(ActionCore):
     follows: int
 
 
-class Em2Push(ExecView):
+class PushModel(BaseModel):
+    interaction_id: constr(min_length=32, max_length=32) = None
+    actions: List[
+        Union[
+            ParticipantModel,
+            ParticipantRemoveModel,
+            MessageAddModel,
+            MessageModifyModel,
+            PublishModel,
+            SubjectModifyModel,
+            FollowModel,
+        ]
+    ]
+
+    @validator('actions', pre=True, whole=True)
+    def validate_actions(cls, actions):
+        if not isinstance(actions, list):
+            raise TypeError('actions must be a list')
+        if len(actions) == 0:
+            raise ValueError('at least one action is required')
+        return list(cls.action_gen(actions))
+
+    @classmethod
+    def action_gen(cls, actions):
+        for i, action in enumerate(actions):
+            if not isinstance(action, dict):
+                raise ValueError(f'invalid action at index {i}, not dict')
+
+            act = action.get('act')
+            if act == ActionTypes.prt_add:
+                yield ParticipantModel(**action)
+            elif act == ActionTypes.prt_remove:
+                yield ParticipantRemoveModel(**action)
+            elif act == ActionTypes.msg_add:
+                yield MessageAddModel(**action)
+            elif act == ActionTypes.msg_modify:
+                yield MessageModifyModel(**action)
+            elif cls.__config__.allow_publish and act == ActionTypes.conv_publish:
+                yield PublishModel(**action)
+            elif act == ActionTypes.subject_modify:
+                yield SubjectModifyModel(**action)
+            elif act in follow_only_types:
+                yield FollowModel(**action)
+            else:
+                raise ValueError(f'invalid action at index {i}, no support for act {act!r}')
+
+    class Config:
+        allow_publish = False
+
+
+class _PushBase(ExecView):
     """
     Currently:
     * 200 means ok
@@ -134,53 +185,90 @@ class Em2Push(ExecView):
     Need to formalise this.
     """
 
-    class Model(BaseModel):
-        actions: List[
-            Union[
-                ParticipantModel,
-                ParticipantRemoveModel,
-                MessageAddModel,
-                MessageModifyModel,
-                PublishModel,
-                SubjectModifyModel,
-                FollowModel,
-            ]
-        ]
+    async def execute(self, m: PushModel):  # noqa: C901 (ignore complexity)
+        try:
+            request_em2_node = self.request.query['node']
+        except KeyError:
+            raise JsonErrors.HTTPBadRequest("'node' get parameter missing")
 
-        @validator('actions', pre=True, whole=True)
-        def validate_actions(cls, actions):
-            if isinstance(actions, list):
-                return list(cls.action_gen(actions))
-            raise ValueError('actions must be a list')
+        try:
+            await self.em2.check_body_signature(request_em2_node, self.request)
+        except InvalidSignature as e:
+            msg = e.args[0]
+            logger.info('unauthorized em2 push msg="%s" em2-node="%s"', msg, request_em2_node)
+            raise JsonErrors.HTTPUnauthorized(msg)
 
-        @classmethod
-        def action_gen(cls, actions):
-            for i, action in enumerate(actions):
-                if not isinstance(action, dict):
-                    raise ValueError(f'invalid action at index {i}, not dict')
+        if m.upstream_signature:
+            data = await self.request.json()
+            try:
+                await self.em2.check_actions_signature(
+                    self.request.match_info['conv'], m.upstream_em2_node, m.upstream_signature, data['actions']
+                )
+            except InvalidSignature as e:
+                msg = e.args[0]
+                logger.info('unauthorized em2 push from upstream msg="%s" em2-node="%s"', msg, m.upstream_em2_node)
+                raise JsonErrors.HTTPUnauthorized('Upstream signature: ' + msg)
+            em2_node = m.upstream_em2_node
+        else:
+            em2_node = request_em2_node
 
-                act = action.get('act')
-                if act == ActionTypes.prt_add:
-                    yield ParticipantModel(**action)
-                elif act == ActionTypes.prt_remove:
-                    yield ParticipantRemoveModel(**action)
-                elif act == ActionTypes.msg_add:
-                    yield MessageAddModel(**action)
-                elif act == ActionTypes.msg_modify:
-                    yield MessageModifyModel(**action)
-                elif act == ActionTypes.conv_publish:
-                    yield PublishModel(**action)
-                elif act == ActionTypes.subject_modify:
-                    yield SubjectModifyModel(**action)
-                elif act in follow_only_types:
-                    yield FollowModel(**action)
-                else:
-                    raise ValueError(f'invalid action at index {i}, no support for act {act!r}')
+        actor_emails = {a.actor for a in m.actions}
+
+        # TODO give more details on the problems
+        try:
+            nodes = set(await asyncio.gather(*[self.em2.get_em2_node(e) for e in actor_emails]))
+        except HttpError:
+            # this could be temporary due to error get em2 node
+            raise JsonErrors.HTTPUnauthorized('not all actors have an em2 node')
+
+        if None in nodes:
+            # this could be temporary due to an error getting the em2 node
+            raise JsonErrors.HTTPUnauthorized('not all actors have an em2 node')
+        if nodes != {em2_node}:
+            raise JsonErrors.HTTPBadRequest("not all actors' em2 nodes match the request node")
+
+        file_content_ids = set()
+        for a in m.actions:
+            if a.act == ActionTypes.msg_add and a.files:
+                for f in a.files:
+                    if f.content_id in file_content_ids:
+                        raise JsonErrors.HTTPBadRequest(f'duplicate file content_id on action {a.id}')
+                    file_content_ids.add(f.content_id)
+
+        async with self.conns.main.transaction():
+            conv_id, action_ids = await self.execute_trans(m, request_em2_node)
+
+        if conv_id:
+            await self.re_push(m, conv_id, action_ids)
+
+            for content_id in file_content_ids:
+                await self.conns.redis.enqueue_job('download_push_file', conv_id, content_id)
+
+    async def execute_trans(self, m: PushModel, request_em2_node: str) -> Tuple[Optional[int], Optional[List[int]]]:
+        raise NotImplementedError
+
+    async def re_push(self, m: PushModel, conv_id: Optional[int], action_ids: Optional[List[int]]):
+        raise NotImplementedError
+
+
+class Em2Push(_PushBase):
+    class Model(PushModel):
+        upstream_signature: constr(min_length=128, max_length=128) = None
+        upstream_em2_node: Optional[str] = None
+
+        @validator('upstream_em2_node', whole=True, always=True)
+        def validate_em2_node(cls, v, values):
+            has_sig = bool(values.get('upstream_signature'))
+            has_node = bool(v)
+            if has_sig != has_node:
+                raise ValueError('"upstream_em2_node" and "upstream_signature" must both be provided, or neither')
+            return v
 
         @validator('actions', whole=True)
-        def check_actions(cls, actions):
-            if len(actions) == 0:
-                raise ValueError('at least one action is required')
+        def check_publish_action(cls, actions):
+            if not all(a.id for a in actions):
+                raise ValueError('action ids may not be null')
+
             next_action_id = actions[0].id
             for a in actions[1:]:
                 next_action_id += 1
@@ -203,55 +291,10 @@ class Em2Push(ExecView):
                         )
             return actions
 
-    async def execute(self, m: Model):  # noqa: C901 (ignore complexity)
-        try:
-            em2_node = self.request.query['node']
-        except KeyError:
-            raise JsonErrors.HTTPBadRequest("'node' get parameter missing")
+        class Config:
+            allow_publish = True
 
-        try:
-            await self.em2.check_signature(em2_node, self.request)
-        except InvalidSignature as e:
-            msg = e.args[0]
-            logger.info('unauthorized em2 push msg="%s" em2-node="%s"', msg, em2_node)
-            raise JsonErrors.HTTPUnauthorized(msg)
-
-        actor_emails = {a.actor for a in m.actions}
-
-        # TODO give more details on the problems
-        try:
-            nodes = set(await asyncio.gather(*[self.em2.get_em2_node(e) for e in actor_emails]))
-        except HttpError:
-            # this could be temporary due to error get em2 node
-            raise JsonErrors.HTTPUnauthorized('not all actors have an em2 nodes')
-
-        if None in nodes:
-            # this could be temporary due to an error getting the em2 node
-            raise JsonErrors.HTTPUnauthorized('not all actors have an em2 nodes')
-        if nodes != {em2_node}:
-            raise JsonErrors.HTTPBadRequest("not all actors' em2 nodes match request node")
-
-        file_content_ids = set()
-        for a in m.actions:
-            if a.act == ActionTypes.msg_add and a.files:
-                for f in a.files:
-                    if f.content_id in file_content_ids:
-                        raise JsonErrors.HTTPBadRequest(f'duplicate file content_id on action {a.id}')
-                    file_content_ids.add(f.content_id)
-
-        async with self.conns.main.transaction():
-            conv_id, transmit, action_ids = await self.execute_trans(m, em2_node)
-
-        if conv_id is not None:
-            if action_ids is None:
-                await push_all(self.conns, conv_id, transmit=transmit)
-            else:
-                await push_multiple(self.conns, conv_id, action_ids, transmit=transmit)
-
-        for content_id in file_content_ids:
-            await self.conns.redis.enqueue_job('download_push_file', conv_id, content_id)
-
-    async def execute_trans(self, m: Model, em2_node: str) -> Tuple[Optional[int], bool, Optional[List[int]]]:
+    async def execute_trans(self, m: Model, request_em2_node: str) -> Tuple[Optional[int], Optional[List[int]]]:
         publish_action = next((a for a in m.actions if a.act == ActionTypes.conv_publish), None)
         push_all_actions = False
         if publish_action:
@@ -263,7 +306,7 @@ class Em2Push(ExecView):
                 # TODO custom error code
                 raise JsonErrors.HTTPBadRequest('no participants on this em2 node')
             try:
-                await self.published_conv(publish_action, m, em2_node)
+                await self.published_conv(publish_action, m, request_em2_node)
                 push_all_actions = True
             except JsonErrors.HTTPConflict:
                 # conversation already exists, that's okay
@@ -277,19 +320,18 @@ class Em2Push(ExecView):
         if r:
             conv_id, last_action_id, leader_node = r
 
-            if leader_node and leader_node != em2_node:
+            if leader_node != request_em2_node:
                 raise JsonErrors.HTTPBadRequest("request em2 node does not match conversation's em2 node")
         else:
             # conversation doesn't exist and there's no publish_action, need the whole conversation
             raise JsonErrors.HTTP470('full conversation required')  # TODO better error
 
         actions_to_apply = [a for a in m.actions if a.id > last_action_id]
-        push_transmit = leader_node is None
         if not actions_to_apply:
             if push_all_actions:
-                return conv_id, push_transmit, None
+                return conv_id, None
             else:
-                return None, False, None
+                return None, None
 
         if last_action_id + 1 != actions_to_apply[0].id:
             raise JsonErrors.HTTP470('full conversation required')  # TODO better error
@@ -309,9 +351,9 @@ class Em2Push(ExecView):
             raise JsonErrors.HTTPBadRequest('actor does not have permission to update this conversation')
 
         action_ids = None if push_all_actions else [a.id for a in actions]
-        return conv_id, push_transmit, action_ids
+        return conv_id, action_ids
 
-    async def published_conv(self, publish_action: PublishModel, m: Model, em2_node: str):
+    async def published_conv(self, publish_action: PublishModel, m: Model, request_em2_node: str):
         """
         New conversation just published
         """
@@ -343,5 +385,80 @@ class Em2Push(ExecView):
             creator_email=actor_email,
             actions=actions,
             given_conv_key=self.request.match_info['conv'],
-            leader_node=em2_node,
+            leader_node=request_em2_node,
+        )
+
+    async def re_push(self, m: PushModel, conv_id: Optional[int], action_ids: Optional[List[int]]):
+        if action_ids is None:
+            await push_all(self.conns, conv_id, transmit=False)
+        else:
+            await push_multiple(self.conns, conv_id, action_ids, transmit=False)
+
+
+class Em2FollowerPush(_PushBase):
+    class Model(PushModel):
+        upstream_signature: constr(min_length=128, max_length=128)
+        upstream_em2_node: str
+        interaction_id: constr(min_length=32, max_length=32)
+        actions: List[
+            Union[
+                ParticipantModel,
+                ParticipantRemoveModel,
+                MessageAddModel,
+                MessageModifyModel,
+                SubjectModifyModel,
+                FollowModel,
+            ]
+        ]
+
+        @validator('actions', whole=True)
+        def check_action_ids(cls, actions):
+            if not all(a.id is None for a in actions):
+                raise ValueError('action ids must be null')
+            return actions
+
+        class Config:
+            allow_publish = False
+
+    async def execute_trans(self, m: Model, em2_node: str) -> Tuple[Optional[int], Optional[List[int]]]:
+        conversation = self.request.match_info['conv']
+        # lock the conversation here so simultaneous requests executing the same action ids won't cause errors
+        conv_id, leader_node = await or404(
+            self.conns.main.fetchrow(
+                'select id, leader_node from conversations where key=$1 for no key update', conversation
+            ),
+            msg='conversation not found',
+        )
+
+        if leader_node is not None:
+            raise JsonErrors.HTTPBadRequest(f'conversation leader must be this node, not {leader_node!r}')
+
+        actor_emails = {a.actor for a in m.actions}
+        actor_user_ids = await get_create_multiple_users(self.conns, actor_emails)
+        actions = [
+            Action(actor_id=actor_user_ids[a.actor], files=a.core_files(), **a.dict(exclude={'actor', 'files'}))
+            for a in m.actions
+        ]
+
+        try:
+            action_ids = await apply_actions(self.conns, conv_id, actions)
+        except JsonErrors.HTTPNotFound:
+            # happens when an actor hasn't yet been added to the conversation, any other times?
+            # TODO any other errors?
+            raise JsonErrors.HTTPBadRequest('actor does not have permission to update this conversation')
+        else:
+            return conv_id, action_ids
+
+    async def re_push(self, m: PushModel, conv_id: Optional[int], action_ids: Optional[List[int]]):
+        import asyncio
+
+        await asyncio.sleep(0.5)
+        await push_multiple(
+            self.conns,
+            conv_id,
+            action_ids,
+            transmit=True,
+            interaction_id=m.interaction_id,
+            upstream_signature=m.upstream_signature,
+            upstream_em2_node=m.upstream_em2_node,
         )

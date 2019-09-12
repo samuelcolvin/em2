@@ -110,7 +110,8 @@ def draft_conv_key() -> str:
 @dataclass
 class ConvSummary:
     id: int
-    publish_ts: datetime
+    key: str
+    publish_ts: Optional[datetime]
     leader: Optional[str]
     last_action: Optional[int]
 
@@ -125,7 +126,7 @@ async def get_conv_for_user(conns: Connections, user_id: int, conv_ref: StrInt) 
     if isinstance(conv_ref, int):
         query = conns.main.fetchrow(
             """
-            select c.id, c.publish_ts, c.leader_node, c.creator, p.removal_action_id from conversations as c
+            select c.id, c.key, c.publish_ts, c.leader_node, c.creator, p.removal_action_id from conversations as c
             join participants p on c.id=p.conv
             where c.live is true and p.user_id = $1 and c.id = $2
             order by c.created_ts desc
@@ -136,7 +137,7 @@ async def get_conv_for_user(conns: Connections, user_id: int, conv_ref: StrInt) 
     else:
         query = conns.main.fetchrow(
             """
-            select c.id, c.publish_ts, c.leader_node, c.creator, p.removal_action_id from conversations c
+            select c.id, c.key, c.publish_ts, c.leader_node, c.creator, p.removal_action_id from conversations c
             join participants p on c.id=p.conv
             where c.live is true and p.user_id=$1 and c.key like $2
             order by c.created_ts desc
@@ -147,11 +148,11 @@ async def get_conv_for_user(conns: Connections, user_id: int, conv_ref: StrInt) 
         )
 
     # TODO we should use a custom error here, not just 404: Conversation not found
-    conv_id, publish_ts, leader, creator, last_action = await or404(query, msg='Conversation not found')
+    conv_id, conv_key, publish_ts, leader, creator, last_action = await or404(query, msg='Conversation not found')
 
     if not publish_ts and user_id != creator:
         raise JsonErrors.HTTPForbidden('conversation is unpublished and you are not the creator')
-    return ConvSummary(conv_id, publish_ts, leader, last_action)
+    return ConvSummary(conv_id, conv_key, publish_ts, leader, last_action)
 
 
 async def update_conv_users(conns: Connections, conv_id: int) -> List[int]:
@@ -224,17 +225,16 @@ class _Act:
 
     __slots__ = 'conns', 'conv_id', 'new_user_ids', 'spam', 'warnings'
 
-    def __init__(self, conns: Connections, spam: bool, warnings: Dict[str, str]):
+    def __init__(self, conns: Connections, conv_id: int, spam: bool, warnings: Dict[str, str]):
         self.conns = conns
-        self.conv_id = None
+        self.conv_id = conv_id
         # ugly way of doing this, but less ugly than other approaches
         self.new_user_ids: Set[int] = set()
         self.spam = True if spam else None
         self.warnings = json.dumps(warnings) if warnings else None  # FIXME moved to action
 
-    async def prepare(self, conv_ref: StrInt, actor_id: int) -> Tuple[int, int, int]:
-        c = await get_conv_for_user(self.conns, actor_id, conv_ref)
-        self.conv_id = c.id
+    async def prepare(self, actor_id: int) -> Tuple[int, int, int]:
+        c = await get_conv_for_user(self.conns, actor_id, self.conv_id)
 
         # we must be in a transaction
         # this is a hard check that conversations can only have one act applied at a time
@@ -247,7 +247,7 @@ class _Act:
         c = await get_conv_for_user(self.conns, actor_id, self.conv_id)
         return c.last_action
 
-    async def run(self, action: Action, last_action: int) -> Tuple[Optional[int], Optional[int]]:
+    async def run(self, action: Action, last_action: Optional[int]) -> Tuple[Optional[int], Optional[int]]:
         if action.act is ActionTypes.seen:
             return await self._seen(action), None
 
@@ -529,22 +529,22 @@ class ConvFlags(str, Enum):
 
 
 async def apply_actions(
-    conns: Connections, conv_ref: StrInt, actions: List[Action], spam: bool = False, warnings: Dict[str, str] = None
-) -> Tuple[int, List[int]]:
+    conns: Connections, conv_id: int, actions: List[Action], *, spam: bool = False, warnings: Dict[str, str] = None
+) -> List[int]:
     """
     Apply actions and return their ids.
 
     Should be used for both remote platforms adding events and local users adding actions.
     """
     actions_with_ids: List[Tuple[int, Optional[int], Action]] = []
-    act_cls = _Act(conns, spam, warnings)
+    act_cls = _Act(conns, conv_id, spam, warnings)
     decrement_seen_id = None
     from_deleted, from_archive, already_inbox = [], [], []
     async with conns.main.transaction():
         # IMPORTANT must not do anything that could be slow (eg. networking) inside this transaction,
         # as the conv is locked for update from prepare() onwards
         actor_user_id = actions[0].actor_id
-        last_action, conv_id, creator_id = await act_cls.prepare(conv_ref, actor_user_id)
+        last_action, conv_id, creator_id = await act_cls.prepare(actor_user_id)
 
         for action in actions:
             if action.actor_id != actor_user_id:
@@ -618,7 +618,7 @@ async def apply_actions(
     if updates:
         await update_conv_flags(conns, *updates)
     await search_update(conns, conv_id, actions_with_ids)
-    return conv_id, [a[0] for a in actions_with_ids]
+    return [a[0] for a in actions_with_ids]
 
 
 async def user_flag_moves(

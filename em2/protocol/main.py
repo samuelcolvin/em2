@@ -2,7 +2,7 @@ from aiodns import DNSResolver
 from aiohttp import web
 from atoolbox.middleware import pg_middleware
 
-from em2.protocol.views.main import Em2Push, signing_verification
+from em2.protocol.views.main import Em2FollowerPush, Em2Push, signing_verification
 from em2.protocol.views.smtp_ses import ses_webhook
 from em2.settings import Settings
 from em2.utils.web import build_index
@@ -34,6 +34,7 @@ async def create_app_protocol(main_app: web.Application):
             web.post('/webhook/ses/{token}/', ses_webhook, name='webhook-ses'),
             web.get('/v1/signing/verification/', signing_verification, name='signing-verification'),
             web.post('/v1/push/{conv:[a-f0-9]{64}}/', Em2Push.view(), name='em2-push'),
+            web.post('/v1/follower-push/{conv:[a-f0-9]{64}}/', Em2FollowerPush.view(), name='em2-follower-push'),
         ]
     )
     app['index_path'] = build_index(app, 'platform-to-platform interface')

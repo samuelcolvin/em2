@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from asyncio import CancelledError
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 import ujson
 from aiohttp.abc import Application
@@ -103,9 +103,10 @@ from (
 """
 
 
-async def _push_local(conns: Connections, conv_id: int, actions_data: str):
+async def _push_local(conns: Connections, conv_id: int, actions_data: str, interaction_id: Optional[str]):
     extra = await conns.main.fetchval(local_users_sql, conv_id)
-    actions_data_extra = actions_data[:-1] + ',' + extra[1:]
+    extra_json = f',"interaction": "{interaction_id}",' if interaction_id else ','
+    actions_data_extra = actions_data[:-1] + extra_json + extra[1:]
     await conns.redis.publish(channel_name(conns.redis), actions_data_extra)
     await conns.redis.enqueue_job('web_push', actions_data_extra)
 
@@ -119,10 +120,10 @@ where conv=$1 and c.publish_ts is not null and u.user_type != 'local'
 """
 
 
-async def _push_remote(conns: Connections, conv_id: int, actions_data: str):
+async def _push_remote(conns: Connections, conv_id: int, actions_data: str, **extra: Any):
     remote_users = [tuple(r) for r in await conns.main.fetch(remote_users_sql, conv_id)]
     if remote_users:
-        await conns.redis.enqueue_job('push_actions', actions_data, remote_users)
+        await conns.redis.enqueue_job('push_actions', actions_data, remote_users, **extra)
 
 
 push_sql_template = """
@@ -133,7 +134,9 @@ select json_build_object(
 from (
   select array_to_json(array_agg(json_strip_nulls(row_to_json(t)))) as actions
   from (
-    select a.id, a.act, a.ts, actor_user.email actor,
+    select a.id, a.act, actor_user.email actor,
+    -- use this exact formatting so actions_to_body always creates the exact same thing
+    to_char(a.ts at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') ts,
     left(a.body, 1024) body,
     case when a.body is null then null else length(a.body) > 1024 end extra_body,
     a.msg_format, a.warnings,
@@ -165,16 +168,26 @@ push_sql_all = push_sql_template.format('where a.conv=$1 order by a.id')
 push_sql_multiple = push_sql_template.format('where a.conv=$1 and a.id=any($2)')
 
 
-async def push_all(conns: Connections, conv_id: int, *, transmit=True):
+async def push_all(conns: Connections, conv_id: int, *, transmit=True, **extra: Any):
     # FIXME: rename these to notify*?
     actions_data = await conns.main.fetchval(push_sql_all, conv_id)
-    await _push_local(conns, conv_id, actions_data)
+    await _push_local(conns, conv_id, actions_data, None)
     if transmit:
-        await _push_remote(conns, conv_id, actions_data)
+        await _push_remote(conns, conv_id, actions_data, **extra)
 
 
-async def push_multiple(conns: Connections, conv_id: int, action_ids: List[int], *, transmit=True):
+async def push_multiple(
+    conns: Connections,
+    conv_id: int,
+    action_ids: List[int],
+    *,
+    transmit: bool = True,
+    interaction_id: str = None,
+    **extra: Any,
+):
     actions_data = await conns.main.fetchval(push_sql_multiple, conv_id, action_ids)
-    await _push_local(conns, conv_id, actions_data)
+    await _push_local(conns, conv_id, actions_data, interaction_id)
     if transmit:
-        await _push_remote(conns, conv_id, actions_data)
+        if interaction_id:
+            extra['interaction_id'] = interaction_id
+        await _push_remote(conns, conv_id, actions_data, **extra)

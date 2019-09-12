@@ -52,6 +52,7 @@ class ConvDetailsView extends React.Component {
   }
 
   update = async data => {
+    console.log('conversation update:', data)
     if (data && this.state.conv && data.conv !== this.state.conv.key) {
       // different conversation
     } else if (data && data.new_key) {
@@ -69,8 +70,9 @@ class ConvDetailsView extends React.Component {
       this.props.ctx.setTitle(conv.subject)
       this.props.ctx.setConvTitle(conv.subject)
       this.setState({conv})
-      if (this.action_ids && this.state.locked && this.action_ids.filter(id => conv.action_ids.has(id))) {
-        this.action_ids = null
+      if (this.pending_interaction && this.state.locked && this.pending_interaction === data.interaction) {
+        this.pending_interaction = null
+        this.last_action_id = data.last_action_id
         this.setState({locked: false})
       }
       if (!this.marked_seen && this.state.conv) {
@@ -97,8 +99,7 @@ class ConvDetailsView extends React.Component {
           files: this.state.files.filter(f => f.done).map(f => f.content_id),
         },
       ]
-      const r = await window.logic.conversations.act(this.state.conv.key, actions)
-      this.action_ids = r.data.action_ids
+      this.pending_interaction = await window.logic.conversations.act(this.state.conv.key, actions)
       this.setState({new_message: empty_editor, files: []})
     }
   }
@@ -116,8 +117,7 @@ class ConvDetailsView extends React.Component {
     if (!this.state.locked && this.state.comment.has_content && this.state.comment_parent) {
       this.setState({locked: true})
       const actions = [{act: 'message:add', body: this.state.comment.to_markdown(), parent: this.state.comment_parent}]
-      const r = await window.logic.conversations.act(this.state.conv.key, actions)
-      this.action_ids = r.data.action_ids
+      this.pending_interaction = await window.logic.conversations.act(this.state.conv.key, actions)
       this.setState({comment: empty_editor, comment_parent: null})
     }
   }
@@ -128,8 +128,7 @@ class ConvDetailsView extends React.Component {
       const actions = this.state.extra_prts.map(p => (
         {act: 'participant:add', participant: p.email}
       ))
-      const r = await window.logic.conversations.act(this.state.conv.key, actions)
-      this.action_ids = r.data.action_ids
+      this.pending_interaction = await window.logic.conversations.act(this.state.conv.key, actions)
       this.setState({extra_prts: null})
     }
   }
@@ -152,11 +151,9 @@ class ConvDetailsView extends React.Component {
   act = async (actions, locked_ok) => {
     if (!this.state.locked || locked_ok) {
       this.setState({locked: true})
-      const r = await window.logic.conversations.act(this.state.conv.key, actions)
-      this.action_ids = r.data.action_ids
-      return r.data.action_ids
+      this.pending_interaction = await window.logic.conversations.act(this.state.conv.key, actions)
     } else {
-      console.warn('component already locked, cannot perform', actions)
+      console.warn('component already locked, cannot perform actions:', actions)
     }
   }
 
@@ -168,13 +165,14 @@ class ConvDetailsView extends React.Component {
     return () => this.setState({locked: false})
   }
 
+  // TODO do all this better once we have full coroutines for act: return an object with "set" and "release" methods
+  // from the lock coroutine
   lock_subject = async () => {
     const follows = await window.logic.conversations.last_subject_action(this.state.conv.key)
-    const action_ids = await this.act([{act: 'subject:lock', follows}])
-    return action_ids[0]
+    await this.act([{act: 'subject:lock', follows}])
   }
-  release_subject = follows => this.act([{act: 'subject:release', follows}])
-  set_subject = (subject, follows) => this.act([{act: 'subject:modify', body: subject, follows}])
+  release_subject = () => this.act([{act: 'subject:release', follows: this.last_action_id}])
+  set_subject = subject => this.act([{act: 'subject:modify', body: subject, follows: this.last_action_id}])
 
   render () {
     if (this.state.not_found) {

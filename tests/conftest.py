@@ -8,6 +8,7 @@ from email.message import EmailMessage
 from enum import Enum
 from io import BytesIO
 from typing import List
+from uuid import uuid4
 
 import pytest
 from aiohttp import ClientSession, ClientTimeout
@@ -79,7 +80,7 @@ def _fix_settings_session():
 
 @pytest.fixture(name='dummy_server')
 async def _fix_dummy_server(loop, aiohttp_server):
-    ctx = {'smtp': [], 's3_files': {}, 'webpush': [], 'em2push': []}
+    ctx = {'smtp': [], 's3_files': {}, 'webpush': [], 'em2push': [], 'em2_follower_push': []}
     return await create_dummy_server(aiohttp_server, extra_routes=dummy_server.routes, extra_context=ctx)
 
 
@@ -194,6 +195,7 @@ class Em2TestClient(TestClient):
         self._dummy_server: DummyServer = dummy_server
         self._factory: Factory = factory
         self._url_func = MakeUrl(self.app).get_path
+        self.signing_key = get_signing_key(self._settings.signing_secret_key)
 
     async def post_json(self, path, data, *, expected_status=200):
         if not isinstance(data, (str, bytes)):
@@ -201,13 +203,12 @@ class Em2TestClient(TestClient):
 
         sign_ts = datetime.utcnow().isoformat()
         to_sign = f'POST http://127.0.0.1:{self.server.port}{path} {sign_ts}\n{data}'.encode()
-        signing_key = get_signing_key(self._settings.signing_secret_key)
         r = await self.post(
             path,
             data=data,
             headers={
                 'Content-Type': 'application/json',
-                'Signature': sign_ts + ',' + signing_key.sign(to_sign).signature.hex(),
+                'Signature': sign_ts + ',' + self.signing_key.sign(to_sign).signature.hex(),
             },
         )
         if expected_status:
@@ -229,6 +230,7 @@ class Em2TestClient(TestClient):
         msg='test message',
         expected_status=200,
     ):
+        # use recipient@example.com here so recipient can be changed in test errors
         if not await self._factory.conn.fetchval('select 1 from users where email=$1', 'recipient@example.com'):
             await self._factory.create_user(email='recipient@example.com')
         ts = datetime(2032, 6, 6, 12, 0, tzinfo=timezone.utc)
@@ -364,11 +366,16 @@ class Factory:
         )
 
     async def act(self, conv_id: int, action: Action) -> List[int]:
-        conv_id, action_ids = await apply_actions(self.conns, conv_id, [action])
+        key, leader = await self.conns.main.fetchrow('select key, leader_node from conversations where id=$1', conv_id)
+        interaction_id = uuid4().hex
+        if leader:
+            await self.conns.redis.enqueue_job('follower_push_actions', key, leader, interaction_id, [action])
+        else:
+            action_ids = await apply_actions(self.conns, conv_id, [action])
 
-        if action_ids:
-            await push_multiple(self.conns, conv_id, action_ids)
-        return action_ids
+            if action_ids:
+                await push_multiple(self.conns, conv_id, action_ids)
+            return action_ids
 
 
 @pytest.fixture(name='factory')
@@ -669,3 +676,33 @@ def _fix_alt_url(alt_cli: UserTestClient):
 @pytest.fixture(name='alt_factory')
 async def _fix_alt_factory(alt_redis, alt_cli, alt_url):
     return Factory(alt_redis, alt_cli, alt_url)
+
+
+@pytest.yield_fixture(name='alt_worker_ctx')
+async def _fix_alt_worker_ctx(alt_redis, alt_settings, alt_db_conn, resolver):
+    session = ClientSession(timeout=ClientTimeout(total=10))
+    ctx = dict(
+        settings=alt_settings,
+        pg=alt_db_conn,
+        client_session=session,
+        resolver=resolver,
+        redis=alt_redis,
+        signing_key=get_signing_key(alt_settings.signing_secret_key),
+    )
+    ctx.update(smtp_handler=LogSmtpHandler(ctx), conns=Connections(ctx['pg'], alt_redis, alt_settings))
+
+    yield ctx
+
+    await session.close()
+
+
+@pytest.yield_fixture(name='alt_worker')
+async def _fix_alt_worker(alt_redis, alt_worker_ctx):
+    worker = Worker(
+        functions=worker_settings['functions'], redis_pool=alt_redis, burst=True, poll_delay=0.01, ctx=alt_worker_ctx
+    )
+
+    yield worker
+
+    worker.pool = None
+    await worker.close()

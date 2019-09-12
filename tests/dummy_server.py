@@ -38,6 +38,11 @@ async def em2_push(request):
     return Response(status=200)
 
 
+async def em2_follower_push(request):
+    request.app['em2_follower_push'].append({'body': await request.text(), 'signature': request.headers['signature']})
+    return Response(status=200)
+
+
 async def ses_endpoint_url(request):
     data = await request.post()
     raw_email = base64.b64decode(data['RawMessage.Data'])
@@ -150,6 +155,7 @@ routes = [
     web.get('/v1/route/', em2_routing),
     web.get('/em2/v1/signing/verification/', signing_verification),
     web.post('/em2/v1/push/{conv:[a-f0-9]{64}}/', em2_push),
+    web.post('/em2/v1/follower-push/{conv:[a-f0-9]{64}}/', em2_follower_push),
     web.post('/ses_endpoint_url/', ses_endpoint_url),
     web.get('/sns_signing_url.pem', sns_signing_endpoint),
     web.route('*', '/s3_endpoint_url/{bucket}/{key:.*}', s3_endpoint),

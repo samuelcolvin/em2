@@ -314,7 +314,8 @@ export default class Conversations {
   }
 
   act = async (conv, actions) => {
-    return await this._requests.post('ui', `/${this._main.session.id}/conv/${conv}/act/`, {actions})
+    const r = await this._requests.post('ui', `/${this._main.session.id}/conv/${conv}/act/`, {actions})
+    return r.data.interaction
   }
 
   set_flag = async (conv_key, flag) => {
@@ -409,7 +410,7 @@ export default class Conversations {
       url += `?since=${last_action}`
     }
     const r = await this._requests.get('ui', url)
-    const new_actions = r.data.map(c => ({...c, ts: unix_ms(c.ts), extra_body: 0}))
+    const new_actions = r.data.map(c => ({...c, ts: unix_ms(c.ts), conv: conv.key, extra_body: 0}))
     await this._main.session.db.actions.bulkPut(new_actions)
     return await this._get_db_actions(conv.key)
   }

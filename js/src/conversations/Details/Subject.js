@@ -22,12 +22,12 @@ class EditSubject_ extends React.Component {
     super(props)
     this.state = {subject: this.props.subject, error: null}
     this.unregister = this.props.register_change_handler(this.on_toggle)
-    this.follows_id = null
+    this.submitted = false
   }
 
   on_toggle = e => {
-    if (!e.shown && this.follows_id) {
-      this.props.release_subject(this.follows_id)
+    if (!e.shown && !this.submitted) {
+      this.props.release_subject()
     }
   }
 
@@ -36,15 +36,16 @@ class EditSubject_ extends React.Component {
   }
 
   async componentDidMount () {
-    this.follows_id = await this.props.lock_subject()
+    await this.props.lock_subject()
   }
 
   submit = async e => {
     e.preventDefault()
+    this.submitted = true
     if (this.state.subject === this.props.subject) {
       this.setState({error: 'Subject unchanged'})
     } else  {
-      await this.props.set_subject(this.state.subject, this.follows_id)
+      await this.props.set_subject(this.state.subject)
       this.props.done()
     }
   }

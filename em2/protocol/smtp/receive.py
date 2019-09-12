@@ -126,7 +126,7 @@ class ProcessSMTP:
                 if actor_email not in existing_prts:
                     # reply from different address, we need to add the new address to the conversation
                     a = Action(act=ActionTypes.prt_add, participant=actor_email, actor_id=original_actor_id)
-                    _, all_action_ids = await apply_actions(self.conns, conv_id, [a])
+                    all_action_ids = await apply_actions(self.conns, conv_id, [a])
                     assert all_action_ids
                 else:
                     all_action_ids = []
@@ -142,9 +142,7 @@ class ProcessSMTP:
 
                 actions += [Action(act=ActionTypes.prt_add, actor_id=actor_id, participant=addr) for addr in new_prts]
 
-                _, action_ids = await apply_actions(
-                    conns=self.conns, conv_ref=conv_id, actions=actions, spam=spam, warnings=warnings
-                )
+                action_ids = await apply_actions(self.conns, conv_id, actions, spam=spam, warnings=warnings)
                 assert action_ids
 
                 all_action_ids += action_ids

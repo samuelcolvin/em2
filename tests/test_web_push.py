@@ -72,7 +72,7 @@ async def test_web_push_unsubscribe(cli, factory: Factory, redis, dummy_server, 
     assert dummy_server.log == ['POST /status/410/ > 410']
 
 
-async def test_web_push_bad(cli, factory: Factory, redis, worker_ctx, dummy_server, web_push_sub):
+async def test_web_push_bad(cli, factory: Factory, redis, dummy_server, web_push_sub):
     web_push_sub['endpoint'] = web_push_sub['endpoint'].replace('/vapid/', '/status/500/')
     await factory.create_user()
 
@@ -105,7 +105,8 @@ async def test_push_action(cli, factory: Factory, redis, worker, dummy_server, w
     assert len(await redis.keys('web-push-subs:*')) == 1
 
     data = {'actions': [{'act': 'message:add', 'body': 'this is another message'}]}
-    await cli.post_json(factory.url('ui:act', conv=conv.key), data)
+    r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
+    obj = await r.json()
 
     await worker.async_run()
     assert await worker.run_check() == 2
@@ -114,6 +115,7 @@ async def test_push_action(cli, factory: Factory, redis, worker, dummy_server, w
     assert dummy_server.app['webpush'][0] == {'user_id': user.id, 'user_v': 2}
     assert dummy_server.app['webpush'][1] == {
         'conversation': conv.key,
+        'interaction': obj['interaction'],
         'actions': [
             {
                 'id': AnyInt(),

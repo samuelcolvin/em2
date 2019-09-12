@@ -9,7 +9,7 @@ from pydantic.utils import import_string
 
 from em2.protocol.core import get_signing_key
 from em2.protocol.files import download_push_file
-from em2.protocol.push import push_actions
+from em2.protocol.push import follower_push_actions, push_actions
 from em2.protocol.smtp import BaseSmtpHandler, smtp_send
 from em2.protocol.smtp.images import get_images
 from em2.protocol.smtp.receive import post_receipt
@@ -39,7 +39,16 @@ async def shutdown(ctx):
     await asyncio.gather(ctx['client_session'].close(), ctx['pg'].close(), ctx['smtp_handler'].shutdown())
 
 
-functions = [smtp_send, push_actions, delete_stale_upload, web_push, post_receipt, get_images, download_push_file]
+functions = [
+    smtp_send,
+    push_actions,
+    delete_stale_upload,
+    web_push,
+    follower_push_actions,
+    post_receipt,
+    get_images,
+    download_push_file,
+]
 worker_settings = dict(functions=functions, on_startup=startup, on_shutdown=shutdown)
 
 
