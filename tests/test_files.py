@@ -1,6 +1,7 @@
 import base64
 import hashlib
 
+from arq import Worker
 from atoolbox.test_utils import DummyServer
 from pytest_toolbox.comparison import AnyInt, CloseToNow, RegexStr
 
@@ -90,7 +91,7 @@ async def test_delete_stale_upload_file_exists(settings, db_conn, factory: Facto
     assert len(dummy_server.log) == 0
 
 
-async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_server):
+async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_server, worker: Worker):
     await factory.create_user()
     conv = await factory.create_conv(publish=True)
 
@@ -102,6 +103,9 @@ async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_ser
 
     data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': [content_id]}]}
     await cli.post_json(factory.url('ui:act', conv=conv.key), data)
+
+    await worker.run_check()
+    assert await worker.run_check() == 2
 
     data = await db_conn.fetchrow('select * from files')
     assert dict(data) == {

@@ -284,9 +284,7 @@ async def test_seen(cli: UserTestClient, factory: Factory, db_conn):
         assert len(msg['actions']) == 1
         assert msg['actions'][0]['act'] == 'seen'
 
-        r = await cli.post_json(factory.url('ui:act', conv=conv.key), {'actions': [{'act': 'seen'}]})
-        obj = await r.json()
-        assert obj == {'interaction': None}
+        await cli.post_json(factory.url('ui:act', conv=conv.key), {'actions': [{'act': 'seen'}]})
 
         with pytest.raises(TimeoutError):  # no ws message sent in this case
             await ws.receive(timeout=0.1)

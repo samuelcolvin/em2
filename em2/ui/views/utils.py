@@ -21,7 +21,3 @@ class ExecView(_ExecView):
         self.session: Session = request['session']
         self.redis = cast(ArqRedis, self.redis)
         self.conns = conns_from_request(self.request)
-
-
-def file_upload_cache_key(conv_id: int, content_id: str) -> str:
-    return f'file-upload-{conv_id}-{content_id}'

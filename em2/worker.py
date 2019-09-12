@@ -7,6 +7,7 @@ from arq import Worker
 from buildpg import asyncpg
 from pydantic.utils import import_string
 
+from em2.background import user_actions_with_files
 from em2.protocol.core import get_signing_key
 from em2.protocol.files import download_push_file
 from em2.protocol.push import follower_push_actions, push_actions
@@ -48,6 +49,7 @@ functions = [
     post_receipt,
     get_images,
     download_push_file,
+    user_actions_with_files,
 ]
 worker_settings = dict(functions=functions, on_startup=startup, on_shutdown=shutdown)
 

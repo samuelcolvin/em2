@@ -1,6 +1,6 @@
-import asyncio
 from datetime import datetime
 from enum import Enum
+from itertools import chain
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
@@ -8,14 +8,12 @@ from atoolbox import JsonErrors, get_offset, json_response, parse_request_query,
 from buildpg import MultipleValues, SetValues, V, Values, funcs
 from pydantic import BaseModel, EmailStr, Extra, constr, validator
 
-from em2.background import push_all, push_multiple
+from em2.background import push_all, user_actions
 from em2.core import (
     Action,
     ActionTypes,
     ConvFlags,
-    File,
     UpdateFlag,
-    apply_actions,
     construct_conv,
     conv_actions_json,
     create_conv,
@@ -34,9 +32,9 @@ from em2.search import search, search_publish_conv
 from em2.utils.core import MsgFormat
 from em2.utils.datetime import utcnow
 from em2.utils.db import or404
-from em2.utils.storage import S3, StorageNotFound, parse_storage_uri
+from em2.utils.storage import file_upload_cache_key
 
-from .utils import ExecView, View, file_upload_cache_key
+from .utils import ExecView, View
 
 
 class ConvList(View):
@@ -263,49 +261,25 @@ class ConvAct(ExecView):
 
     async def execute(self, m: Model):
         c = await get_conv_for_user(self.conns, self.session.user_id, self.request.match_info['conv'])
-        actions = [a async for a in self.raw_actions(c.id, m)]
-        interaction_id = uuid4().hex
-        if c.leader:
-            await self.conns.redis.enqueue_job('follower_push_actions', c.key, c.leader, interaction_id, actions)
-        else:
-            action_ids = await apply_actions(self.conns, c.id, actions)
 
-            if action_ids:
-                await push_multiple(self.conns, c.id, action_ids, interaction_id=interaction_id)
-            else:
-                interaction_id = None
+        interaction_id = uuid4().hex
+        file_content_ids = list(chain(*[a.files for a in m.actions if a.files]))
+        if file_content_ids:
+            # check that at least the content_ids exist for all files, whether the files are uploaded
+            # is only checked in user_actions_with_files
+            for content_id in file_content_ids:
+                storage_path = await self.redis.get(file_upload_cache_key(c.id, content_id))
+                if not storage_path:
+                    raise JsonErrors.HTTPBadRequest(f'no file found for content id {content_id!r}')
+
+            action_files = [(self.to_action(a), a.files) for a in m.actions]
+            await self.conns.redis.enqueue_job('user_actions_with_files', c, action_files, interaction_id)
+        else:
+            await user_actions(self.conns, c, [self.to_action(a) for a in m.actions], interaction_id)
         return {'interaction': interaction_id}
 
-    async def raw_actions(self, conv_id: int, m: Model):
-        for a in m.actions:
-            files = None
-            if a.files:
-                async with S3(self.settings) as s3_client:
-                    files = await asyncio.gather(
-                        *(self.prepare_file(s3_client, conv_id, content_id) for content_id in a.files)
-                    )
-            yield Action(actor_id=self.session.user_id, files=files, **a.dict(exclude={'files'}))
-
-    async def prepare_file(self, s3_client, conv_id: int, content_id: str):
-        storage_path = await self.redis.get(file_upload_cache_key(conv_id, content_id))
-        if not storage_path:
-            raise JsonErrors.HTTPBadRequest(f'no file found for content id {content_id!r}')
-
-        _, bucket, path = parse_storage_uri(storage_path)
-        try:
-            head = await s3_client.head(bucket, path)
-        except StorageNotFound:
-            raise JsonErrors.HTTPBadRequest('file not uploaded')
-        else:
-            return File(
-                hash=head['ETag'].strip('"'),  # TODO need to replace with sha256 hash
-                name=path.rsplit('/', 1)[1],
-                content_id=content_id,
-                content_disp='attachment' if 'ContentDisposition' in head else 'inline',
-                content_type=head['ContentType'],
-                size=head['ContentLength'],
-                storage=storage_path,
-            )
+    def to_action(self, a: ActionModel) -> Action:
+        return Action(actor_id=self.session.user_id, **a.dict(exclude={'files'}))
 
 
 class ConvPublish(ExecView):

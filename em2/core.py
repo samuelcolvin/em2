@@ -192,7 +192,7 @@ with_body_actions = {ActionTypes.msg_add, ActionTypes.msg_modify, ActionTypes.su
 
 @dataclass
 class File:
-    hash: str
+    hash: Optional[str]
     name: Optional[str]
     content_id: str
     content_disp: str

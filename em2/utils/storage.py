@@ -15,6 +15,7 @@ from aiobotocore.client import AioBaseClient
 from aiohttp import ClientError, ClientResponse, ClientSession
 from botocore.exceptions import ClientError as BotoClientError
 
+from em2.core import File
 from em2.settings import Settings
 
 from .datetime import to_unix_s, utcnow
@@ -22,6 +23,7 @@ from .datetime import to_unix_s, utcnow
 logger = logging.getLogger('em2.utils.storage')
 __all__ = (
     'parse_storage_uri',
+    'file_upload_cache_key',
     'S3Client',
     'S3',
     'check_content_type',
@@ -31,6 +33,10 @@ __all__ = (
 )
 
 uri_re = re.compile(r'^(s3)://([^/]+)/(.+)$')
+
+
+def file_upload_cache_key(conv_id: int, content_id: str) -> str:
+    return f'file-upload-{conv_id}-{content_id}'
 
 
 def parse_storage_uri(uri):
@@ -55,6 +61,31 @@ class S3Client:
         r = await self._client.get_object(Bucket=bucket, Key=path)
         async with r['Body'] as stream:
             return await stream.read()
+
+    async def get_file(self, storage_path: str, content_id: str) -> File:
+        _, bucket, path = parse_storage_uri(storage_path)
+        try:
+            r = await self._client.get_object(Bucket=bucket, Key=path)
+        except BotoClientError as exc:
+            code = exc.response.get('Error', {}).get('Code', 'Unknown')
+            if code == '404':
+                raise StorageNotFound()
+            else:
+                raise
+
+        h = hashlib.sha256()
+        async with r['Body'] as stream:
+            async for chunk in stream:
+                h.update(chunk)
+        return File(
+            hash=h.hexdigest(),
+            name=path.rsplit('/', 1)[1],
+            content_id=content_id,
+            content_disp='attachment' if 'ContentDisposition' in r else 'inline',
+            content_type=r['ContentType'],
+            size=r['ContentLength'],
+            storage=storage_path,
+        )
 
     async def upload(
         self, bucket: str, path: str, content: bytes, content_type: Optional[str], content_disposition: Optional[str]
