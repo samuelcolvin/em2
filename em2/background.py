@@ -204,7 +204,7 @@ async def user_actions_with_files(
             action.files = []
             for content_id in files:
                 storage_path = await conns.redis.get(file_upload_cache_key(conv.id, content_id))
-                action.files.append(await s3_client.get_file(storage_path, content_id))
+                action.files.append(await s3_client.get_file_summary(storage_path, content_id))
 
     await user_actions(conns, conv, [a for a, f in action_files], interaction_id)
 

@@ -104,8 +104,7 @@ async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_ser
     data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': [content_id]}]}
     await cli.post_json(factory.url('ui:act', conv=conv.key), data)
 
-    await worker.run_check()
-    assert await worker.run_check() == 2
+    assert await worker.run_check(max_burst_jobs=2) == 2
 
     data = await db_conn.fetchrow('select * from files')
     assert dict(data) == {
@@ -116,7 +115,8 @@ async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_ser
         'storage': RegexStr('s3://s3_files_bucket.example.com/.*'),
         'storage_expires': None,
         'content_disp': 'inline',
-        'hash': 'foobar',
+        # hashlib.sha256(b'this is a test').hexdigest() == '2e99758...
+        'hash': '2e99758548972a8e8822ad47fa1017ff72f06f3ff6a016851f45c398732bc50c',
         'content_id': content_id,
         'name': 'testing.png',
         'content_type': 'text/plain; charset=utf-8',
@@ -135,7 +135,7 @@ async def test_message_with_attachment_no_file(cli, factory: Factory):
     assert await r.json() == {'message': "no file found for content id 'foobar'"}
 
 
-async def test_message_with_attachment_not_uploaded(cli, factory: Factory):
+async def test_message_with_attachment_not_uploaded(cli, factory: Factory, worker: Worker):
     await factory.create_user()
     conv = await factory.create_conv(publish=True)
 
@@ -342,7 +342,7 @@ async def test_download_cache_image_invalid_url(factory: Factory, cli):
     assert obj == {'message': 'invalid url'}
 
 
-async def test_add_to_draft(cli, factory: Factory, db_conn, dummy_server: DummyServer):
+async def test_add_to_draft(cli, factory: Factory, db_conn, dummy_server: DummyServer, worker: Worker):
     await factory.create_user()
     conv = await factory.create_conv()
 
@@ -354,6 +354,8 @@ async def test_add_to_draft(cli, factory: Factory, db_conn, dummy_server: DummyS
 
     data = {'actions': [{'act': 'message:add', 'body': 'message 2', 'files': [content_id]}]}
     await cli.post_json(factory.url('ui:act', conv=conv.key), data)
+
+    assert await worker.run_check(max_burst_jobs=2) == 2
 
     assert 1 == await db_conn.fetchval('select count(*) from files')
     f1 = dict(await db_conn.fetchrow('select * from files'))

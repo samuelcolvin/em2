@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from enum import Enum
 from itertools import chain
@@ -32,7 +33,7 @@ from em2.search import search, search_publish_conv
 from em2.utils.core import MsgFormat
 from em2.utils.datetime import utcnow
 from em2.utils.db import or404
-from em2.utils.storage import file_upload_cache_key
+from em2.utils.storage import S3, S3Client, StorageNotFound, file_upload_cache_key, parse_storage_uri
 
 from .utils import ExecView, View
 
@@ -267,10 +268,8 @@ class ConvAct(ExecView):
         if file_content_ids:
             # check that at least the content_ids exist for all files, whether the files are uploaded
             # is only checked in user_actions_with_files
-            for content_id in file_content_ids:
-                storage_path = await self.redis.get(file_upload_cache_key(c.id, content_id))
-                if not storage_path:
-                    raise JsonErrors.HTTPBadRequest(f'no file found for content id {content_id!r}')
+            async with S3(self.settings) as s3_client:
+                await asyncio.gather(*[self.check_file(s3_client, c.id, content_id) for content_id in file_content_ids])
 
             action_files = [(self.to_action(a), a.files) for a in m.actions]
             await self.conns.redis.enqueue_job('user_actions_with_files', c, action_files, interaction_id)
@@ -280,6 +279,21 @@ class ConvAct(ExecView):
 
     def to_action(self, a: ActionModel) -> Action:
         return Action(actor_id=self.session.user_id, **a.dict(exclude={'files'}))
+
+    async def check_file(self, s3_client: S3Client, conv_id: int, content_id: str):
+        """
+        Check the content_id exists and the file has been uploaded
+        """
+        storage_path = await self.redis.get(file_upload_cache_key(conv_id, content_id))
+        if not storage_path:
+            raise JsonErrors.HTTPBadRequest(f'no file found for content id {content_id!r}')
+
+        # if this gets slow, we could perhaps list files in the directory
+        _, bucket, path = parse_storage_uri(storage_path)
+        try:
+            await s3_client.head(bucket, path)
+        except StorageNotFound:
+            raise JsonErrors.HTTPBadRequest('file not uploaded')
 
 
 class ConvPublish(ExecView):

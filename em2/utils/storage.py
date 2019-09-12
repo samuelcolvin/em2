@@ -4,6 +4,7 @@ import hmac
 import json
 import logging
 import re
+from contextlib import contextmanager
 from datetime import timedelta
 from math import ceil
 from typing import Any, Dict, Optional, Tuple
@@ -51,6 +52,18 @@ class StorageNotFound(RuntimeError):
     pass
 
 
+@contextmanager
+def boto_error():
+    try:
+        yield
+    except BotoClientError as exc:
+        code = exc.response.get('Error', {}).get('Code', 'Unknown')
+        if code == '404':
+            raise StorageNotFound()
+        else:
+            raise
+
+
 class S3Client:
     __slots__ = ('_client',)
 
@@ -58,25 +71,21 @@ class S3Client:
         self._client: AioBaseClient = client
 
     async def download(self, bucket: str, path: str):
-        r = await self._client.get_object(Bucket=bucket, Key=path)
+        with boto_error():
+            r = await self._client.get_object(Bucket=bucket, Key=path)
         async with r['Body'] as stream:
             return await stream.read()
 
-    async def get_file(self, storage_path: str, content_id: str) -> File:
+    async def get_file_summary(self, storage_path: str, content_id: str) -> File:
         _, bucket, path = parse_storage_uri(storage_path)
-        try:
+        with boto_error():
             r = await self._client.get_object(Bucket=bucket, Key=path)
-        except BotoClientError as exc:
-            code = exc.response.get('Error', {}).get('Code', 'Unknown')
-            if code == '404':
-                raise StorageNotFound()
-            else:
-                raise
 
         h = hashlib.sha256()
         async with r['Body'] as stream:
-            async for chunk in stream:
+            async for chunk, _ in stream.iter_chunks():
                 h.update(chunk)
+
         return File(
             hash=h.hexdigest(),
             name=path.rsplit('/', 1)[1],
@@ -99,14 +108,9 @@ class S3Client:
         return await self._client.delete_object(Bucket=bucket, Key=path)
 
     async def head(self, bucket: str, path: str):
-        try:
+        with boto_error():
             d = await self._client.head_object(Bucket=bucket, Key=path)
-        except BotoClientError as exc:
-            code = exc.response.get('Error', {}).get('Code', 'Unknown')
-            if code == '404':
-                raise StorageNotFound()
-            else:
-                raise
+
         d.pop('ResponseMetadata')
         return d
 
