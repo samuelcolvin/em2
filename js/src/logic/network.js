@@ -38,6 +38,7 @@ export class Requests {
     try {
       r = await request(method, url, config)
     } catch (e) {
+      console.debug(`networking: ${method} ${path} -> ${e.status}!`, e)
       if (e.status === 401) {
         await this._main.session.expired()
       } else if (!e.status || e.status > 501) {
@@ -47,7 +48,9 @@ export class Requests {
       }
       throw e
     }
+    console.debug(`networking: ${method} ${path} -> ${r.status}`, r.data)
     this._main.set_conn_status(statuses.online)
+    record_session_active()
     return r
   }
 }
@@ -68,3 +71,12 @@ export function get_version () {
   const timeout = new Promise(resolve => setTimeout(() => resolve(null), 1000))
   return Promise.race([request_version(), timeout])
 }
+
+const t = () => Math.round((new Date()).getTime() / 1000)
+
+function record_session_active () {
+  // TODO move this to the session object
+  localStorage['session-last-active'] = t()
+}
+
+export const since_session_active = () => t() - parseInt(localStorage['session-last-active'])

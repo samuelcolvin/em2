@@ -4,9 +4,8 @@ from typing import Optional
 
 import bcrypt
 from aiohttp.web_response import Response
-from atoolbox import ExecView, encrypt_json, get_ip, json_response
+from atoolbox import ExecView, JsonErrors, encrypt_json, get_ip, json_response
 from atoolbox.auth import check_grecaptcha
-from atoolbox.utils import JsonErrors
 from buildpg import V
 from pydantic import BaseModel, EmailStr, IPvAnyAddress, constr
 
@@ -111,7 +110,7 @@ class Login(ExecView):
 class UpdateSession(ExecView):
     class Model(BaseModel):
         session_id: int
-        ip: str
+        ip: IPvAnyAddress
         user_agent: Optional[str]
 
     async def check_permissions(self):
