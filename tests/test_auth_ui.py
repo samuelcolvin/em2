@@ -1,4 +1,5 @@
 import json
+from ipaddress import IPv4Address
 
 from aiohttp import WSMsgType
 from pytest_toolbox.comparison import AnyInt, RegexStr
@@ -40,12 +41,20 @@ async def test_logout(cli, db_conn, factory: Factory):
     await cli.post_json(factory.url('ui:auth-logout'), '')
     assert len(cli.session.cookie_jar) == 0
 
-    active, events = await db_conn.fetchrow('select active, events from auth_sessions')
+    s_id, active = await db_conn.fetchrow('select id, active from auth_sessions')
     assert active is False
-    events = [json.loads(e) for e in events]
-    assert events == [
-        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'login-pw'},
-        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'logout'},
+    r = await db_conn.fetch(
+        """
+        select ip, action, ua.value as user_agent from auth_session_events e
+        join auth_user_agents ua on e.user_agent = ua.id
+        where session=$1
+        order by e.id
+        """,
+        s_id,
+    )
+    assert [dict(e) for e in r] == [
+        {'ip': IPv4Address('127.0.0.1'), 'user_agent': RegexStr('Python.+'), 'action': 'login-pw'},
+        {'ip': IPv4Address('127.0.0.1'), 'user_agent': RegexStr('Python.+'), 'action': 'logout'},
     ]
 
 
@@ -58,8 +67,7 @@ async def test_renew_session(cli, db_conn, settings, factory: Factory):
         assert 'Set-Cookie' not in r.headers, dict(r.headers)
 
     assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
-    events = await db_conn.fetchval('select events from auth_sessions')
-    assert len(events) == 1
+    assert 1 == await db_conn.fetchval('select count(*) from auth_session_events')
 
     settings.micro_session_duration = -1
 
@@ -68,10 +76,17 @@ async def test_renew_session(cli, db_conn, settings, factory: Factory):
     assert 'Set-Cookie' in r.headers, dict(r.headers)
 
     assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
-    events = await db_conn.fetchval('select events from auth_sessions')
-    assert [json.loads(e) for e in events] == [
-        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'login-pw'},
-        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'update'},
+    assert 1 == await db_conn.fetchval('select count(*) from auth_user_agents')
+    r = await db_conn.fetch(
+        """
+        select ip, action, ua.value as user_agent from auth_session_events e
+        join auth_user_agents ua on e.user_agent = ua.id
+        order by e.id
+        """
+    )
+    assert [dict(e) for e in r] == [
+        {'ip': IPv4Address('127.0.0.1'), 'user_agent': RegexStr('Python.+'), 'action': 'login-pw'},
+        {'ip': IPv4Address('127.0.0.1'), 'user_agent': RegexStr('Python.+'), 'action': 'update'},
     ]
 
 
@@ -81,8 +96,7 @@ async def test_renew_session_ws(cli, db_conn, settings, factory: Factory):
     await cli.get_json(factory.url('ui:auth-check'))
 
     assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
-    events = await db_conn.fetchval('select events from auth_sessions')
-    assert len(events) == 1
+    assert 1 == await db_conn.fetchval('select count(*) from auth_session_events')
 
     settings.micro_session_duration = -1
 
@@ -93,8 +107,7 @@ async def test_renew_session_ws(cli, db_conn, settings, factory: Factory):
     assert msg.data == 4401
 
     assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
-    events = await db_conn.fetchval('select events from auth_sessions')
-    assert len(events) == 1
+    assert await db_conn.fetchval('select count(*) from auth_session_events') == 1
 
 
 async def test_no_auth(cli, url):
@@ -120,17 +133,22 @@ async def test_session_expired(cli, db_conn, settings, factory: Factory):
 
     await cli.get_json(factory.url('ui:list'))
 
-    events = await db_conn.fetchval('select events from auth_sessions')
-    assert len(events) == 1
+    assert await db_conn.fetchval('select count(*) from auth_session_events') == 1
 
     settings.session_expiry = -1
 
     await cli.get_json(factory.url('ui:list'), status=401)
 
-    events = await db_conn.fetchval('select events from auth_sessions')
-    assert [json.loads(e) for e in events] == [
-        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'login-pw'},
-        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': RegexStr('Python.+'), 'ac': 'expired'},
+    r = await db_conn.fetch(
+        """
+        select ip, action, ua.value as user_agent from auth_session_events e
+        join auth_user_agents ua on e.user_agent = ua.id
+        order by e.id
+        """
+    )
+    assert [dict(e) for e in r] == [
+        {'ip': IPv4Address('127.0.0.1'), 'user_agent': RegexStr('Python.+'), 'action': 'login-pw'},
+        {'ip': IPv4Address('127.0.0.1'), 'user_agent': RegexStr('Python.+'), 'action': 'expired'},
     ]
 
 
