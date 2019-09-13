@@ -301,7 +301,7 @@ create type SessionEventTypes as enum ('login-pw', 'update', 'logout', 'expired'
 create table auth_user_agents (
   id bigserial primary key,
   value varchar(255) unique,
-  dummy bool -- just used for "on conflict do update dummy=null"
+  _dummy bool -- just used for "on conflict (value) do update set _dummy=null"
 );
 
 create table auth_session_events (
@@ -310,8 +310,7 @@ create table auth_session_events (
   ts timestamptz not null default current_timestamp,
   action SessionEventTypes not null,
   user_agent bigint not null references auth_user_agents,
-  -- user_agent varchar(255),
-  ip inet
+  ip inet not null
 );
 create index idx_auth_session_event_session on auth_session_events using btree (session);
 

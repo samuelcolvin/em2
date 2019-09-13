@@ -30,7 +30,7 @@ async def login_successful(request, user):
           returning id, started
         ), ua as (
           insert into auth_user_agents (value) values (coalesce($2, ''))
-          on conflict (value) do update set dummy=null
+          on conflict (value) do update set _dummy=null
           returning id
         ), e as (
           insert into auth_session_events (session, action, ip, user_agent)
@@ -125,7 +125,7 @@ class UpdateSession(ExecView):
               returning id
             ), ua as (
               insert into auth_user_agents (value) values (coalesce($2, ''))
-              on conflict (value) do update set dummy=null
+              on conflict (value) do update set _dummy=null
               returning id
             )
             insert into auth_session_events (session, action, ip, user_agent)
@@ -170,7 +170,7 @@ class FinishSession(ExecView):
               returning id
             ), ua as (
               insert into auth_user_agents (value) values (coalesce(:user_agent, ''))
-              on conflict (value) do update set dummy=null
+              on conflict (value) do update set _dummy=null
               returning id
             )
             insert into auth_session_events (session, action, ip, user_agent)
