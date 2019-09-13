@@ -145,7 +145,7 @@ async def test_message_with_attachment_not_uploaded(cli, factory: Factory, worke
 
     data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': [content_id]}]}
     r = await cli.post_json(factory.url('ui:act', conv=conv.key), data, status=400)
-    assert await r.json() == {'message': 'file not uploaded'}
+    assert await r.json() == {'message': f"file '{content_id}' not uploaded"}
 
 
 async def test_get_images_ok(worker_ctx, factory: Factory, dummy_server, db_conn):
@@ -350,7 +350,7 @@ async def test_add_to_draft(cli, factory: Factory, db_conn, dummy_server: DummyS
     obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q))
     content_id = obj['content_id']
 
-    dummy_server.app['s3_files'][f'{conv.key}/{content_id}/testing.png'] = 'this is a test'
+    dummy_server.app['s3_files'][f'{conv.key}/{content_id}/testing.png'] = 'testing' * 100
 
     data = {'actions': [{'act': 'message:add', 'body': 'message 2', 'files': [content_id]}]}
     await cli.post_json(factory.url('ui:act', conv=conv.key), data)
@@ -358,6 +358,8 @@ async def test_add_to_draft(cli, factory: Factory, db_conn, dummy_server: DummyS
     assert await worker.run_check(max_burst_jobs=2) == 2
 
     assert 1 == await db_conn.fetchval('select count(*) from files')
+    file_hash = await db_conn.fetchval('select hash from files')
+    assert file_hash == hashlib.sha256(b'testing' * 100).hexdigest()
     f1 = dict(await db_conn.fetchrow('select * from files'))
     [f1.pop(f) for f in ('id', 'conv', 'action')]
     assert await db_conn.fetchval('select body from files f join actions a on f.action = a.pk') == 'message 2'

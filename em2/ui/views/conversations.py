@@ -266,8 +266,6 @@ class ConvAct(ExecView):
         interaction_id = uuid4().hex
         file_content_ids = list(chain(*[a.files for a in m.actions if a.files]))
         if file_content_ids:
-            # check that at least the content_ids exist for all files, whether the files are uploaded
-            # is only checked in user_actions_with_files
             async with S3(self.settings) as s3_client:
                 await asyncio.gather(*[self.check_file(s3_client, c.id, content_id) for content_id in file_content_ids])
 
@@ -293,7 +291,7 @@ class ConvAct(ExecView):
         try:
             await s3_client.head(bucket, path)
         except StorageNotFound:
-            raise JsonErrors.HTTPBadRequest('file not uploaded')
+            raise JsonErrors.HTTPBadRequest(f'file {content_id!r} not uploaded')
 
 
 class ConvPublish(ExecView):
