@@ -11,9 +11,9 @@ from em2.settings import Settings
 from em2.utils.datetime import utcnow
 from em2.utils.db import or404
 from em2.utils.smtp import CopyToTemp
-from em2.utils.storage import S3, check_content_type, parse_storage_uri
+from em2.utils.storage import S3, check_content_type, file_upload_cache_key, parse_storage_uri
 
-from .utils import View, file_upload_cache_key
+from .utils import View
 
 
 class GetFile(View):

@@ -1,15 +1,16 @@
 import asyncio
 import logging
 from asyncio import CancelledError
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import ujson
 from aiohttp.abc import Application
 from aiohttp.web_ws import WebSocketResponse
 from arq.connections import ArqRedis
 
-from em2.core import Connections, get_flag_counts
+from em2.core import Action, Connections, ConvSummary, apply_actions, get_flag_counts
 from em2.settings import Settings
+from em2.utils.storage import S3, file_upload_cache_key
 
 logger = logging.getLogger('em2.ui.background')
 
@@ -191,3 +192,28 @@ async def push_multiple(
         if interaction_id:
             extra['interaction_id'] = interaction_id
         await _push_remote(conns, conv_id, actions_data, **extra)
+
+
+async def user_actions_with_files(
+    ctx, conv: ConvSummary, action_files: List[Tuple[Action, List[str]]], interaction_id: str
+):
+    conns: Connections = ctx['conns']
+    settings: Settings = ctx['settings']
+    async with S3(settings) as s3_client:
+        for action, files in action_files:
+            action.files = []
+            for content_id in files:
+                storage_path = await conns.redis.get(file_upload_cache_key(conv.id, content_id))
+                action.files.append(await s3_client.get_file_summary(storage_path, content_id))
+
+    await user_actions(conns, conv, [a for a, f in action_files], interaction_id)
+
+
+async def user_actions(conns: Connections, conv: ConvSummary, actions: List[Action], interaction_id: str):
+    if conv.leader:
+        await conns.redis.enqueue_job('follower_push_actions', conv.key, conv.leader, interaction_id, actions)
+    else:
+        action_ids = await apply_actions(conns, conv.id, actions)
+
+        if action_ids:
+            await push_multiple(conns, conv.id, action_ids, interaction_id=interaction_id)
