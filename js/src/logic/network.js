@@ -75,7 +75,6 @@ export function get_version () {
 const t = () => Math.round((new Date()).getTime() / 1000)
 
 function record_session_active () {
-  // TODO move this to the session object
   localStorage['session-last-active'] = t()
 }
 

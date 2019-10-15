@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     easy_login_attempts = 3
     # max. login attempts allowed per minute
     max_login_attempts = 20
-    # how long micro session can last before they need to be checked with auth
+    # how long micro sessions can last before they need to be checked with auth
     micro_session_duration = 60 * 15
     # how many seconds until an idle session expires
     session_expiry = 86400 * 4
