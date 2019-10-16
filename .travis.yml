@@ -38,7 +38,7 @@ cache:
 
 install:
 - ls -lha docker_images
-- ls docker_images/*.tar | xargs docker load -i
+- ls docker_images/*.tar | xargs -i sh -c "docker load -i {}"
 - docker images -a
 - ./donk install
 - cd js && yarn && yarn list && cd ..
