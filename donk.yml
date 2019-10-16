@@ -52,9 +52,9 @@ clean:
 build:
 - _find em2 -name '*.py[co]' -delete
 - _find em2 -name '__pycache__' -delete
-- export C=$(git rev-parse HEAD)
-- export BT=$(date)
-- 'docker build em2 -t em2 --build-arg COMMIT=$C --build-arg BUILD_TIME="$BT"'
+- C=$(git rev-parse HEAD)
+- BT=$(date)
+- docker build em2 -t em2 --build-arg COMMIT=$C --build-arg BUILD_TIME="$BT"
 
 docker-dev:
 - +build
