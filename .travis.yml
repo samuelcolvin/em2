@@ -37,7 +37,6 @@ cache:
   - docker_images
 
 install:
-- ls -lha docker_images
 - ls docker_images/*.tar | xargs -i sh -c "docker load -i {}"
 - docker images -a
 - ./donk install
@@ -51,5 +50,4 @@ script:
 
 before_cache:
 - docker images -a
-- rm docker_images/* || true
 - docker save -o docker_images/images.tar $(docker images -a -q)
