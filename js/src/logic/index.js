@@ -9,7 +9,7 @@ import Auth from './auth'
 
 const random = () => Math.floor(Math.random() * 1e6)
 
-export default class LogicMain {
+export default class Logic {
   constructor (history) {
     this.listeners = {}
     this.history = history

@@ -1,4 +1,5 @@
 import json
+from ipaddress import IPv4Address
 
 from pytest_toolbox.comparison import AnyInt, RegexStr
 
@@ -26,17 +27,41 @@ async def test_logout(cli, url, db_conn, factory: Factory):
     session_id = await db_conn.fetchval('select id from auth_sessions')
 
     h = {'Authentication': 'testing' * 6}
-    data = {'session_id': session_id, 'ip': '255.255.255.1', 'user_agent': 'whatever', 'action': 'logout'}
+    data = {'session_id': session_id, 'ip': '1.2.3.4', 'user_agent': 'whatever', 'action': 'logout'}
+    r = await cli.post(url('auth:update-session'), json=data, headers=h)
+    assert r.status == 200, await r.text()
+    data = {'session_id': session_id, 'ip': '255.255.255.1', 'user_agent': None, 'action': 'logout'}
     r = await cli.post(url('auth:finish-session'), json=data, headers=h)
     assert r.status == 200, await r.text()
 
-    active, events = await db_conn.fetchrow('select active, events from auth_sessions')
+    assert 1 == await db_conn.fetchval('select count(*) from auth_sessions')
+    s_id, active = await db_conn.fetchrow('select id, active from auth_sessions')
     assert active is False
-    events = [json.loads(e) for e in events]
+    assert 3 == await db_conn.fetchval('select count(*) from auth_user_agents')
+    r = await db_conn.fetch(
+        """
+        select ip, action, ua.value as user_agent from auth_session_events e
+        join auth_user_agents ua on e.user_agent = ua.id
+        where session=$1
+        order by e.id
+        """,
+        s_id,
+    )
+    events = [dict(e) for e in r]
     assert events == [
-        {'ip': '127.0.0.1', 'ts': AnyInt(), 'ua': 'Python/3.7 aiohttp/3.5.4', 'ac': 'login-pw'},
-        {'ip': '255.255.255.1', 'ts': AnyInt(), 'ua': 'whatever', 'ac': 'logout'},
+        {'ip': IPv4Address('127.0.0.1'), 'action': 'login-pw', 'user_agent': 'Python/3.7 aiohttp/3.5.4'},
+        {'ip': IPv4Address('1.2.3.4'), 'action': 'update', 'user_agent': 'whatever'},
+        {'ip': IPv4Address('255.255.255.1'), 'action': 'logout', 'user_agent': ''},
     ]
+
+
+async def test_logout_invalid(cli, url, db_conn):
+    h = {'Authentication': 'testing' * 6}
+    data = {'session_id': 123, 'ip': '255.255.255.1', 'user_agent': 'whatever', 'action': 'logout'}
+    r = await cli.post(url('auth:finish-session'), json=data, headers=h)
+    assert r.status == 400, await r.text()
+    assert await r.json() == {'message': 'wrong session id'}
+    assert await db_conn.fetchval('select count(*) from auth_session_events') == 0
 
 
 async def test_logout_invalid_auth(cli, url, db_conn, factory: Factory):

@@ -291,11 +291,28 @@ create table auth_sessions (
   user_id bigint not null references auth_users on delete cascade,
   started timestamptz not null default current_timestamp,
   last_active timestamptz not null default current_timestamp,
-  active boolean default true,  -- todo need a cron job to close expired sessions just so they look sensible
-  events json[]
+  active boolean default true  -- todo need a cron job to close expired sessions just so they look sensible
 );
 create index idx_auth_sessions_user_id on auth_sessions using btree (user_id);
 create index idx_auth_sessions_active on auth_sessions using btree (active, last_active);
+
+create type SessionEventTypes as enum ('login-pw', 'update', 'logout', 'expired', 'expired-hard');
+
+create table auth_user_agents (
+  id bigserial primary key,
+  value varchar(255) not null unique,
+  _dummy bool -- just used for "on conflict (value) do update set _dummy=null"
+);
+
+create table auth_session_events (
+  id bigserial primary key,
+  session bigint not null references auth_sessions on delete cascade,
+  ts timestamptz not null default current_timestamp,
+  action SessionEventTypes not null,
+  user_agent bigint not null references auth_user_agents on delete restrict,
+  ip inet not null
+);
+create index idx_auth_session_event_session on auth_session_events using btree (session);
 
 -- todo add address book, domains, organisations and teams, perhaps new db/app.
 
