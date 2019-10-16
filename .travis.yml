@@ -38,8 +38,8 @@ cache:
 
 install:
 - ls -lha docker_images
-- docker load -i docker_images/all-images.tar || true
-- docker images
+- ls docker_images/*.tar | xargs docker load -i
+- docker images -a
 - ./donk install
 - cd js && yarn && yarn list && cd ..
 
@@ -47,8 +47,9 @@ script:
 - ./donk lint
 - ./donk test
 - bash <(curl -s https://codecov.io/bash)
-- ./donk build -- --image-cache
-# save the docker image to the cache for use in future builds
-- docker images
-- rm docker_images/*.tar.gz || true
-- docker save $(docker images -q) -o docker_images/all-images.tar
+- ./donk build
+
+before_cache:
+- docker images -a --filter="dangling=false"
+- rm docker_images/* || true
+- docker save -o docker_images/images.tar $(docker images -a --filter="dangling=false" -q)

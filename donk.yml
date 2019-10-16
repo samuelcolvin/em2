@@ -54,11 +54,7 @@ build:
 - _find em2 -name '__pycache__' -delete
 - C=$(git rev-parse HEAD)
 - BT=$(date)
-- _if [ "${@:--}" == "--image-cache" ]; then
-- _    EXTRA="--cache-from em2:latest"
-- _    echo "running docker build with --cache-from em2:latest"
-- _fi
-- docker build em2 -t em2 --build-arg COMMIT=$C --build-arg BUILD_TIME="$BT" $EXTRA
+- docker build em2 -t em2 --build-arg COMMIT=$C --build-arg BUILD_TIME="$BT"
 
 docker-dev:
 - +build
