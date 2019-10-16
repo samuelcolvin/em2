@@ -50,6 +50,6 @@ script:
 - ./donk build
 
 before_cache:
-- docker images -a --filter="dangling=false"
+- docker images -a
 - rm docker_images/* || true
-- docker save -o docker_images/images.tar $(docker images -a --filter="dangling=false" -q)
+- docker save -o docker_images/images.tar $(docker images -a -q)
