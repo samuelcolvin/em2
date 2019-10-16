@@ -13,6 +13,11 @@ export default class RealTime {
   }
 
   connect = async () => {
+    if (!this._main.auth.session_likely_active()) {
+      // likely the session has expired, redirect to login without connecting to realtime
+      await this._main.session.expired()
+      return
+    }
     const web_push = new WebPush(this)
     const web_push_successful = await web_push.connect()
     if (web_push_successful) {

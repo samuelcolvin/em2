@@ -2,7 +2,8 @@ version: 2.1
 jobs:
   build:
     machine:
-      docker_layer_caching: true
+      # CircleCI removed docker layer caching from their free tier even for open projects, how sad :-)
+      docker_layer_caching: false
     steps:
       - checkout
       - run: docker version

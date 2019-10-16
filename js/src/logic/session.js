@@ -33,7 +33,7 @@ export default class Session {
     await this._set(session.session_id)
   }
 
-  finish = async () => {
+  finish = async (delete_db = true) => {
     const id = this.id
     this.current = null
     this.id = null
@@ -41,12 +41,14 @@ export default class Session {
 
     await session_db.sessions.where({session_id: id}).delete()
     this._main.fire('setState', {other_sessions: await this._other_sessions(), user: null})
-    await this.db.delete()
+    if (delete_db) {
+      await this.db.delete()
+    }
     this.db = null
   }
 
   expired = async () => {
-    await this.finish()
+    await this.finish(false)
     this._main.notify.notify({
       title: 'Session Expired',
       message: 'Session expired, please log in again.',

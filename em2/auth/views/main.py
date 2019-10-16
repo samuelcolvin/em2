@@ -1,14 +1,11 @@
-import json
 import logging
 from enum import Enum
-from time import time
-from typing import Tuple
+from typing import Optional
 
 import bcrypt
 from aiohttp.web_response import Response
-from atoolbox import ExecView, encrypt_json, get_ip, json_response
+from atoolbox import ExecView, JsonErrors, encrypt_json, get_ip, json_response
 from atoolbox.auth import check_grecaptcha
-from atoolbox.utils import JsonErrors
 from buildpg import V
 from pydantic import BaseModel, EmailStr, IPvAnyAddress, constr
 
@@ -24,26 +21,27 @@ async def em2_route(request):
     return json_response(node=this_em2_node(request.app['settings']))
 
 
-def session_event(action_type, *, request=None, ip=None, user_agent=None) -> Tuple[str, int]:
-    ts = int(time())
-    event = json.dumps(
-        {
-            'ip': str(ip) if ip else get_ip(request),
-            'ts': ts,
-            'ua': user_agent or request.headers.get('User-Agent'),
-            'ac': action_type,
-            # TODO include info about which session this is when multiple sessions are active
-        }
-    )
-    return event, ts
-
-
-create_session_sql = 'insert into auth_sessions (user_id, events) values ($1, array[$2::json]) returning id'
-
-
 async def login_successful(request, user):
-    event, ts = session_event('login-pw', request=request)
-    session_id = await request['conn'].fetchval(create_session_sql, user['id'], event)
+    session_id, ts = await request['conn'].fetchrow(
+        """
+        with s as (
+          insert into auth_sessions (user_id) values ($1)
+          returning id, started
+        ), ua as (
+          insert into auth_user_agents (value) values (coalesce($2, ''))
+          on conflict (value) do update set _dummy=null
+          returning id
+        ), e as (
+          insert into auth_session_events (session, action, ip, user_agent)
+          select s.id, 'login-pw', $3, ua.id
+          from s, ua
+        )
+        select s.id, extract(epoch from s.started)::int from s
+        """,
+        user['id'],
+        request.headers.get('User-Agent'),
+        get_ip(request),
+    )
     session = {
         'ts': ts,
         'session_id': session_id,
@@ -112,38 +110,48 @@ class Login(ExecView):
 class UpdateSession(ExecView):
     class Model(BaseModel):
         session_id: int
-        ip: str
-        user_agent: str
+        ip: IPvAnyAddress
+        user_agent: Optional[str]
 
     async def check_permissions(self):
         internal_request_check(self.request)
 
     async def execute(self, m: Model):
-        event, ts = session_event('update', ip=m.ip, user_agent=m.user_agent)
-        v = await self.conn.execute(
+        ts = await self.conn.fetchval(
             """
-            update auth_sessions
-            set last_active=now(), events=events || $1::json
-            where id=$2 and active=true
+            with s as (
+              update auth_sessions set last_active=now() where id=$1 and active=true
+              returning id
+            ), ua as (
+              insert into auth_user_agents (value) values (coalesce($2, ''))
+              on conflict (value) do update set _dummy=null
+              returning id
+            )
+            insert into auth_session_events (session, action, ip, user_agent)
+            select s.id, 'update', $3, ua.id from s, ua
+            returning extract(epoch from ts)::int
             """,
-            event,
             m.session_id,
+            m.user_agent,
+            m.ip,
         )
-        if v != 'UPDATE 1':
-            raise JsonErrors.HTTPBadRequest(f'wrong session id: {v!r}')
-        return {'ts': ts}
+        if ts:
+            return {'ts': ts}
+        else:
+            raise JsonErrors.HTTPBadRequest('wrong session id')
 
 
 class FinishActions(str, Enum):
     logout = 'logout'
     expired = 'expired'
+    expired_hard = 'expired-hard'
 
 
 class FinishSession(ExecView):
     class Model(BaseModel):
         session_id: int
         ip: IPvAnyAddress
-        user_agent: str
+        user_agent: Optional[str]
         action: FinishActions
 
     async def check_permissions(self):
@@ -153,17 +161,28 @@ class FinishSession(ExecView):
         where = V('id') == m.session_id
         if m.action == FinishActions.logout:
             where &= V('active') == V('true')
-        v = await self.conn.execute_b(
+
+        ts = await self.conn.fetchval_b(
             """
-            update auth_sessions
-            set active=false, last_active=now(), events=events || :event::json
-            where :where
+            with s as (
+              update auth_sessions set active=false, last_active=now() where :where
+              returning id
+            ), ua as (
+              insert into auth_user_agents (value) values (coalesce(:user_agent, ''))
+              on conflict (value) do update set _dummy=null
+              returning id
+            )
+            insert into auth_session_events (session, action, ip, user_agent)
+            select s.id, :action, :ip, ua.id from s, ua
+            returning ts
             """,
-            event=session_event(m.action, ip=m.ip, user_agent=m.user_agent)[0],
             where=where,
+            action=m.action,
+            ip=m.ip,
+            user_agent=m.user_agent,
         )
-        if v != 'UPDATE 1':
-            raise JsonErrors.HTTPBadRequest(f'wrong session id: {v!r}')
+        if not ts:
+            raise JsonErrors.HTTPBadRequest('wrong session id')
 
 
 async def check_address(request):
