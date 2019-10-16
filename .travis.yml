@@ -49,4 +49,5 @@ script:
 - ./donk build -- --image-cache
 
 after_success:
+- mkdir -p ~/docker_images
 - docker save em2:latest | gzip > ~/docker_images/em2.tar.gz
