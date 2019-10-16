@@ -40,6 +40,8 @@ install:
 - ls -lha docker_images
 - docker load < docker_images/em2.tar.gz || true
 - docker load -i docker_images/em2.tar || true
+- docker build --help
+- docker version
 - docker images
 - ./donk install
 - cd js && yarn && yarn list && cd ..
@@ -50,4 +52,5 @@ script:
 - bash <(curl -s https://codecov.io/bash)
 - ./donk build -- --image-cache
 # save the docker image to the cache for use in future builds
+- rm docker_images/em2.tar.gz || true
 - docker save em2:latest -o docker_images/em2.tar
