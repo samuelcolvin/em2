@@ -34,8 +34,11 @@ cache:
   yarn: true
   directories:
   - node_modules
+  - docker_images
 
 install:
+- docker load < ~/docker_images/em2.tar.tz || true
+- docker images
 - ./donk install
 - cd js && yarn && yarn list && cd ..
 
@@ -43,3 +46,7 @@ script:
 - ./donk lint
 - ./donk test
 - bash <(curl -s https://codecov.io/bash)
+- ./donk build -- --image-cache
+
+after_success:
+- docker save em2:latest | gzip > ~/docker_images/em2.tar.gz
