@@ -52,5 +52,6 @@ script:
 - bash <(curl -s https://codecov.io/bash)
 - ./donk build -- --image-cache
 # save the docker image to the cache for use in future builds
+- docker images
 - rm docker_images/em2.tar.gz || true
 - docker save em2:latest -o docker_images/em2.tar
