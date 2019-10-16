@@ -37,7 +37,7 @@ cache:
   - docker_images
 
 install:
-- docker load < ~/docker_images/em2.tar.tz || true
+- docker load < ~/docker_images/em2.tar.gz || true
 - docker images
 - ./donk install
 - cd js && yarn && yarn list && cd ..
