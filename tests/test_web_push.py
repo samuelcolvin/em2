@@ -88,7 +88,7 @@ async def test_web_push_not_configured(cli, factory: Factory, redis, worker_ctx,
     assert len(await redis.keys('web-push-subs:*')) == 1
 
     data = {'participants': [{'user_id': factory.user.id, 'foo': 'bar'}], 'other': 42}
-    worker_ctx['conns'].settings.vapid_sub_email = None
+    worker_ctx['settings'].vapid_sub_email = None
     assert 'web push not configured' == await web_push(worker_ctx, json.dumps(data))
 
     assert dummy_server.log == ['POST /vapid/ > 201']
