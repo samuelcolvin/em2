@@ -611,3 +611,26 @@ async def test_get_email_recipients_not_local(db_conn):
     with pytest.raises(HTTPBadRequest) as exc_info:
         await get_email_recipients(['foo@ex.com', 'bar@ex.com'], [], 'x', db_conn)
     assert exc_info.value._body == b'no local recipient, ignoring'
+
+
+async def test_repeat_content_id(conns, factory: Factory, db_conn, create_email, attachment, create_image, worker):
+    await factory.create_user()
+
+    attachments = [attachment('img.jpeg', 'image/jpeg', create_image(), {'Content-ID': '123456'})]
+    msg1 = create_email(html_body='test', message_id='msg-1@example.net', attachments=attachments)
+    await process_smtp(conns, msg1, ['testing-1@example.com'], 's3://foobar/whatever')
+    assert 1 == await db_conn.fetchval("select count(*) from actions where act='message:add'")
+    assert 'test' == await db_conn.fetchval("select body from actions where act='message:add'")
+    assert await worker.run_check() == 2
+
+    assert 1 == await db_conn.fetchval('select count(*) from files')
+    assert await db_conn.fetchval('select content_id from files') == '123456'
+    msg2 = create_email(
+        html_body='reply',
+        message_id='msg-2@example.net',
+        headers={'In-Reply-To': 'msg-1@example.net'},
+        attachments=attachments,
+    )
+    await process_smtp(conns, msg2, ['testing-1@example.com'], 's3://foobar/whatever')
+
+    assert 1 == await db_conn.fetchval('select count(*) from files')
