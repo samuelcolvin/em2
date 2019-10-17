@@ -119,7 +119,7 @@ async def _fix_db_conn(loop, settings, main_db_create):
 
 
 @pytest.fixture(name='conns')
-async def _fix_conns(db_conn, redis, settings):
+def _fix_conns(db_conn, redis, settings):
     return Connections(db_conn.as_dummy_conn(), redis, settings)
 
 
@@ -379,7 +379,7 @@ class Factory:
 
 
 @pytest.fixture(name='factory')
-async def _fix_factory(redis, cli, url):
+def _fix_factory(redis, cli, url):
     return Factory(redis, cli, url)
 
 
