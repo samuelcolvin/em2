@@ -119,8 +119,8 @@ async def _fix_db_conn(loop, settings, main_db_create):
 
 
 @pytest.fixture(name='conns')
-def _fix_conns(db_conn, redis, settings):
-    return Connections(db_conn, redis, settings)
+async def _fix_conns(db_conn, redis, settings):
+    return Connections(db_conn.as_dummy_conn(), redis, settings)
 
 
 @pytest.yield_fixture(name='redis')
@@ -282,7 +282,7 @@ class Factory:
     def __init__(self, redis, cli, url):
         self.redis: ArqRedis = redis
         self.cli = cli
-        self.conn = self.cli.server.app['pg']
+        self.conn = self.cli.server.app['pg'].as_dummy_conn()
         self.conns = Connections(self.conn, self.redis, cli.server.app['settings'])
         self.email_index = 1
 
@@ -394,7 +394,7 @@ async def _fix_worker_ctx(redis, settings, db_conn, dummy_server, resolver):
         redis=redis,
         signing_key=get_signing_key(settings.signing_secret_key),
     )
-    ctx.update(smtp_handler=LogSmtpHandler(ctx), conns=Connections(ctx['pg'], redis, settings))
+    ctx['smtp_handler'] = LogSmtpHandler(ctx)
 
     yield ctx
 
@@ -689,7 +689,7 @@ async def _fix_alt_worker_ctx(alt_redis, alt_settings, alt_db_conn, resolver):
         redis=alt_redis,
         signing_key=get_signing_key(alt_settings.signing_secret_key),
     )
-    ctx.update(smtp_handler=LogSmtpHandler(ctx), conns=Connections(ctx['pg'], alt_redis, alt_settings))
+    ctx['smtp_handler'] = LogSmtpHandler(ctx)
 
     yield ctx
 

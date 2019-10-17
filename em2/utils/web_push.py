@@ -9,6 +9,7 @@ from typing import Optional
 import http_ece
 import ujson
 from aiohttp import ClientSession
+from arq import ArqRedis
 from atoolbox import JsonErrors, RequestError
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -67,8 +68,8 @@ async def unsubscribe(conns: Connections, sub: SubscriptionModel, user_id):
 
 
 async def web_push(ctx, actions_data: str):
-    conns: Connections = ctx['conns']
-    if not conns.settings.vapid_private_key or not conns.settings.vapid_sub_email:
+    settings: Settings = ctx['settings']
+    if not settings.vapid_private_key or not settings.vapid_sub_email:
         return 'web push not configured'
 
     session: ClientSession = ctx['client_session']
@@ -76,17 +77,18 @@ async def web_push(ctx, actions_data: str):
     participants = data.pop('participants')
     # hack to avoid building json for every user, remove the ending "}" so extra json can be appended
     msg_json_chunk = ujson.dumps(data)[:-1]
-    coros = [_user_web_push(conns, session, p, msg_json_chunk) for p in participants]
+    coros = [_user_web_push(ctx, session, p, msg_json_chunk) for p in participants]
     pushes = await asyncio.gather(*coros)
     return sum(pushes)
 
 
-async def _user_web_push(conns: Connections, session: ClientSession, participant: dict, msg_json_chunk: str):
+async def _user_web_push(ctx, session: ClientSession, participant: dict, msg_json_chunk: str):
     user_id = participant['user_id']
 
     match = web_push_user_key_prefix(user_id) + '*'
     subs = []
-    with await conns.redis as conn:
+    redis: ArqRedis = ctx['redis']
+    with await redis as conn:
         cur = b'0'
         while cur:
             cur, keys = await conn.scan(cur, match=match)
@@ -94,10 +96,12 @@ async def _user_web_push(conns: Connections, session: ClientSession, participant
                 subs.append(await conn.get(key))
 
     if subs:
-        participant['flags'] = await get_flag_counts(conns, user_id)
-        msg = msg_json_chunk + ',' + ujson.dumps(participant)[1:]
-        subs = [SubscriptionModel(**ujson.loads(s)) for s in subs]
-        await asyncio.gather(*[_sub_post(conns, session, s, user_id, msg) for s in subs])
+        async with ctx['pg'].acquire() as conn:
+            conns = Connections(conn, redis, ctx['settings'])
+            participant['flags'] = await get_flag_counts(conns, user_id)
+            msg = msg_json_chunk + ',' + ujson.dumps(participant)[1:]
+            subs = [SubscriptionModel(**ujson.loads(s)) for s in subs]
+            await asyncio.gather(*[_sub_post(conns, session, s, user_id, msg) for s in subs])
         return len(subs)
     else:
         return 0

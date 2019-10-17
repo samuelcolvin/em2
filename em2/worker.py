@@ -16,7 +16,6 @@ from em2.protocol.smtp.images import get_images
 from em2.protocol.smtp.receive import post_receipt
 from em2.settings import Settings
 from em2.ui.views.files import delete_stale_upload
-from em2.utils.db import Connections
 from em2.utils.web_push import web_push
 
 
@@ -32,8 +31,7 @@ async def startup(ctx):
     smtp_handler_cls: Type[BaseSmtpHandler] = import_string(settings.smtp_handler)
     smtp_handler = smtp_handler_cls(ctx)
     await smtp_handler.startup()
-    # FIXME "Connections(ctx['pg']..." looks wrong, conns should bet setup in job with acquired connection
-    ctx.update(smtp_handler=smtp_handler, conns=Connections(ctx['pg'], ctx['redis'], settings))
+    ctx['smtp_handler'] = smtp_handler
 
 
 async def shutdown(ctx):
