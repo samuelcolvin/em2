@@ -35,8 +35,8 @@ function should_notify (data) {
 
 async function on_push (event) {
   const data = event.data.json()
+  console.debug('Received a push event:', data)
   if (data === 'check') {
-    console.debug('Received a push check:', data)
     return
   }
   let notification = null
@@ -46,7 +46,7 @@ async function on_push (event) {
       body: `${data.actions[0].actor}: ${data.conv_details.prev}`,
       data: {
         user_id: data.user_id,
-        link: `/${data.actions[0].conv.substr(0, 10)}/`,
+        link: `/${data.conversation.substr(0, 10)}/`,
       },
       badge: '/android-chrome-192x192.png',  // image in notification bar
       icon: './android-chrome-512x512.png', // image next message in notification on android
@@ -56,11 +56,11 @@ async function on_push (event) {
   const client_data = Object.assign({}, data, {notification})
   const window_answers = await Promise.all(clients.map(client => push_to_client(client, client_data)))
   if (notification && !window_answers.find(a => a)) {
-    console.debug('Received a push message, showing notification:', data)
+    console.debug('showing notification')
     // (await self.registration.getNotifications()).forEach(n => n.close())
     await self.registration.showNotification(notification.title, notification)
   } else {
-    console.debug('Received a push message, not showing notification:', data)
+    console.debug(' not showing notification')
   }
 }
 self.addEventListener('push', event => event.waitUntil(on_push(event)))

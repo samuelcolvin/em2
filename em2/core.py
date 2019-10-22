@@ -984,7 +984,10 @@ async def create_files(conns: Connections, files: List[File], conv_id: int, acti
         )
         for f in files
     ]
-    await conns.main.execute_b('insert into files (:values__names) values :values', values=MultipleValues(*values))
+    await conns.main.execute_b(
+        'insert into files (:values__names) values :values on conflict (conv, content_id) do nothing',
+        values=MultipleValues(*values),
+    )
 
 
 conv_flag_count_sql = """
