@@ -2,7 +2,7 @@ import secrets
 from datetime import timedelta
 from pathlib import Path
 from secrets import token_urlsafe
-from typing import Optional
+from typing import List, Optional
 
 from atoolbox import BaseSettings
 from pydantic import EmailStr, constr
@@ -13,10 +13,10 @@ SRC_DIR = Path(__file__).parent
 class Settings(BaseSettings):
     pg_dsn = 'postgres://postgres@localhost:5432/em2'
     cookie_name = 'em2'
-    sql_path = SRC_DIR / 'models.sql'
+    sql_path: Path = SRC_DIR / 'models.sql'
     create_app = 'em2.main.create_app'
     worker_func = 'em2.worker.run_worker'
-    patch_paths = ['em2.auth.patches']
+    patch_paths: List[str] = ['em2.auth.patches']
     auth_key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa='
 
     domain: str = 'localhost'  # currently used as a proxy for development mode, should probably be changed

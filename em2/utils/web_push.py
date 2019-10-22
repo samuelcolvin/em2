@@ -14,7 +14,7 @@ from atoolbox import JsonErrors, RequestError
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
 from py_vapid import Vapid02 as Vapid
-from pydantic import BaseModel, UrlStr
+from pydantic import BaseModel, HttpUrl
 
 from em2.core import get_flag_counts
 from em2.settings import Settings
@@ -33,7 +33,7 @@ class SubscriptionModel(BaseModel):
     https://developer.mozilla.org/en-US/docs/Web/API/PushSubscription/toJSON
     """
 
-    endpoint: UrlStr
+    endpoint: HttpUrl
     expirationTime: Optional[int]
 
     class SubKeys(BaseModel):

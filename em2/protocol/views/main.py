@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple, Union
 
 import nacl.encoding
 from atoolbox import JsonErrors, json_response
-from pydantic import BaseModel, EmailStr, Extra, PositiveInt, UrlStr, conint, constr, validator
+from pydantic import AnyHttpUrl, BaseModel, EmailStr, Extra, PositiveInt, conint, constr, validator
 from typing_extensions import Literal
 
 from em2.background import push_all, push_multiple
@@ -78,7 +78,7 @@ class ExternalFile(BaseModel):
     content_disp: Literal['attachment', 'inline']
     content_type: constr(max_length=63)
     size: PositiveInt
-    download_url: UrlStr
+    download_url: AnyHttpUrl
 
     @validator('content_type')
     def check_content_type(cls, v: str):
