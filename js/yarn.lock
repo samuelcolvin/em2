@@ -9499,7 +9499,7 @@ slate-react-placeholder@^0.2.8:
   resolved "https://registry.yarnpkg.com/slate-react-placeholder/-/slate-react-placeholder-0.2.8.tgz#973ac47c9a518a1418e89b6021b0f6120c07ce6f"
   integrity sha512-CZZSg5usE2ZY/AYg06NVcL9Wia6hD/Mg0w4D4e9rPh6hkkFJg8LZXYMRz+6Q4v1dqHmzRsZ2Ixa0jRuiKXsMaQ==
 
-slate-react@^0.22.4:
+slate-react@^0.22.9:
   version "0.22.9"
   resolved "https://registry.yarnpkg.com/slate-react/-/slate-react-0.22.9.tgz#74cf7336b2d48f1dd3263141063d0b656effe350"
   integrity sha512-+2kRlgCCZld5i38PtmF4s3DmmD4DS6sO6ng26UlSfpG6g9gn9v9na7Gi0CtHAjuQrtLCv2wAC00GZbPIb/jnYw==
@@ -9521,7 +9521,7 @@ slate-react@^0.22.4:
     tiny-invariant "^1.0.1"
     tiny-warning "^0.0.3"
 
-slate@^0.47.4:
+slate@^0.47.8:
   version "0.47.8"
   resolved "https://registry.yarnpkg.com/slate/-/slate-0.47.8.tgz#1e987b74d8216d44ec56154f0e6d3c722ce21e6e"
   integrity sha512-/Jt0eq4P40qZvtzeKIvNb+1N97zVICulGQgQoMDH0TI8h8B+5kqa1YeckRdRnuvfYJm3J/9lWn2V3J1PrF+hag==

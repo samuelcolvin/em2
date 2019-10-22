@@ -52,7 +52,7 @@ class ConvDetailsView extends React.Component {
   }
 
   update = async data => {
-    console.log('conversation update:', data)
+    // console.log('conversation update:', data)
     if (data && this.state.conv && data.conv !== this.state.conv.key) {
       // different conversation
     } else if (data && data.new_key) {

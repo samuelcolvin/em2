@@ -62,12 +62,6 @@ const FormButtons = ({state, form_props, submit, setField}) => {
           <Button color="primary" disabled={state.disabled} onClick={() => pub_submit(false)}>
             Save Draft
           </Button>
-
-          <Button type="button" color="secondary"
-                  disabled={state.disabled}
-                  onClick={form_props.cancel}>
-            Cancel
-          </Button>
         </ButtonGroup>
       </Col>
     </Row>

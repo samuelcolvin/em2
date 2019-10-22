@@ -380,7 +380,7 @@ class Em2Push(_PushBase):
             elif a.act == ActionTypes.prt_add and a.participant != actor_email:
                 actions.append(Action(act=ActionTypes.prt_add, actor_id=actor_id, id=a.id, participant=a.participant))
 
-        conv_id, _ = await create_conv(
+        await create_conv(
             conns=self.conns,
             creator_email=actor_email,
             actions=actions,
