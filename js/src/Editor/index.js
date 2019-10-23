@@ -42,18 +42,17 @@ const code_key = isKeyHotkey('mod+`')
 const link_key = isKeyHotkey('mod+k')
 
 function Content (value, initial_value = raw_empty) {
-  if (typeof(value) !== 'object') {
-    // this can be removed once it's certain that it's not being used like this anywhere
-    throw TypeError(`Content value must be an object, not ${typeof(value)}`)
-  }
-  this.value = value
-  this.value_obj = value.toJSON()
+  this._value = value
+  this.is_rich = typeof(value) === 'object'
+  this.to_markdown = () => this.is_rich ? Serializer.serialize(this._value) : this._value
+  this.value = this.is_rich ? value : Serializer.deserialize(value)
+  // could be slightly more efficient here, e.g. not call isEqual and toJSON every time, but is it worth it
+  this.value_obj = this.value.toJSON()
   this.has_changed = !isEqual(this.value_obj, initial_value)
-  this.to_markdown = () => Serializer.serialize(this.value)
 }
 
 export const empty_editor = new Content(Value.fromJSON(raw_empty))
-export const from_markdown = md => new Content(Serializer.deserialize(md))
+export const from_markdown = md => new Content(md)
 
 const ls_key = 'raw_editor_mode'
 
