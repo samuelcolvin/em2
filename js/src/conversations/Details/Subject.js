@@ -148,7 +148,7 @@ export default withRouter(({history, conv_state, publish, lock_subject, set_subj
   const btns_disabled = Boolean(
     conv_state.locked ||
     conv_state.comment_parent ||
-    conv_state.new_message.has_content
+    conv_state.new_message.has_changed
   )
   const set_flag = async (flag, leave=true) => {
     const unlock = lock_view()

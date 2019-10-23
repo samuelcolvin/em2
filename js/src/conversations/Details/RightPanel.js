@@ -43,7 +43,7 @@ const ScrollSpy = ({children}) => {
 
 
 const RightPanel = ({state, edit_locked, set_participants, add_participants, remove_participants, ctx}) => {
-  const disabled = !!(edit_locked || state.comment_parent || state.new_message.has_content)
+  const disabled = !!(edit_locked || state.comment_parent || state.new_message.has_changed)
   return (
     <ScrollSpy>
       <div className="box no-pad pb-3">

@@ -41,16 +41,18 @@ const quote_key = isKeyHotkey('mod+q')
 const code_key = isKeyHotkey('mod+`')
 const link_key = isKeyHotkey('mod+k')
 
-function Content (value) {
+function Content (value, initial_value = raw_empty) {
+  if (typeof(value) !== 'object') {
+    throw TypeError(`Content value must be an object, not ${typeof(value)}`)
+  }
   this.value = value
-  this.is_rich = typeof(value) === 'object'
-  this.has_content = this.is_rich ? !isEqual(this.value.toJSON(), raw_empty) : !!this.value
-  this.to_markdown = () => this.is_rich ? Serializer.serialize(this.value) : this.value
-  this.to_value = () => this.is_rich ? this.value : from_markdown(this.value)
+  this.value_obj = value.toJSON()
+  this.has_changed = !isEqual(this.value_obj, initial_value)
+  this.to_markdown = () => Serializer.serialize(this.value)
 }
 
 export const empty_editor = new Content(Value.fromJSON(raw_empty))
-const from_markdown = v => Serializer.deserialize(v)
+export const from_markdown = md => new Content(Serializer.deserialize(md))
 
 const ls_key = 'raw_editor_mode'
 
@@ -64,6 +66,10 @@ export class Editor extends React.Component {
   constructor (props) {
     super(props)
     this.state = {link: null, raw_mode: !!localStorage[ls_key]}
+  }
+
+  componentDidMount () {
+    this._initial_value = this.props.content.value_obj
   }
 
   asyncSetState = s => (
@@ -246,7 +252,7 @@ export class Editor extends React.Component {
   onChange = ({value}) => {
     // console.log(to_markdown(value))
     // console.log(JSON.stringify(value.toJSON(), null, 2))
-    this.props.onChange(new Content(value))
+    this.props.onChange(new Content(value, this._initial_value))
   }
 
   onPaste = (e, editor) => {
@@ -306,7 +312,7 @@ export class Editor extends React.Component {
               id="slate-editor"
               placeholder={(value.focusBlock && value.focusBlock.type) === T.para ? this.props.placeholder: ''}
               readOnly={this.props.disabled}
-              value={this.props.content.to_value()}
+              value={this.props.content.value}
               ref={this.ref}
               onKeyDown={this.onKeyDown}
               onChange={this.onChange}
@@ -350,7 +356,7 @@ export class MarkdownRenderer extends React.Component {
       <div className="md">
         <SlateEditor
           readOnly={true}
-          value={from_markdown(this.props.value)}
+          value={Serializer.deserialize(this.props.value)}
           renderBlock={render_block}
           renderInline={render_inline}
           renderMark={render_mark}

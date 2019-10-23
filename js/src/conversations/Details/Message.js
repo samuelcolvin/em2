@@ -26,7 +26,7 @@ const CommentButton = ({msg, state, setState, children, edit_locked}) => {
   return (
     <div className="text-right">
       <Button size="sm" color="comment" id={btn_id}
-              disabled={!!(edit_locked || state.comment_parent || state.new_message.has_content || state.extra_prts)}
+              disabled={!!(edit_locked || state.comment_parent || state.new_message.has_changed || state.extra_prts)}
               onClick={click}>
         <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
       </Button>
@@ -54,7 +54,7 @@ const AddComment = ({state, edit_locked, setState, add_comment}) => (
     </div>
     <div className="text-right pl-2">
       <div>
-        <Button size="sm" color="primary" disabled={edit_locked || !state.comment.has_content} onClick={add_comment}>
+        <Button size="sm" color="primary" disabled={edit_locked || !state.comment.has_changed} onClick={add_comment}>
           <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
           Comment
         </Button>
@@ -62,6 +62,36 @@ const AddComment = ({state, edit_locked, setState, add_comment}) => (
       <Button size="sm" color="link" className="text-muted"
             disabled={edit_locked}
             onClick={() => setState({comment_parent: null, comment: empty_editor})}>
+        Cancel
+      </Button>
+    </div>
+  </div>
+)
+
+const ModifyMessage = ({state, edit_locked, setState, msg_modify, msg_modify_release}) => (
+  <div className="d-flex py-1 ml-3">
+    <div className="flex-grow-1">
+      <Editor
+        placeholder="reply to all..."
+        className="comment"
+        disabled={edit_locked}
+        content={state.msg_modify_body}
+        onChange={value => setState({msg_modify_body: value})}
+      />
+    </div>
+    <div className="text-right pl-2">
+      <div>
+        <Button size="sm"
+                color="primary"
+                disabled={edit_locked || !state.msg_modify_body.has_changed}
+                onClick={msg_modify}>
+          <FontAwesomeIcon icon={fas.faPen} className="mr-1"/>
+          Send Change
+        </Button>
+      </div>
+      <Button size="sm" color="link" className="text-muted"
+            disabled={edit_locked}
+            onClick={msg_modify_release}>
         Cancel
       </Button>
     </div>
@@ -148,7 +178,7 @@ const toggle_warnings = (conv, msg, show) => (
    window.logic.conversations.toggle_warnings(conv, msg.first_action, show)
 )
 
-export default ({msg, ...props}) => (
+export default ({msg, msg_modify_lock, ...props}) => (
   <div className="box no-pad msg-details">
     <div className="border-bottom py-2 d-flex justify-content-between">
       <div>
@@ -168,18 +198,26 @@ export default ({msg, ...props}) => (
             <FontAwesomeIcon icon={fas.faCaretDown} className="ml-1"/>
           </DropdownToggle>
           <DropdownMenu right>
-            <DropdownItem>Edit Message</DropdownItem>
+            <DropdownItem onClick={msg_modify_lock}>
+              Edit Message
+            </DropdownItem>
             <DropdownItem>View Original</DropdownItem>
             <DropdownItem>View History</DropdownItem>
           </DropdownMenu>
         </UncontrolledButtonDropdown>
       </div>
     </div>
-    <MessageWarning msg={msg} conv={props.state.conv.key}/>
-    <div className="mt-1">
-      <MessageBody msg={msg} conv={props.state.conv.key} session_id={props.session_id}/>
-      <Attachments files={msg.files} conv={props.state.conv.key} session_id={props.session_id}/>
-    </div>
+    {props.state.msg_modify_id === msg.first_action ? (
+      <ModifyMessage {...props}/>
+    ) : (
+      <div>
+        <MessageWarning msg={msg} conv={props.state.conv.key}/>
+        <div className="mt-1">
+          <MessageBody msg={msg} conv={props.state.conv.key} session_id={props.session_id}/>
+          <Attachments files={msg.files} conv={props.state.conv.key} session_id={props.session_id}/>
+        </div>
+      </div>
+    )}
     {msg.comments.length ? (
       <div className="pb-2">
         {msg.comments.map(c => <Comment {...props} msg={c} key={c.first_action}/>)}

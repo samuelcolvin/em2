@@ -4,7 +4,7 @@ import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, Loading, confirm_modal} from 'reactstrap-toolbox'
-import {Editor, empty_editor} from '../../Editor'
+import {Editor, empty_editor, from_markdown} from '../../Editor'
 import Message from './Message'
 import RightPanel from './RightPanel'
 import Subject from './Subject'
@@ -12,7 +12,13 @@ import Drop from './Drop'
 
 
 class ConvDetailsView extends React.Component {
-  state = {files: [], new_message: empty_editor, comment: empty_editor}
+  state = {
+    files: [],
+    new_message: empty_editor,
+    comment: empty_editor,
+    msg_modify_id: null,
+    msg_modify_body: null,
+  }
   marked_seen = false
 
   async componentDidMount () {
@@ -41,12 +47,14 @@ class ConvDetailsView extends React.Component {
 
   on_keydown = e => {
     if (e.key === 'Enter' && e.ctrlKey) {
-      if (this.state.new_message.has_content) {
+      if (this.state.new_message.has_changed) {
         this.add_msg()
       } else if (this.state.comment) {
         this.add_comment()
       } else if (this.state.extra_prts) {
         this.add_participants()
+      } else if (this.state.msg_modify_id) {
+        this.msg_modify()
       }
     }
   }
@@ -56,14 +64,15 @@ class ConvDetailsView extends React.Component {
     if (data && this.state.conv && data.conv !== this.state.conv.key) {
       // different conversation
     } else if (data && data.new_key) {
+      // conversation just got published and its key changed
       this.props.history.push(`/${data.new_key.substr(0, 10)}/`)
     } else {
       let conv = await window.logic.conversations.get(this.props.match.params.key)
-      if (!conv) {
-        this.setState({not_found: true})
+      if (!this.mounted) {
         return
       }
-      if (!this.mounted) {
+      if (!conv) {
+        this.setState({not_found: true})
         return
       }
       this.props.ctx.setMenuItem(conv.primary_flag)
@@ -90,7 +99,7 @@ class ConvDetailsView extends React.Component {
   }
 
   add_msg = async () => {
-    if (!this.state.locked && !this.upload_ongoing() && this.state.new_message.has_content) {
+    if (!this.state.locked && !this.upload_ongoing() && this.state.new_message.has_changed) {
       this.setState({locked: true})
       const actions = [
         {
@@ -114,11 +123,37 @@ class ConvDetailsView extends React.Component {
   upload_ongoing = () => !!this.state.files.filter(f => f.progress).length
 
   add_comment = async () => {
-    if (!this.state.locked && this.state.comment.has_content && this.state.comment_parent) {
+    if (!this.state.locked && this.state.comment.has_changed && this.state.comment_parent) {
       this.setState({locked: true})
       const actions = [{act: 'message:add', body: this.state.comment.to_markdown(), parent: this.state.comment_parent}]
       this.pending_interaction = await window.logic.conversations.act(this.state.conv.key, actions)
       this.setState({comment: empty_editor, comment_parent: null})
+    }
+  }
+
+  msg_modify_lock = async msg => {
+    if (!this.state.locked && !this.state.msg_modify_id) {
+      this.setState({locked: true})
+      await this.act([{act: 'message:lock', follows: msg.last_action}])
+      this.setState({msg_modify_id: msg.first_action, msg_modify_body: from_markdown(msg.body)})
+    }
+  }
+
+  msg_modify_release = async () => {
+    this.setState({msg_modify_id: null, msg_modify_body: null})
+    await this.act([{act: 'message:release', follows: this.last_action_id}])
+  }
+
+  msg_modify = async () => {
+    if (!this.state.locked && this.state.msg_modify_id && this.state.msg_modify_body.has_changed) {
+      this.setState({locked: true})
+      const action = {
+        act: 'message:modify',
+        body: this.state.msg_modify_body.to_markdown(),
+        follows: this.last_action_id,
+      }
+      this.pending_interaction = await window.logic.conversations.act(this.state.conv.key, [action])
+      this.setState({msg_modify_id: null, msg_modify_body: null})
     }
   }
 
@@ -225,6 +260,9 @@ class ConvDetailsView extends React.Component {
                        state={this.state}
                        session_id={this.props.ctx.user.session_id}
                        setState={s => this.setState(s)}
+                       msg_modify={() => this.msg_modify()}
+                       msg_modify_lock={() => this.msg_modify_lock(msg)}
+                       msg_modify_release={() => this.msg_modify_release()}
                        add_comment={() => this.add_comment()}/>
             ))}
             <div className="box no-pad add-msg">
@@ -250,7 +288,7 @@ class ConvDetailsView extends React.Component {
                 </Drop>
                 <div className="text-right">
                   <Button color="primary"
-                          disabled={edit_locked || this.upload_ongoing() || !this.state.new_message.has_content}
+                          disabled={edit_locked || this.upload_ongoing() || !this.state.new_message.has_changed}
                           onClick={this.add_msg}>
                     <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/>
                     {this.state.conv.draft ? 'Add Message' : 'Send'}
