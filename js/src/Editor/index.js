@@ -43,6 +43,7 @@ const link_key = isKeyHotkey('mod+k')
 
 function Content (value, initial_value = raw_empty) {
   if (typeof(value) !== 'object') {
+    // this can be removed once it's certain that it's not being used like this anywhere
     throw TypeError(`Content value must be an object, not ${typeof(value)}`)
   }
   this.value = value

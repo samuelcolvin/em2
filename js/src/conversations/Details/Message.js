@@ -18,16 +18,13 @@ import MessageBody from './MessageBody'
 import {file_icon, file_size} from './files'
 import {Editor, empty_editor} from '../../Editor'
 
-const CommentButton = ({msg, state, setState, children, edit_locked}) => {
+const CommentButton = ({msg, state, setState, children, locked}) => {
   const btn_id = `msg-${msg.last_action}`
-  const click = () => {
-    setState({comment_parent: msg.first_action, [btn_id]: false})
-  }
   return (
     <div className="text-right">
       <Button size="sm" color="comment" id={btn_id}
-              disabled={!!(edit_locked || state.comment_parent || state.new_message.has_changed || state.extra_prts)}
-              onClick={click}>
+              disabled={locked('comment')}
+              onClick={() => setState({comment_parent: msg.first_action, [btn_id]: false})}>
         <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
       </Button>
       <Tooltip placement="right" isOpen={state[btn_id]}
@@ -41,65 +38,71 @@ const CommentButton = ({msg, state, setState, children, edit_locked}) => {
   )
 }
 
-const AddComment = ({state, edit_locked, setState, add_comment}) => (
-  <div className="d-flex py-1 ml-3">
-    <div className="flex-grow-1">
-      <Editor
-        placeholder="reply to all..."
-        className="comment"
-        disabled={edit_locked}
-        content={state.comment}
-        onChange={value => setState({comment: value})}
-      />
-    </div>
-    <div className="text-right pl-2">
-      <div>
-        <Button size="sm" color="primary" disabled={edit_locked || !state.comment.has_changed} onClick={add_comment}>
-          <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
-          Comment
+const AddComment = ({state, locked, setState, add_comment}) => {
+  const is_locked = locked('comment')
+  return (
+    <div className="d-flex py-1 ml-3">
+      <div className="flex-grow-1">
+        <Editor
+          placeholder="reply to all..."
+          className="comment"
+          disabled={is_locked}
+          content={state.comment}
+          onChange={value => setState({comment: value})}
+        />
+      </div>
+      <div className="text-right pl-2">
+        <div>
+          <Button size="sm" color="primary" disabled={is_locked} onClick={add_comment}>
+            <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
+            Comment
+          </Button>
+        </div>
+        <Button size="sm" color="link" className="text-muted"
+              disabled={is_locked}
+              onClick={() => setState({comment_parent: null, comment: empty_editor})}>
+          Cancel
         </Button>
       </div>
-      <Button size="sm" color="link" className="text-muted"
-            disabled={edit_locked}
-            onClick={() => setState({comment_parent: null, comment: empty_editor})}>
-        Cancel
-      </Button>
     </div>
-  </div>
-)
+  )
+}
 
-const ModifyMessage = ({state, edit_locked, setState, msg_modify, msg_modify_release}) => (
-  <div className="d-flex py-1 ml-3">
-    <div className="flex-grow-1">
-      <Editor
-        placeholder="reply to all..."
-        className="comment"
-        disabled={edit_locked}
-        content={state.msg_modify_body}
-        onChange={value => setState({msg_modify_body: value})}
-      />
-    </div>
-    <div className="text-right pl-2">
-      <div>
-        <Button size="sm"
-                color="primary"
-                disabled={edit_locked || !state.msg_modify_body.has_changed}
-                onClick={msg_modify}>
-          <FontAwesomeIcon icon={fas.faPen} className="mr-1"/>
-          Send Change
+const ModifyMessage = ({state, locked, setState, msg_modify, msg_modify_release}) => {
+  const is_locked = locked('modify_msg')
+  return (
+    <div className="d-flex py-1 ml-3">
+      <div className="flex-grow-1">
+        <Editor
+          placeholder="reply to all..."
+          className="comment"
+          disabled={is_locked}
+          content={state.msg_modify_body}
+          onChange={value => setState({msg_modify_body: value})}
+        />
+      </div>
+      <div className="text-right pl-2">
+        <div>
+          <Button size="sm"
+                  color="primary"
+                  disabled={is_locked || !state.msg_modify_body.has_changed}
+                  onClick={msg_modify}>
+            <FontAwesomeIcon icon={fas.faPen} className="mr-1"/>
+            Send Change
+          </Button>
+        </div>
+        <Button size="sm" color="link" className="text-muted"
+              disabled={is_locked}
+              onClick={msg_modify_release}>
+          Cancel
         </Button>
       </div>
-      <Button size="sm" color="link" className="text-muted"
-            disabled={edit_locked}
-            onClick={msg_modify_release}>
-        Cancel
-      </Button>
     </div>
-  </div>
-)
+  )
+}
 
 const Comment = ({msg, depth = 1, ...props}) => {
-  const commenting = props.state.comment_parent === msg.last_action
+  const commenting = props.state.comment_parent === msg.first_action
   return (
     <div className="ml-3">
       <div className="border-top pt-1 mt-2">
@@ -198,7 +201,8 @@ export default ({msg, msg_modify_lock, ...props}) => (
             <FontAwesomeIcon icon={fas.faCaretDown} className="ml-1"/>
           </DropdownToggle>
           <DropdownMenu right>
-            <DropdownItem onClick={msg_modify_lock}>
+            <DropdownItem onClick={msg_modify_lock}
+                          disabled={!!(props.locked('modify_msg') || props.state.msg_modify_id)}>
               Edit Message
             </DropdownItem>
             <DropdownItem>View Original</DropdownItem>
@@ -224,12 +228,12 @@ export default ({msg, msg_modify_lock, ...props}) => (
       </div>
     ) : null}
 
-    {props.state.comment_parent !== msg.last_action ?
+    {props.state.comment_parent === msg.first_action ?
+      <AddComment {...props}/>
+      :
       <div className="pb-2">
         <CommentButton {...props} msg={msg}>Reply to Message</CommentButton>
       </div>
-      :
-      <AddComment {...props}/>
     }
   </div>
 )

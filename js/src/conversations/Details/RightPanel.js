@@ -42,8 +42,8 @@ const ScrollSpy = ({children}) => {
 }
 
 
-const RightPanel = ({state, edit_locked, set_participants, add_participants, remove_participants, ctx}) => {
-  const disabled = !!(edit_locked || state.comment_parent || state.new_message.has_changed)
+const RightPanel = ({state, locked, set_participants, add_participants, remove_participants, ctx}) => {
+  const disabled = locked('extra_prts')
   return (
     <ScrollSpy>
       <div className="box no-pad pb-3">
@@ -84,17 +84,17 @@ const RightPanel = ({state, edit_locked, set_participants, add_participants, rem
             <ParticipantsInput
               field={{name: 'participants'}}
               value={state.extra_prts}
-              disabled={edit_locked}
+              disabled={disabled}
               existing_participants={Object.keys(state.conv.participants).length}
               onChange={extra_prts => set_participants(extra_prts)}
             />
 
             <div className="d-flex flex-row-reverse mt-2">
-              <Button color="primary" disabled={edit_locked} size="sm" onClick={add_participants}>
+              <Button color="primary" disabled={disabled} size="sm" onClick={add_participants}>
                 Add
               </Button>
               <Button size="sm" color="link" className="text-muted"
-                      disabled={edit_locked}
+                      disabled={disabled}
                       onClick={() => set_participants(null)}>
                 Cancel
               </Button>
