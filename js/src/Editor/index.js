@@ -75,7 +75,9 @@ export class Editor extends React.Component {
     new Promise(resolve => this.setState(s, () => resolve()))
   )
 
-  has_block = type => this.props.content.slate_value && this.slate_value().blocks.some(node => node.type === type)
+  has_block = type => (
+    this.props.content.slate_value && this.props.content.slate_value.blocks.some(node => node.type === type)
+  )
 
   block_active = type => {
     if (!this.props.content.slate_value) {
@@ -157,7 +159,7 @@ export class Editor extends React.Component {
 
   link_modal = () => {
     let link = word_selection(this.editor)
-    const link_node = this.slate_value().inlines.find(i => i.type === T.link)
+    const link_node = this.props.content.slate_value.inlines.find(i => i.type === T.link)
     if (link_node && link_node.text.includes(link)) {
       link = {href: link_node.data.get('href'), title: link_node.text}
     }
@@ -173,7 +175,7 @@ export class Editor extends React.Component {
     // have to make sure the previous render is complete before mutating the editor
     await this.asyncSetState({link: null})
 
-    const link_node = this.slate_value().inlines.find(i => i.type === T.link)
+    const link_node = this.props.content.slate_value.inlines.find(i => i.type === T.link)
     if (link_node && link_node.text.includes(this.editor.value.fragment.text)) {
       this.editor.moveToRangeOfNode(link_node)
     }
@@ -192,11 +194,20 @@ export class Editor extends React.Component {
     e.preventDefault()
     this.setState(s => {
       const raw_mode = !s.raw_mode
+      let slate_value = null
+      const markdown = this.props.content.markdown
       if (raw_mode) {
         localStorage[ls_key] = '1'
       } else {
         localStorage.removeItem(ls_key)
+        slate_value = Serializer.deserialize(markdown)
       }
+
+      this.props.onChange({
+        slate_value,
+        markdown,
+        has_changed: markdown !== this._initial_value,
+      })
       return {raw_mode}
     })
   }
@@ -268,8 +279,6 @@ export class Editor extends React.Component {
     })
   }
 
-  slate_value = () => this.props.content.slate_value || Serializer.deserialize(this.props.content.markdown)
-
   onPaste = (e, editor) => {
     const raw = e.clipboardData.getData('Text')
     editor.insertText(raw)
@@ -327,7 +336,7 @@ export class Editor extends React.Component {
               id="slate-editor"
               placeholder={(value && value.focusBlock && value.focusBlock.type) === T.para ? this.props.placeholder: ''}
               readOnly={this.props.disabled}
-              value={this.slate_value()}
+              value={value || Serializer.deserialize(this.props.content.markdown)}
               ref={this.ref}
               onKeyDown={this.onKeyDown}
               onChange={this.onSlateChange}

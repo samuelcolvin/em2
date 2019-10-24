@@ -18,20 +18,22 @@ import MessageBody from './MessageBody'
 import {file_icon, file_size} from './files'
 import {Editor, empty_editor} from '../../Editor'
 
-const CommentButton = ({msg, state, setState, children, locked}) => {
-  const btn_id = `msg-${msg.last_action}`
+const CommentButton = ({msg, setState, children, locked}) => {
+  const [tooltip_open, set_tooltip_open] = React.useState(false)
+
+  const btn_id = `msg-${msg.first_action}`
   return (
     <div className="text-right">
       <Button size="sm" color="comment" id={btn_id}
               disabled={locked('comment')}
-              onClick={() => setState({comment_parent: msg.first_action, [btn_id]: false})}>
+              onClick={() => setState({comment_parent: msg.first_action})}>
         <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
       </Button>
-      <Tooltip placement="right" isOpen={state[btn_id]}
+      <Tooltip placement="right" isOpen={tooltip_open}
                trigger="hover"
                target={btn_id}
                delay={0}
-               toggle={() => setState(s => ({[btn_id]: !s[btn_id]}))}>
+               toggle={() => set_tooltip_open(s => !s)}>
         {children}
       </Tooltip>
     </div>
