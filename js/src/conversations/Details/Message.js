@@ -41,27 +41,23 @@ const CommentButton = ({msg, state, setState, children, locked}) => {
 const AddComment = ({state, locked, setState, add_comment}) => {
   const is_locked = locked('comment')
   return (
-    <div className="d-flex py-1 ml-3">
-      <div className="flex-grow-1">
-        <Editor
-          placeholder="reply to all..."
-          className="comment"
-          disabled={is_locked}
-          content={state.comment}
-          onChange={value => setState({comment: value})}
-        />
-      </div>
-      <div className="text-right pl-2">
-        <div>
-          <Button size="sm" color="primary" disabled={is_locked} onClick={add_comment}>
-            <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
-            Comment
-          </Button>
-        </div>
+    <div className="py-2">
+      <Editor
+        placeholder="reply to all..."
+        className="comment"
+        disabled={is_locked}
+        content={state.comment}
+        onChange={value => setState({comment: value})}
+      />
+      <div className="text-right pt-1">
         <Button size="sm" color="link" className="text-muted"
               disabled={is_locked}
               onClick={() => setState({comment_parent: null, comment: empty_editor})}>
           Cancel
+        </Button>
+        <Button size="sm" color="primary" disabled={is_locked} onClick={add_comment}>
+          <FontAwesomeIcon icon={fas.faReply} className="mr-1"/>
+          Comment
         </Button>
       </div>
     </div>
@@ -71,30 +67,27 @@ const AddComment = ({state, locked, setState, add_comment}) => {
 const ModifyMessage = ({state, locked, setState, msg_modify, msg_modify_release}) => {
   const is_locked = locked('modify_msg')
   return (
-    <div className="d-flex py-1 ml-3">
-      <div className="flex-grow-1">
-        <Editor
-          placeholder="reply to all..."
-          className="comment"
-          disabled={is_locked}
-          content={state.msg_modify_body}
-          onChange={value => setState({msg_modify_body: value})}
-        />
-      </div>
-      <div className="text-right pl-2">
-        <div>
-          <Button size="sm"
-                  color="primary"
-                  disabled={is_locked || !state.msg_modify_body.has_changed}
-                  onClick={msg_modify}>
-            <FontAwesomeIcon icon={fas.faPen} className="mr-1"/>
-            Send Change
-          </Button>
-        </div>
+    <div className="py-2">
+      <Editor
+        placeholder="reply to all..."
+        className="comment"
+        disabled={is_locked}
+        content={state.msg_modify_body}
+        onChange={value => setState({msg_modify_body: value})}
+      />
+      <div className="text-right pt-1">
         <Button size="sm" color="link" className="text-muted"
               disabled={is_locked}
               onClick={msg_modify_release}>
           Cancel
+        </Button>
+
+        <Button size="sm"
+                color="primary"
+                disabled={is_locked || !state.msg_modify_body.has_changed}
+                onClick={msg_modify}>
+          <FontAwesomeIcon icon={fas.faPen} className="mr-1"/>
+          Send Change
         </Button>
       </div>
     </div>

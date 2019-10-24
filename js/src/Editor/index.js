@@ -3,7 +3,6 @@ import MarkdownSerializer from '@edithq/slate-md-serializer'
 import {Value} from 'slate'
 import {Editor as SlateEditor} from 'slate-react'
 import {isKeyHotkey} from 'is-hotkey'
-import {isEqual} from 'lodash'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {
@@ -41,18 +40,18 @@ const quote_key = isKeyHotkey('mod+q')
 const code_key = isKeyHotkey('mod+`')
 const link_key = isKeyHotkey('mod+k')
 
-function Content (value, initial_value = raw_empty) {
-  this._value = value
-  this.is_rich = typeof(value) === 'object'
-  this.to_markdown = () => this.is_rich ? Serializer.serialize(this._value) : this._value
-  this.value = this.is_rich ? value : Serializer.deserialize(value)
-  // could be slightly more efficient here, e.g. not call isEqual and toJSON every time, but is it worth it
-  this.value_obj = this.value.toJSON()
-  this.has_changed = !isEqual(this.value_obj, initial_value)
+export const empty_editor = {
+  slate_value: Value.fromJSON(raw_empty),
+  markdown: '',
+  has_changed: false,
 }
-
-export const empty_editor = new Content(Value.fromJSON(raw_empty))
-export const from_markdown = md => new Content(md)
+export const from_markdown = markdown => (
+  {
+    slate_value: null,
+    markdown,
+    has_changed: false,
+  }
+)
 
 const ls_key = 'raw_editor_mode'
 
@@ -69,20 +68,20 @@ export class Editor extends React.Component {
   }
 
   componentDidMount () {
-    this._initial_value = this.props.content.value_obj
+    this._initial_value = this.props.content.markdown
   }
 
   asyncSetState = s => (
     new Promise(resolve => this.setState(s, () => resolve()))
   )
 
-  has_block = type => this.props.content.is_rich && this.props.content.value.blocks.some(node => node.type === type)
+  has_block = type => this.props.content.slate_value && this.slate_value().blocks.some(node => node.type === type)
 
   block_active = type => {
-    if (!this.props.content.is_rich) {
+    if (!this.props.content.slate_value) {
       return false
     }
-    const {document, blocks} = this.props.content.value
+    const {document, blocks} = this.props.content.slate_value
     if (is_list_type(type)) {
       if (blocks.size > 0) {
         const parent = document.getParent(blocks.first().key)
@@ -158,7 +157,7 @@ export class Editor extends React.Component {
 
   link_modal = () => {
     let link = word_selection(this.editor)
-    const link_node = this.props.content.value.inlines.find(i => i.type === T.link)
+    const link_node = this.slate_value().inlines.find(i => i.type === T.link)
     if (link_node && link_node.text.includes(link)) {
       link = {href: link_node.data.get('href'), title: link_node.text}
     }
@@ -174,7 +173,7 @@ export class Editor extends React.Component {
     // have to make sure the previous render is complete before mutating the editor
     await this.asyncSetState({link: null})
 
-    const link_node = this.props.content.value.inlines.find(i => i.type === T.link)
+    const link_node = this.slate_value().inlines.find(i => i.type === T.link)
     if (link_node && link_node.text.includes(this.editor.value.fragment.text)) {
       this.editor.moveToRangeOfNode(link_node)
     }
@@ -249,11 +248,27 @@ export class Editor extends React.Component {
     this.editor = editor
   }
 
-  onChange = ({value}) => {
+  onSlateChange = ({value}) => {
     // console.log(to_markdown(value))
     // console.log(JSON.stringify(value.toJSON(), null, 2))
-    this.props.onChange(new Content(value, this._initial_value))
+    const markdown = Serializer.serialize(value)
+    this.props.onChange({
+      slate_value: value,
+      markdown,
+      has_changed: markdown !== this._initial_value,
+    })
   }
+
+  onTextareaChange = e => {
+    const markdown = e.target.value
+    this.props.onChange({
+      slate_value: null,
+      markdown,
+      has_changed: markdown !== this._initial_value,
+    })
+  }
+
+  slate_value = () => this.props.content.slate_value || Serializer.deserialize(this.props.content.markdown)
 
   onPaste = (e, editor) => {
     const raw = e.clipboardData.getData('Text')
@@ -261,9 +276,9 @@ export class Editor extends React.Component {
   }
 
   render () {
-    const {value} = this.props.content
+    const value = this.props.content.slate_value
     let tooltip
-    if (!this.state.link && this.props.content.is_rich) {
+    if (!this.state.link && value) {
       const link_node = value.inlines.find(i => i.type === T.link)
       if (link_node) {
         tooltip = {key: link_node.key, href: link_node.data.get('href')}
@@ -298,8 +313,8 @@ export class Editor extends React.Component {
               autoFocus
               className={classes}
               placeholder={this.props.placeholder}
-              value={this.props.content.to_markdown()}
-              onChange={e => this.onChange({value: e.target.value})}
+              value={this.props.content.markdown}
+              onChange={this.onTextareaChange}
               disabled={this.props.disabled}
             />
             <small className="text-muted">Your editor is in raw <a {...help_args}>markdown</a> mode.</small>
@@ -310,12 +325,12 @@ export class Editor extends React.Component {
               spellCheck
               autoFocus
               id="slate-editor"
-              placeholder={(value.focusBlock && value.focusBlock.type) === T.para ? this.props.placeholder: ''}
+              placeholder={(value && value.focusBlock && value.focusBlock.type) === T.para ? this.props.placeholder: ''}
               readOnly={this.props.disabled}
-              value={this.props.content.value}
+              value={this.slate_value()}
               ref={this.ref}
               onKeyDown={this.onKeyDown}
-              onChange={this.onChange}
+              onChange={this.onSlateChange}
               onPaste={this.onPaste}
               renderBlock={render_block}
               renderInline={render_inline}

@@ -78,7 +78,7 @@ const Create = ({ctx, history}) => {
 
   const submit_data = () => {
     if (form_data.message && form_data.message.has_changed) {
-      return {...form_data, message: form_data.message.to_markdown()}
+      return {...form_data, message: form_data.message.markdown}
     } else {
       return {...form_data, message: null}
     }

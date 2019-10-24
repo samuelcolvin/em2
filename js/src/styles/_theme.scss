@@ -331,6 +331,8 @@ body {
 textarea.editor {
   min-height: 146px;
   padding: 0.5rem 0.3rem 0;
+  vertical-align: top;
+  overflow: auto;
 }
 
 .btn-comment {

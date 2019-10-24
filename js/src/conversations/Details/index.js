@@ -127,7 +127,7 @@ class ConvDetailsView extends React.Component {
     if (!this.state.locked && !this.upload_ongoing() && this.state.new_message.has_changed) {
       await this.act({
         act: 'message:add',
-        body: this.state.new_message.to_markdown(),
+        body: this.state.new_message.markdown,
         files: this.state.files.filter(f => f.done).map(f => f.content_id),
       })
     }
@@ -144,7 +144,7 @@ class ConvDetailsView extends React.Component {
 
   add_comment = async () => {
     if (!this.state.locked && this.state.comment.has_changed && this.state.comment_parent) {
-      await this.act({act: 'message:add', body: this.state.comment.to_markdown(), parent: this.state.comment_parent})
+      await this.act({act: 'message:add', body: this.state.comment.markdown, parent: this.state.comment_parent})
     }
   }
 
@@ -164,7 +164,7 @@ class ConvDetailsView extends React.Component {
     if (!this.state.locked && this.state.msg_modify_id && this.state.msg_modify_body.has_changed) {
       const action = {
         act: 'message:modify',
-        body: this.state.msg_modify_body.to_markdown(),
+        body: this.state.msg_modify_body.markdown,
         follows: this.last_action_id,
       }
       await this.act(action)
