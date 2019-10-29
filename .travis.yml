@@ -23,11 +23,14 @@ before_install:
 - psql --version
 - psql -c 'create role travis superuser login createdb' -U postgres
 
-- nvm install 10.16.3
+- nvm install 10
 - curl -o- -L https://yarnpkg.com/install.sh | bash -s -- --version 1.19.1
-- export PATH="$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"
-- curl -Lf https://github.com/samuelcolvin/donkey-make/releases/download/v0.3/donk > ./donk
-- chmod +x ./donk
+
+- mkdir -p $HOME/.bin
+- curl -Lf https://github.com/samuelcolvin/donkey-make/releases/download/v0.4.1/donk > $HOME/.bin/donk
+- chmod +x $HOME/.bin/donk
+
+- export PATH="$HOME/.bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"
 
 cache:
   pip: true
@@ -39,14 +42,14 @@ cache:
 install:
 - ls docker_images/*.tar | xargs -i sh -c "docker load -i {}"
 - docker images -a
-- ./donk install
+- donk install
 - cd js && yarn && yarn list && cd ..
 
 script:
-- ./donk lint
-- ./donk test
+- donk lint
+- donk test
 - bash <(curl -s https://codecov.io/bash)
-- ./donk build
+- donk build
 
 before_cache:
 - docker images -a

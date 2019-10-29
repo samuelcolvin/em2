@@ -39,7 +39,7 @@ export const raw_empty = {
 const fa_name = s => 'fa' + s.charAt(0).toUpperCase() + s.slice(1).replace('-', '')
 
 const mark_active = (main, type) => (
-  main.props.content.is_rich && main.props.content.value.activeMarks.some(mark => mark.type === type)
+  main.props.content.slate_value && main.props.content.slate_value.activeMarks.some(mark => mark.type === type)
 )
 
 export const MarkButton = ({main, type, title, onMouseDown = null, icon = null}) => (

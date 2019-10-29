@@ -77,8 +77,8 @@ const Create = ({ctx, history}) => {
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit_data = () => {
-    if (form_data.message && form_data.message.has_content) {
-      return {...form_data, message: form_data.message.to_markdown()}
+    if (form_data.message && form_data.message.has_changed) {
+      return {...form_data, message: form_data.message.markdown}
     } else {
       return {...form_data, message: null}
     }

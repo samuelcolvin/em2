@@ -4,15 +4,25 @@ import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, Loading, confirm_modal} from 'reactstrap-toolbox'
-import {Editor, empty_editor} from '../../Editor'
+import {Editor, empty_editor, from_markdown} from '../../Editor'
 import Message from './Message'
 import RightPanel from './RightPanel'
 import Subject from './Subject'
 import Drop from './Drop'
 
+const initial_state = {
+  locked: false,
+  files: [],
+  new_message: empty_editor,
+  comment: empty_editor,
+  comment_parent: null,
+  extra_prts: null,
+  msg_modify_id: null,
+  msg_modify_body: null,
+}
 
 class ConvDetailsView extends React.Component {
-  state = {files: [], new_message: empty_editor, comment: empty_editor}
+  state = initial_state
   marked_seen = false
 
   async componentDidMount () {
@@ -41,14 +51,33 @@ class ConvDetailsView extends React.Component {
 
   on_keydown = e => {
     if (e.key === 'Enter' && e.ctrlKey) {
-      if (this.state.new_message.has_content) {
+      if (this.state.new_message.has_changed) {
         this.add_msg()
-      } else if (this.state.comment) {
+      } else if (this.state.comment_parent) {
         this.add_comment()
       } else if (this.state.extra_prts) {
         this.add_participants()
+      } else if (this.state.msg_modify_id) {
+        this.msg_modify()
       }
     }
+  }
+
+  locked = part => {
+    if (this.state.locked || this.state.conv.removed) {
+      return true
+    } else if (part === null) {
+      return false
+    } else if (part !== 'new_message' && this.state.new_message.has_changed) {
+      return true
+    } else if (part !== 'comment' && this.state.comment_parent) {
+      return true
+    } else if (part !== 'modify_msg' && this.state.msg_modify_id) {
+      return true
+    } else if (part !== 'extra_prts' && this.state.extra_prts) {
+      return true
+    }
+    return false
   }
 
   update = async data => {
@@ -56,14 +85,15 @@ class ConvDetailsView extends React.Component {
     if (data && this.state.conv && data.conv !== this.state.conv.key) {
       // different conversation
     } else if (data && data.new_key) {
+      // conversation just got published and its key changed
       this.props.history.push(`/${data.new_key.substr(0, 10)}/`)
     } else {
       let conv = await window.logic.conversations.get(this.props.match.params.key)
-      if (!conv) {
-        this.setState({not_found: true})
+      if (!this.mounted) {
         return
       }
-      if (!this.mounted) {
+      if (!conv) {
+        this.setState({not_found: true})
         return
       }
       this.props.ctx.setMenuItem(conv.primary_flag)
@@ -73,7 +103,11 @@ class ConvDetailsView extends React.Component {
       if (this.pending_interaction && this.state.locked && this.pending_interaction === data.interaction) {
         this.pending_interaction = null
         this.last_action_id = data.last_action_id
-        this.setState({locked: false})
+        if (this.interaction_type === 'message:lock') {
+          this.setState({locked: false})
+        } else if (this.interaction_type !== 'subject:lock')  {
+          this.setState(initial_state)
+        }
       }
       if (!this.marked_seen && this.state.conv) {
         this.marked_seen = true
@@ -90,17 +124,12 @@ class ConvDetailsView extends React.Component {
   }
 
   add_msg = async () => {
-    if (!this.state.locked && !this.upload_ongoing() && this.state.new_message.has_content) {
-      this.setState({locked: true})
-      const actions = [
-        {
-          act: 'message:add',
-          body: this.state.new_message.to_markdown(),
-          files: this.state.files.filter(f => f.done).map(f => f.content_id),
-        },
-      ]
-      this.pending_interaction = await window.logic.conversations.act(this.state.conv.key, actions)
-      this.setState({new_message: empty_editor, files: []})
+    if (!this.state.locked && !this.upload_ongoing() && this.state.new_message.has_changed) {
+      await this.act({
+        act: 'message:add',
+        body: this.state.new_message.markdown,
+        files: this.state.files.filter(f => f.done).map(f => f.content_id),
+      })
     }
   }
 
@@ -114,22 +143,39 @@ class ConvDetailsView extends React.Component {
   upload_ongoing = () => !!this.state.files.filter(f => f.progress).length
 
   add_comment = async () => {
-    if (!this.state.locked && this.state.comment.has_content && this.state.comment_parent) {
-      this.setState({locked: true})
-      const actions = [{act: 'message:add', body: this.state.comment.to_markdown(), parent: this.state.comment_parent}]
-      this.pending_interaction = await window.logic.conversations.act(this.state.conv.key, actions)
-      this.setState({comment: empty_editor, comment_parent: null})
+    if (!this.state.locked && this.state.comment.has_changed && this.state.comment_parent) {
+      await this.act({act: 'message:add', body: this.state.comment.markdown, parent: this.state.comment_parent})
+    }
+  }
+
+  msg_modify_lock = async msg => {
+    if (!this.state.locked && !this.state.msg_modify_id) {
+      await this.act({act: 'message:lock', follows: msg.last_action})
+      this.setState({msg_modify_id: msg.first_action, msg_modify_body: from_markdown(msg.body)})
+    }
+  }
+
+  msg_modify_release = async () => {
+    this.setState({msg_modify_id: null, msg_modify_body: null})
+    await this.act({act: 'message:release', follows: this.last_action_id})
+  }
+
+  msg_modify = async () => {
+    if (!this.state.locked && this.state.msg_modify_id && this.state.msg_modify_body.has_changed) {
+      const action = {
+        act: 'message:modify',
+        body: this.state.msg_modify_body.markdown,
+        follows: this.last_action_id,
+      }
+      await this.act(action)
     }
   }
 
   add_participants = async () => {
     if (!this.state.locked && this.state.extra_prts.length) {
       this.setState({locked: true})
-      const actions = this.state.extra_prts.map(p => (
-        {act: 'participant:add', participant: p.email}
-      ))
+      const actions = this.state.extra_prts.map(p => ({act: 'participant:add', participant: p.email}))
       this.pending_interaction = await window.logic.conversations.act(this.state.conv.key, actions)
-      this.setState({extra_prts: null})
     }
   }
 
@@ -141,20 +187,21 @@ class ConvDetailsView extends React.Component {
         continue_text: 'Remove Participant',
       }
       if (await confirm_modal(ctx)) {
-        await this.act([{act: 'participant:remove', follows: prt.id, participant: prt.email}], true)
+        await this.act({act: 'participant:remove', follows: prt.id, participant: prt.email})
       } else {
         this.setState({locked: false})
       }
     }
   }
 
-  act = async (actions, locked_ok) => {
-    if (!this.state.locked || locked_ok) {
-      this.setState({locked: true})
-      this.pending_interaction = await window.logic.conversations.act(this.state.conv.key, actions)
-    } else {
-      console.warn('component already locked, cannot perform actions:', actions)
+  act = async (action, check_locked = false) => {
+    if (check_locked && !this.state.locked) {
+      console.warn('component already locked, cannot perform actions:', action)
+      return
     }
+    this.setState({locked: true})
+    this.interaction_type = action.act
+    this.pending_interaction = await window.logic.conversations.act(this.state.conv.key, [action])
   }
 
   lock_view = () => {
@@ -165,14 +212,12 @@ class ConvDetailsView extends React.Component {
     return () => this.setState({locked: false})
   }
 
-  // TODO do all this better once we have full coroutines for act: return an object with "set" and "release" methods
-  // from the lock coroutine
   lock_subject = async () => {
     const follows = await window.logic.conversations.last_subject_action(this.state.conv.key)
-    await this.act([{act: 'subject:lock', follows}])
+    await this.act({act: 'subject:lock', follows})
   }
-  release_subject = () => this.act([{act: 'subject:release', follows: this.last_action_id}])
-  set_subject = subject => this.act([{act: 'subject:modify', body: subject, follows: this.last_action_id}])
+  release_subject = () => this.act({act: 'subject:release', follows: this.last_action_id}, true)
+  set_subject = subject => this.act({act: 'subject:modify', body: subject, follows: this.last_action_id}, true)
 
   render () {
     if (this.state.not_found) {
@@ -185,7 +230,7 @@ class ConvDetailsView extends React.Component {
     } else if (!this.state.conv || !this.props.ctx.user) {
       return <Loading/>
     }
-    const edit_locked = this.state.locked || this.state.conv.removed
+    const new_message_locked = this.locked('new_message')
     return (
       <div>
         <Subject
@@ -210,7 +255,7 @@ class ConvDetailsView extends React.Component {
         <Row>
           <Col xl="4 order-xl-8">
             <RightPanel
-              edit_locked={edit_locked}
+              locked={part => this.locked(part)}
               state={this.state}
               add_participants={this.add_participants}
               remove_participants={this.remove_participants}
@@ -220,11 +265,14 @@ class ConvDetailsView extends React.Component {
           <Col xl="8">
             {this.state.conv.messages.map(msg => (
               <Message msg={msg}
-                       edit_locked={edit_locked}
+                       locked={part => this.locked(part)}
                        key={msg.first_action}
                        state={this.state}
                        session_id={this.props.ctx.user.session_id}
                        setState={s => this.setState(s)}
+                       msg_modify={() => this.msg_modify()}
+                       msg_modify_lock={() => this.msg_modify_lock(msg)}
+                       msg_modify_release={() => this.msg_modify_release()}
                        add_comment={() => this.add_comment()}/>
             ))}
             <div className="box no-pad add-msg">
@@ -237,20 +285,20 @@ class ConvDetailsView extends React.Component {
               <div className="py-2">
                 <Drop conv={this.state.conv.key}
                       files={this.state.files}
-                      locked={edit_locked}
+                      locked={new_message_locked}
                       add_file={this.add_file}
                       remove_file={this.remove_file}
                       update_file={this.update_file}>
                   <Editor
                     placeholder="reply to all..."
-                    disabled={!!(edit_locked || this.state.comment_parent || this.state.extra_prts)}
+                    disabled={new_message_locked}
                     content={this.state.new_message}
                     onChange={value => this.setState({new_message: value})}
                   />
                 </Drop>
                 <div className="text-right">
                   <Button color="primary"
-                          disabled={edit_locked || this.upload_ongoing() || !this.state.new_message.has_content}
+                          disabled={new_message_locked || this.upload_ongoing() || !this.state.new_message.has_changed}
                           onClick={this.add_msg}>
                     <FontAwesomeIcon icon={fas.faPaperPlane} className="mr-1"/>
                     {this.state.conv.draft ? 'Add Message' : 'Send'}
