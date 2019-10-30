@@ -239,11 +239,26 @@ create table image_cache (
 );
 create index idx_image_cache_created on image_cache using btree (created);
 
----------------------------------------------------------------------------
--- search table, this references conversations so must be the same db,   --
--- other search solutions would need to record conv details and key      --
--- in search entries.                                                    --
----------------------------------------------------------------------------
+-------------------------------------------------------------------------
+-- contacts                                                            --
+-------------------------------------------------------------------------
+
+create table contacts (
+  id bigserial primary key,
+  owner bigint references users,
+  use_profile boolean default false,
+  email varchar(255) not null unique,
+  first_name varchar(63),
+  last_name varchar(63),
+  extra json
+);
+create index idx_contact_email on contacts using btree (email);
+
+-------------------------------------------------------------------------
+-- search table, this references conversations so must be the same db, --
+-- other search solutions would need to record conv details and key    --
+-- in search entries.                                                  --
+-------------------------------------------------------------------------
 create table search (
   id bigserial primary key,
   conv bigint references conversations,
@@ -314,7 +329,17 @@ create table auth_session_events (
 );
 create index idx_auth_session_event_session on auth_session_events using btree (session);
 
--- todo add address book, domains, organisations and teams, perhaps new db/app.
+create type ProfileVisibility as enum ('private', 'public', 'searchable');
+
+create table auth_contact_profiles (
+  id bigint primary key references users on delete cascade,
+  visibility ProfileVisibility not null default 'private',
+  first_name varchar(63),
+  last_name varchar(63),
+  extra json
+);
+
+-- todo add domains, organisations and teams, perhaps new db/app.
 
 create or replace function or_now(v timestamptz) returns timestamptz as $$
   begin
