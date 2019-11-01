@@ -4,7 +4,8 @@ from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
 import nacl.encoding
-from atoolbox import JsonErrors, json_response
+from atoolbox import JsonErrors, json_response, parse_request_query, raw_json_response
+from buildpg.asyncpg import BuildPgConnection
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, Extra, PositiveInt, conint, constr, validator
 from typing_extensions import Literal
 
@@ -24,7 +25,7 @@ from em2.utils.core import MsgFormat
 from em2.utils.db import or404
 from em2.utils.storage import check_content_type
 
-from .utils import ExecView
+from .utils import ExecView, check_signature
 
 logger = logging.getLogger('em2.protocol.views')
 
@@ -186,17 +187,7 @@ class _PushBase(ExecView):
     """
 
     async def execute(self, m: PushModel):  # noqa: C901 (ignore complexity)
-        try:
-            request_em2_node = self.request.query['node']
-        except KeyError:
-            raise JsonErrors.HTTPBadRequest("'node' get parameter missing")
-
-        try:
-            await self.em2.check_body_signature(request_em2_node, self.request)
-        except InvalidSignature as e:
-            msg = e.args[0]
-            logger.info('unauthorized em2 push msg="%s" em2-node="%s"', msg, request_em2_node)
-            raise JsonErrors.HTTPUnauthorized(msg)
+        request_em2_node = await check_signature(self.request)
 
         if m.upstream_signature:
             data = await self.request.json()
@@ -474,3 +465,28 @@ class Em2FollowerPush(_PushBase):
             upstream_signature=m.upstream_signature,
             upstream_em2_node=m.upstream_em2_node,
         )
+
+
+class ProfileQueryModel(BaseModel):
+    email: EmailStr
+
+
+async def get_profile(request):
+    await check_signature(request)
+    m = parse_request_query(request, ProfileQueryModel)
+    conn: BuildPgConnection = request['conn']
+    # TODO support visibility=private
+    raw_json = await or404(
+        conn.fetchrow(
+            """
+            select row_to_json(t) from (
+              select profile_type, main_name, last_name, image_url, profile_status, profile_status_message, body
+              from users
+              where email=$1 and user_type='local' and visibility!='private'
+            ) t
+            """,
+            m.email,
+        ),
+        msg='user not found',
+    )
+    return raw_json_response(raw_json)

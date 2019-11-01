@@ -12,13 +12,13 @@ create table users (
   email varchar(255) not null unique,
   v bigint default 1,  -- null for remote users, set thus when the local check returns false
   update_ts timestamptz,
-  profile_type ProfileTypes,
   visibility ProfileVisibility,
+  profile_type ProfileTypes,
   main_name varchar(63),
   last_name varchar(63),
   image_url varchar(2047),
   profile_status ProfileStatus,
-  status_message varchar(512),
+  profile_status_message varchar(511),
   body text
 );
 create index idx_user_type on users using btree (user_type);

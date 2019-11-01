@@ -29,7 +29,9 @@ action_signed_fields = 'act', 'actor', 'ts', 'participant', 'body', 'msg_format'
 
 
 class HttpError(RuntimeError):
-    pass
+    def __init__(self, msg, status):
+        self.status = status
+        super().__init__(msg)
 
 
 class InvalidSignature(RuntimeError):
@@ -146,8 +148,9 @@ class Em2Comms:
         data: Any = None,
         model: Type[BaseModel] = None,
         expected_statuses: Sequence[int] = (200,),
-    ):
-        return await self._em2_request(METH_GET, url, sign, params, data, model, expected_statuses)
+        model_response: Sequence[int] = None,
+    ) -> ResponseSummary:
+        return await self._em2_request(METH_GET, url, sign, params, data, model, expected_statuses, model_response)
 
     async def post(
         self,
@@ -158,8 +161,9 @@ class Em2Comms:
         params: Dict[str, Any] = None,
         model: Type[BaseModel] = None,
         expected_statuses: Sequence[int] = (200,),
-    ):
-        return await self._em2_request(METH_POST, url, sign, params, data, model, expected_statuses)
+        model_response: Sequence[int] = None,
+    ) -> ResponseSummary:
+        return await self._em2_request(METH_POST, url, sign, params, data, model, expected_statuses, model_response)
 
     async def _em2_request(
         self,
@@ -170,6 +174,7 @@ class Em2Comms:
         data: Any,
         model: Type[BaseModel],
         expected_statuses: Sequence[int],
+        model_response: Sequence[int] = None,
     ) -> ResponseSummary:
         response_headers = response_data = None
         if isinstance(data, bytes):
@@ -192,6 +197,7 @@ class Em2Comms:
             headers = None
 
         logger.debug('em2-request %s %s', method, url_)
+        error_details, error_status = None, None
         try:
             async with self.session.request(method, url_, data=data_, headers=headers) as r:
                 response_data = await r.text()
@@ -199,15 +205,18 @@ class Em2Comms:
 
                 if r.status in expected_statuses:
                     d, m = None, None
-                    if model:
+                    if model and (model_response is None or r.status in model_response):
                         d = await r.json()
                         m = model.parse_obj(d)
                     return ResponseSummary(r.status, response_headers, m)
-
-        except (ClientError, OSError, asyncio.TimeoutError, ValidationError) as e:
+        except ValidationError as e:
+            exc = 'validation error'
+            error_details = e.errors()
+        except (ClientError, OSError, asyncio.TimeoutError) as e:
             exc = repr(e)
         else:
             exc = f'bad response: {r.status}'
+            error_status = r.status
 
         logger.warning(
             'error on %s to %s, %s',
@@ -222,11 +231,12 @@ class Em2Comms:
                     'request_headers': headers,
                     'response_headers': response_headers,
                     'response_data': lenient_json(response_data),
+                    'error_details': error_details,
                 }
             },
         )
         body = response_data[:200] if response_data else None
-        raise HttpError(f'error on {method} to {url_}, {exc}, body:\n{body}')
+        raise HttpError(f'error on {method} to {url_}, {exc}, body:\n{body}', error_status)
 
     async def _check_signature(self, em2_node: str, signature: str, to_sign: bytes) -> None:
         try:
