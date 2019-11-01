@@ -10,6 +10,7 @@ from buildpg import MultipleValues, SetValues, V, Values, funcs
 from pydantic import BaseModel, EmailStr, Extra, constr, validator
 
 from em2.background import push_all, user_actions
+from em2.contacts import add_contacts
 from em2.core import (
     Action,
     ActionTypes,
@@ -195,6 +196,7 @@ class ConvCreate(ExecView):
         conv_id, conv_key = await create_conv(conns=self.conns, creator_email=self.session.email, actions=actions)
 
         await push_all(self.conns, conv_id)
+        await add_contacts(self.conns, conv_id, actor_id)
         return dict(key=conv_key, status_=201)
 
 

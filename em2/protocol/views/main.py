@@ -453,9 +453,6 @@ class Em2FollowerPush(_PushBase):
             return conv_id, action_ids
 
     async def re_push(self, m: PushModel, conv_id: Optional[int], action_ids: Optional[List[int]]):
-        import asyncio
-
-        await asyncio.sleep(0.5)
         await push_multiple(
             self.conns,
             conv_id,
