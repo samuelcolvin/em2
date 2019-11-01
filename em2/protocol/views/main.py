@@ -252,6 +252,13 @@ class _PushBase(ExecView):
 
 
 class Em2Push(_PushBase):
+    """
+    Receives actions from the conversation leader, these actions could have been originally performed by:
+    * the leader
+    * this node, e.g. they're being sent back after a follower push
+    * another follower pushed to the leader which is now pushing to us
+    """
+
     class Model(PushModel):
         upstream_signature: constr(min_length=128, max_length=128) = None
         upstream_em2_node: Optional[str] = None
@@ -344,7 +351,7 @@ class Em2Push(_PushBase):
         ]
 
         try:
-            await apply_actions(self.conns, conv_id, actions)
+            await apply_actions(self.conns, conv_id, actions, allow_multiple_actors=True)
         except JsonErrors.HTTPNotFound:
             # happens when an actor hasn't yet been added to the conversation, any other times?
             # TODO any other errors?
@@ -396,6 +403,11 @@ class Em2Push(_PushBase):
 
 
 class Em2FollowerPush(_PushBase):
+    """
+    Used to push actions from a follower (non-leader) node to the leader, actions are not "official" until
+    this request has completed.
+    """
+
     class Model(PushModel):
         upstream_signature: constr(min_length=128, max_length=128)
         upstream_em2_node: str
@@ -441,7 +453,7 @@ class Em2FollowerPush(_PushBase):
         ]
 
         try:
-            action_ids = await apply_actions(self.conns, conv_id, actions)
+            action_ids = await apply_actions(self.conns, conv_id, actions, allow_multiple_actors=True)
         except JsonErrors.HTTPNotFound:
             # happens when an actor hasn't yet been added to the conversation, any other times?
             # TODO any other errors?

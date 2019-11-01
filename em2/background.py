@@ -8,6 +8,7 @@ from aiohttp.abc import Application
 from aiohttp.web_ws import WebSocketResponse
 from arq.connections import ArqRedis
 
+from em2.contacts import add_contacts
 from em2.core import Action, Connections, ConvSummary, apply_actions, get_flag_counts
 from em2.settings import Settings
 from em2.utils.storage import S3, file_upload_cache_key
@@ -219,3 +220,4 @@ async def user_actions(conns: Connections, conv: ConvSummary, actions: List[Acti
 
         if action_ids:
             await push_multiple(conns, conv.id, action_ids, interaction_id=interaction_id)
+            await add_contacts(conns, conv.id, actions[0].actor_id)

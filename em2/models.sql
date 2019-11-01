@@ -1,13 +1,25 @@
 create extension pg_trgm;
 
 create type UserTypes as enum ('new', 'local', 'remote_em2', 'remote_other');
+create type ProfileTypes as enum ('personal', 'work', 'organisation');
+create type ProfileVisibility as enum ('private', 'public', 'public-searchable');
+create type ProfileStatus as enum ('active', 'away', 'dormant');
 
 -- includes both local and remote users, TODO somehow record unsubscribed when people repeatedly complain
 create table users (
   id bigserial primary key,
   user_type UserTypes not null default 'new',
   email varchar(255) not null unique,
-  v bigint default 1  -- null for remote users, set thus when the local check returns false
+  v bigint default 1,  -- null for remote users, set thus when the local check returns false
+  update_ts timestamptz,
+  profile_type ProfileTypes,
+  visibility ProfileVisibility,
+  main_name varchar(63),
+  last_name varchar(63),
+  image_url varchar(2047),
+  profile_status ProfileStatus,
+  status_message varchar(512),
+  body text
 );
 create index idx_user_type on users using btree (user_type);
 
@@ -74,8 +86,9 @@ create index idx_participants_user_removal_action on participants using btree (u
 create index idx_participants_user_seen on participants using btree (user_id, seen);
 create index idx_participants_user_inbox on participants using btree (user_id, inbox);
 create index idx_participants_user_deleted on participants using btree (user_id, deleted);
-create index idx_participants_deleted_ts on participants using btree (deleted_ts);
 create index idx_participants_user_spam on participants using btree (user_id, spam);
+create index idx_participants_conv on participants using btree (conv);
+create index idx_participants_deleted_ts on participants using btree (deleted_ts);
 create index idx_participants_label_ids on participants using gin (label_ids);
 
 -- see core.ActionTypes enum which matches this
@@ -246,13 +259,16 @@ create index idx_image_cache_created on image_cache using btree (created);
 create table contacts (
   id bigserial primary key,
   owner bigint references users,
-  use_profile boolean default false,
-  email varchar(255) not null unique,
-  first_name varchar(63),
+  profile_user bigint references users,
+  profile_type ProfileTypes,
+  main_name varchar(63),
   last_name varchar(63),
-  extra json
+  image_url varchar(2047),
+  profile_status ProfileStatus,
+  status_message varchar(512),
+  body text,
+  unique (owner, profile_user)
 );
-create index idx_contact_email on contacts using btree (email);
 
 -------------------------------------------------------------------------
 -- search table, this references conversations so must be the same db, --
@@ -328,16 +344,6 @@ create table auth_session_events (
   ip inet not null
 );
 create index idx_auth_session_event_session on auth_session_events using btree (session);
-
-create type ProfileVisibility as enum ('private', 'public', 'searchable');
-
-create table auth_contact_profiles (
-  id bigint primary key references users on delete cascade,
-  visibility ProfileVisibility not null default 'private',
-  first_name varchar(63),
-  last_name varchar(63),
-  extra json
-);
 
 -- todo add domains, organisations and teams, perhaps new db/app.
 

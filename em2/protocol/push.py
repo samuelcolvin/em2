@@ -44,7 +44,7 @@ class Pusher:
         retry_users, smtp_addresses, em2_nodes = set(), set(), set()
         for node, email in filter(None, results):
             if node == RETRY:
-                retry_users.add((email, False))
+                retry_users.add((email, None))
             elif node == SMTP:
                 smtp_addresses.add(email)
             else:
@@ -70,6 +70,21 @@ class Pusher:
         if em2_nodes:
             logger.info('%d em2 nodes to push action to', len(em2_nodes))
             await self.em2_send(conversation, actions, em2_nodes, **extra)
+
+            v = await self.pg.fetch(
+                """
+                select u.id from participants p
+                join users u on p.user_id = u.id
+                join conversations c on p.conv = c.id
+                where c.key=$1 and u.user_type='remote_em2' and
+                (now() - u.update_ts > interval '1 day' or u.update_ts is null)
+                """,
+                conversation,
+            )
+            update_user_ids = [r[0] for r in v]
+            if update_user_ids:
+                await self.redis.enqueue_job('profile_update', update_user_ids)
+
         return f'retry={len(retry_users)} smtp={len(smtp_addresses)} em2={len(em2_nodes)}'
 
     async def follower_push(self, conv_key: str, leader_node: str, interaction_id: str, actions: List[Action]):

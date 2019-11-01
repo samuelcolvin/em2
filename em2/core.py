@@ -223,15 +223,15 @@ class _Act:
     See act() below for details.
     """
 
-    __slots__ = 'conns', 'conv_id', 'new_user_ids', 'spam', 'warnings'
+    __slots__ = 'conns', 'conv_id', 'spam', 'warnings', 'new_user_ids'
 
     def __init__(self, conns: Connections, conv_id: int, spam: bool, warnings: Dict[str, str]):
         self.conns = conns
         self.conv_id = conv_id
-        # ugly way of doing this, but less ugly than other approaches
-        self.new_user_ids: Set[int] = set()
         self.spam = True if spam else None
         self.warnings = json.dumps(warnings) if warnings else None  # FIXME moved to action
+        # ugly way of doing this, but less ugly than other approaches
+        self.new_user_ids: Set[int] = set()
 
     async def prepare(self, actor_id: int) -> Tuple[int, int, int]:
         c = await get_conv_for_user(self.conns, actor_id, self.conv_id)
@@ -529,7 +529,13 @@ class ConvFlags(str, Enum):
 
 
 async def apply_actions(
-    conns: Connections, conv_id: int, actions: List[Action], *, spam: bool = False, warnings: Dict[str, str] = None
+    conns: Connections,
+    conv_id: int,
+    actions: List[Action],
+    *,
+    spam: bool = False,
+    warnings: Dict[str, str] = None,
+    allow_multiple_actors: bool = False,
 ) -> List[int]:
     """
     Apply actions and return their ids.
@@ -543,23 +549,24 @@ async def apply_actions(
     async with conns.main.transaction():
         # IMPORTANT must not do anything that could be slow (eg. networking) inside this transaction,
         # as the conv is locked for update from prepare() onwards
-        actor_user_id = actions[0].actor_id
-        last_action, conv_id, creator_id = await act_cls.prepare(actor_user_id)
+        actor_id = actions[0].actor_id
+        last_action, conv_id, creator_id = await act_cls.prepare(actor_id)
 
         for action in actions:
-            if action.actor_id != actor_user_id:
-                actor_user_id = action.actor_id
+            if action.actor_id != actor_id:
+                actor_id = action.actor_id
                 last_action = await act_cls.new_actor(action.actor_id)
+                if not allow_multiple_actors:
+                    raise ValueError('allow_multiple_actors is False, but multiple actors found')
             action_id, changed_user_id = await act_cls.run(action, last_action)
             if action_id:
                 actions_with_ids.append((action_id, changed_user_id, action))
 
     if actions_with_ids:
+        # FIXME is this correct if there are multiple actors?
         # the actor is assumed to have seen the conversation as they've acted upon it
         v = await conns.main.execute(
-            'update participants set seen=true where conv=$1 and user_id=$2 and seen is not true',
-            conv_id,
-            actor_user_id,
+            'update participants set seen=true where conv=$1 and user_id=$2 and seen is not true', conv_id, actor_id
         )
         if v == 'UPDATE 1':
             # decrement unseen for the actor if we did mark the conversation as seen and it's in the inbox
@@ -569,11 +576,11 @@ async def apply_actions(
                 where conv=$1 and user_id=$2 and inbox is true and deleted is not true and spam is not true
                 """,
                 conv_id,
-                actor_user_id,
+                actor_id,
             )
         # everyone else hasn't seen this action if it's "worth seeing"
         if any(a.act not in _meta_action_types for a in actions):
-            from_deleted, from_archive, already_inbox = await user_flag_moves(conns, conv_id, actor_user_id)
+            from_deleted, from_archive, already_inbox = await user_flag_moves(conns, conv_id, actor_id)
         await update_conv_users(conns, conv_id)
 
     updates = [
@@ -621,9 +628,7 @@ async def apply_actions(
     return [a[0] for a in actions_with_ids]
 
 
-async def user_flag_moves(
-    conns: Connections, conv_id: int, actor_user_id: int
-) -> Tuple[List[int], List[int], List[int]]:
+async def user_flag_moves(conns: Connections, conv_id: int, actor_id: int) -> Tuple[List[int], List[int], List[int]]:
     # TODO we'll also need to exclude muted conversations from being moved, while still setting seen=false
     # we could exclude no local users from some of this
     return await conns.main.fetchrow(
@@ -661,7 +666,7 @@ async def user_flag_moves(
              (select coalesce(array_agg(user_id), '{}') already_inbox from already_inbox) already_inbox
         """,
         conv_id,
-        actor_user_id,
+        actor_id,
     )
 
 

@@ -424,7 +424,7 @@ One search entry per conversation (where required) and maybe one per language pe
   participant is added to it. Thus people can still search for conversations they're removed from.
 * when a new participant is added to a conversation their id is added to `user_ids` for the main conv search entry
 
-vector weights used to differentiate between different parts of the conversation::
+vector weights used to differentiate between different parts of the conversation:
 * `A`: Subject - highest priority but also we can do `subject:foobar` searches
 * `B`: email addresses of participants in the conv including domains for `includes:@foobar.com` searches
 * `C`: files including extensions for `files:*.png` searches
@@ -447,3 +447,19 @@ address to allow search for that user.
 
 * `conv:create` - just create
 * `conv:publish` - update keys and add all participants to `user_ids`
+
+## Contact
+
+* email address
+* type: private person, work profile, organisation/department/group, anything else?
+* visibility
+  * private (shown only if you email someone)
+  * public (available if you know address)
+  * public-searchable - can be searched for
+* first name shown as name if organisation/department/group
+* last name
+* image
+* status - active, away, dormant
+* status message
+* body
+* add other things later, perhaps via a JSON field with suggested field names
