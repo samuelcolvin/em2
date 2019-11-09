@@ -2455,6 +2455,18 @@ camelcase@^5.0.0, camelcase@^5.2.0, camelcase@^5.3.1:
   resolved "https://registry.yarnpkg.com/camelcase/-/camelcase-5.3.1.tgz#e3c9b31569e106811df242f715725a1f4c494320"
   integrity sha512-L28STB170nwWS63UjtlEOE3dldQApaJXZkOI1uMFfzf3rRuPegHaHesyee+YxQ+W6SvRDQV6UrdOdRiR153wJg==
 
+can-namespace@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/can-namespace/-/can-namespace-1.0.0.tgz#0b8fafafbb11352b9ead4222ffe3822405b43e99"
+  integrity sha1-C4+vr7sRNSuerUIi/+OCJAW0Ppk=
+
+can-ndjson-stream@^1.0.2:
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/can-ndjson-stream/-/can-ndjson-stream-1.0.2.tgz#6a8131f9c8c697215163b3fe49a0c02e4439cb47"
+  integrity sha512-//tM8wcTV42SyD1JGua7WMVftZEeTwapcHJTTe3vJwuVywXD01CJbdEkgwRYjy2evIByVJV21ZKBdSv5ygIw1w==
+  dependencies:
+    can-namespace "^1.0.0"
+
 caniuse-api@^3.0.0:
   version "3.0.0"
   resolved "https://registry.yarnpkg.com/caniuse-api/-/caniuse-api-3.0.0.tgz#5e4d90e2274961d46291997df599e3ed008ee4c0"
@@ -8742,10 +8754,10 @@ react@^16.8.6:
     object-assign "^4.1.1"
     prop-types "^15.6.2"
 
-reactstrap-toolbox@^0.0.20:
-  version "0.0.20"
-  resolved "https://registry.yarnpkg.com/reactstrap-toolbox/-/reactstrap-toolbox-0.0.20.tgz#aa69f566a33da20492a8d089c8ea580d8041938d"
-  integrity sha512-YasxqwfwRzZa0oWNt5qamZ9QAj6RV65HHSN/K6u3ZuMYAVIMeRhzM0zBFQwr5u3It80k5vY2+HDI6S/+VS2hBQ==
+reactstrap-toolbox@^0.0.22:
+  version "0.0.22"
+  resolved "https://registry.yarnpkg.com/reactstrap-toolbox/-/reactstrap-toolbox-0.0.22.tgz#f2b6d80f96301de84270d3326760cb7ff5e23d84"
+  integrity sha512-FUXoJ1ln71DKHd3oIqM+5K76qITn7vklDa+KYy6O3XY3GNbC0ac6jjunmdMJ9rgbeQMqunHvyJpje8VAYg8sEQ==
   dependencies:
     "@babel/runtime" "^7.4.3"
     dev "^0.1.3"

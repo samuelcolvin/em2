@@ -15,7 +15,8 @@ const static_props = {
   multiple: true,
   className: 'participants-input',
   minLength: 3,
-  filterBy: ['name', 'email'],  // might have to modify this to take care of cases like extra and missing spaces
+  // filterBy: ['name', 'email'],  // might have to modify this to take care of cases like extra and missing spaces
+  filterBy: () => true,
   labelKey: render_option,
   renderToken: token,
   useCache: false,
@@ -34,20 +35,12 @@ class Participants extends React.Component {
   search = async query => {
     this.setState(s => ({ongoing_searches: s.ongoing_searches + 1}))
 
-    const options1 = await window.logic.contacts.fast_email_lookup(query)
-    // null when the address is invalid
-    if (options1) {
-      this.setState({options: options1})
-      // this.setState({options: this.selected().concat(options1)})
-    }
+    const options = []
+    await window.logic.contacts.email_lookup(query,option => {
+      options.push(option)
+      this.setState({options})
+    })
 
-    const options2 = await window.logic.contacts.slow_email_lookup(query)
-    // null when the request was cancelled, or offline
-    if (options2 && options2.length) {
-      // could combine first and second set of options, but in general second set will override first
-      // eg. options2.concat(options1 || [])
-      this.setState({options: options2})
-    }
     this.setState(s => ({ongoing_searches: s.ongoing_searches - 1}))
   }
 

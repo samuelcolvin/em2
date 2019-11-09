@@ -1,5 +1,6 @@
 import debounce from 'debounce-async'
 import isEmail from 'validator/lib/isEmail'
+import ndjsonStream from 'can-ndjson-stream'
 
 function parse_address (email) {
   let name = ''
@@ -18,20 +19,17 @@ export default class Contacts {
     this._debounce_lookup = debounce(this._raw_lookup, 300)
   }
 
-  fast_email_lookup = async query => {
-    const r = parse_address(query)
+  email_lookup = async (query, callback) => {
+    const raw_email = parse_address(query)
     // TODO search for email addresses in indexeddb
-    return r && [r]
-  }
-
-  slow_email_lookup = async query => {
+    if (raw_email) {
+      callback(raw_email)
+    }
     try {
-      const r = await this._debounce_lookup(query)
-      return r.data
+      await this._debounce_lookup(query, callback)
     } catch (e) {
-      if (e === 'canceled') {
-        return null
-      } else {
+      console.log('xxx', e)
+      if (e !== 'canceled') {
         throw e
       }
     }
@@ -50,7 +48,15 @@ export default class Contacts {
     return [results.filter(v => v), results.filter(v => !v).length]
   }
 
-  _raw_lookup = query => (
-    this._main.requests.get('ui', `/${this._main.session.id}/contacts/lookup-email/`, {query})
-  )
+  _raw_lookup = async (query, callback) => {
+    const config = {raw_response: true, headers: {'Accept': 'application/x-ndjson'}}
+    const r = await this._main.requests.get('ui', `/${this._main.session.id}/contacts/lookup-email/`, {query}, config)
+    const stream = await ndjsonStream(r.body)
+    const reader = stream.getReader()
+    let s = await reader.read()
+    while (!s.done) {
+      callback(s.value)
+      s = await reader.read()
+    }
+  }
 }

@@ -16,12 +16,17 @@ create table users (
   profile_type ProfileTypes,
   main_name varchar(63),
   last_name varchar(63),
+  -- TODO add sub-title or similar for organisation, titles, industry or legal name
   image_url varchar(2047),
   profile_status ProfileStatus,
   profile_status_message varchar(511),
+  -- TODO search index
   body text
 );
+create index idx_user_visibility on users using btree (visibility);
 create index idx_user_type on users using btree (user_type);
+-- for looking up email address
+create index idx_user_email_trgm on users using gin (email gin_trgm_ops);
 
 create table labels (
   id bigserial primary key,
@@ -58,12 +63,14 @@ create table conversations (
   live bool not null,  -- used when conversations are created but not yet ready to be read, also perhaps for deletion
   details json
 );
-create index idx_conversations_key on conversations using gin (key gin_trgm_ops);
+create index idx_conversations_key on conversations using btree (key);
 create index idx_conversations_creator on conversations using btree (creator);
 create index idx_conversations_created_ts on conversations using btree (created_ts);
 create index idx_conversations_updated_ts on conversations using btree (updated_ts);
 create index idx_conversations_publish_ts on conversations using btree (publish_ts);
 create index idx_conversations_leader_node on conversations using btree (leader_node);
+-- for looking up conversations by key prefix
+create index idx_conversations_key_trgm on conversations using gin (key gin_trgm_ops);
 
 create table participants (
   id bigserial primary key,
@@ -258,14 +265,15 @@ create index idx_image_cache_created on image_cache using btree (created);
 
 create table contacts (
   id bigserial primary key,
-  owner bigint references users,
-  profile_user bigint references users,
+  owner bigint not null references users,
+  profile_user bigint not null references users,
   profile_type ProfileTypes,
   main_name varchar(63),
   last_name varchar(63),
   image_url varchar(2047),
   profile_status ProfileStatus,
   status_message varchar(512),
+  -- TODO search index
   body text,
   unique (owner, profile_user)
 );
