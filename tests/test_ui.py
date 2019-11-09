@@ -467,7 +467,7 @@ async def test_create_conv_many_participants(cli: UserTestClient, factory: Facto
     assert 'no more than 64 participants permitted' in await r.text()
 
 
-async def test_act_multiple(cli: UserTestClient, factory: Factory, db_conn, conns):
+async def test_act_multiple(cli: UserTestClient, factory: Factory, db_conn):
     user = await factory.create_user()
     conv = await factory.create_conv()
     assert 2 == await db_conn.fetchval('select v from users where id=$1', user.id)
@@ -481,7 +481,6 @@ async def test_act_multiple(cli: UserTestClient, factory: Factory, db_conn, conn
     }
     r = await cli.post_json(factory.url('ui:act', conv=conv.key), data)
     obj = await r.json()
-
     assert obj == {'interaction': RegexStr(r'[a-f0-9]{32}')}
     assert 3 == await db_conn.fetchval('select v from users where id=$1', user.id)
     assert 4 == await db_conn.fetchval(

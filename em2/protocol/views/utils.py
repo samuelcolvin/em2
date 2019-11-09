@@ -30,6 +30,6 @@ async def check_signature(request):
         await em2.check_body_signature(request_em2_node, request)
     except InvalidSignature as e:
         msg = e.args[0]
-        logger.info('unauthorized em2 push msg="%s" em2-node="%s"', msg, request_em2_node)
+        logger.info('unauthorized em2 request url="%s" msg="%s" em2-node="%s"', request.url, msg, request_em2_node)
         raise JsonErrors.HTTPUnauthorized(msg)
     return request_em2_node
