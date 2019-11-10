@@ -3,14 +3,14 @@ import isEmail from 'validator/lib/isEmail'
 import ndjsonStream from 'can-ndjson-stream'
 
 function parse_address (email) {
-  let name = ''
-  const m = email.match(/^ *([\w ]+?) *<(.+)> *$/)
+  let main_name = ''
+  const m = email.match(/^ *([\w ]*?) *<(.+)> *$/)
   if (m) {
-    name = m[1]
+    main_name = m[1]
     email = m[2]
   }
   email = email.trim()
-  return isEmail(email) ? {name, email: email.toLowerCase()} : null
+  return isEmail(email) ? {main_name, email: email.toLowerCase()} : null
 }
 
 export default class Contacts {
@@ -28,7 +28,6 @@ export default class Contacts {
     try {
       await this._debounce_lookup(query, callback)
     } catch (e) {
-      console.log('xxx', e)
       if (e !== 'canceled') {
         throw e
       }

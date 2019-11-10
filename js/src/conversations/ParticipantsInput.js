@@ -15,8 +15,6 @@ const static_props = {
   multiple: true,
   className: 'participants-input',
   minLength: 3,
-  // filterBy: ['name', 'email'],  // might have to modify this to take care of cases like extra and missing spaces
-  filterBy: () => true,
   labelKey: render_option,
   renderToken: token,
   useCache: false,
@@ -30,15 +28,14 @@ const max_participants = 64
 class Participants extends React.Component {
   state = {options: [], ongoing_searches: 0}
 
-  selected = () => this.state.options.filter(o => this.props.value.includes(o.email))
-
   search = async query => {
     this.setState(s => ({ongoing_searches: s.ongoing_searches + 1}))
+    const skip = new Set(this.props.value.map(v => v.email))
 
-    const options = []
-    await window.logic.contacts.email_lookup(query,option => {
-      options.push(option)
-      this.setState({options})
+    await window.logic.contacts.email_lookup(query,o => {
+      if (!skip.has(o.email)) {
+        this.setState(s => ({options: Object.assign({}, s.options, {[o.email]: o})}))
+      }
     })
 
     this.setState(s => ({ongoing_searches: s.ongoing_searches - 1}))
@@ -64,6 +61,13 @@ class Participants extends React.Component {
       message_toast({icon: fas.faTimes, message: `Maximum ${max_participants} participants permitted`})
     } else {
       this.props.onChange(addresses)
+      this.setState(s => {
+        const options = Object.assign({}, s.options)
+        for (let a of addresses) {
+          delete options[a.email]
+        }
+        return {options}
+      })
     }
   }
 
@@ -73,7 +77,7 @@ class Participants extends React.Component {
       <div>
         <AsyncTypeahead
           {...static_props}
-          {...this.state}
+          options={Object.values(this.state.options).reverse()}
           isLoading={this.state.ongoing_searches > 0}
           onSearch={this.search}
           selected={this.props.value}

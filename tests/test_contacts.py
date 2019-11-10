@@ -60,9 +60,7 @@ async def test_lookup_contact(factory: Factory, cli: UserTestClient):
     await factory.create_simple_user(email='other@example.com', visibility='public', last_name='Doe')
 
     lines = await cli.get_ndjson(factory.url('ui:contacts-search'), params={'query': 'other@example.com'})
-    assert lines == [
-        {'email': 'other@example.com', 'is_contact': False, 'main_name': 'John', 'last_name': 'Doe'},
-    ]
+    assert lines == [{'email': 'other@example.com', 'is_contact': False, 'main_name': 'John', 'last_name': 'Doe'}]
 
 
 async def test_lookup_contact_multiple(factory: Factory, cli: UserTestClient):
@@ -91,6 +89,4 @@ async def test_lookup_contact_is_contact(factory: Factory, cli: UserTestClient, 
     )
 
     lines = await cli.get_ndjson(factory.url('ui:contacts-search'), params={'query': 'other@example.com'})
-    assert lines == [
-        {'email': 'other@example.com', 'is_contact': True, 'main_name': 'John', 'last_name': 'different'},
-    ]
+    assert lines == [{'email': 'other@example.com', 'is_contact': True, 'main_name': 'John', 'last_name': 'different'}]
