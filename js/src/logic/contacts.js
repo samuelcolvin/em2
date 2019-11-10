@@ -50,7 +50,7 @@ export default class Contacts {
 
   _raw_lookup = async (query, callback) => {
     const config = {raw_response: true, headers: {'Accept': 'application/x-ndjson'}}
-    const r = await this._main.requests.get('ui', `/${this._main.session.id}/contacts/lookup-email/`, {query}, config)
+    const r = await this._main.requests.get('ui', `/${this._main.session.id}/contacts/search/`, {query}, config)
     const stream = await ndjsonStream(r.body)
     const reader = stream.getReader()
     let s = await reader.read()
