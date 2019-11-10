@@ -1,3 +1,5 @@
+from operator import itemgetter
+
 from em2.contacts import add_contacts
 from em2.core import Action, ActionTypes
 
@@ -50,3 +52,45 @@ async def test_add_contacts(factory: Factory, db_conn, conns):
     assert owner == user.id
     assert profile_user == await db_conn.fetchval('select id from users where email=$1', 'new@example.com')
     assert profile_type is None
+
+
+async def test_lookup_contact(factory: Factory, cli: UserTestClient):
+    await factory.create_user()
+
+    await factory.create_simple_user(email='other@example.com', visibility='public', last_name='Doe')
+
+    lines = await cli.get_ndjson(factory.url('ui:contacts-search'), params={'query': 'other@example.com'})
+    assert lines == [
+        {'email': 'other@example.com', 'is_contact': False, 'main_name': 'John', 'last_name': 'Doe'},
+    ]
+
+
+async def test_lookup_contact_multiple(factory: Factory, cli: UserTestClient):
+    await factory.create_user()
+
+    await factory.create_simple_user(visibility='public-searchable', last_name='Smith')
+    await factory.create_simple_user(visibility='public-searchable', main_name='Smith')
+
+    lines = await cli.get_ndjson(factory.url('ui:contacts-search'), params={'query': 'Smith'})
+    assert sorted(lines, key=itemgetter('email')) == [
+        {'email': 'testing-2@example.com', 'is_contact': False, 'main_name': 'John', 'last_name': 'Smith'},
+        {'email': 'testing-3@example.com', 'is_contact': False, 'main_name': 'Smith'},
+    ]
+
+
+async def test_lookup_contact_is_contact(factory: Factory, cli: UserTestClient, db_conn):
+    user = await factory.create_user()
+
+    other_user_id = await factory.create_simple_user(email='other@example.com', last_name='Doe')
+
+    lines = await cli.get_ndjson(factory.url('ui:contacts-search'), params={'query': 'other@example.com'})
+    assert lines == []
+
+    await db_conn.execute(
+        'insert into contacts (owner, profile_user, last_name) values ($1, $2, $3)', user.id, other_user_id, 'different'
+    )
+
+    lines = await cli.get_ndjson(factory.url('ui:contacts-search'), params={'query': 'other@example.com'})
+    assert lines == [
+        {'email': 'other@example.com', 'is_contact': True, 'main_name': 'John', 'last_name': 'different'},
+    ]

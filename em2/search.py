@@ -226,7 +226,7 @@ async def search(conns: Connections, user_id: int, query: str):
     where = Empty()
 
     if new_query:
-        query_func = _build_main_query(new_query)
+        query_func = build_query_function(new_query)
         query_match = V('s.vector').matches(query_func)
         if re_hex.fullmatch(new_query):
             # looks like it could be a conv key, search for that too
@@ -276,7 +276,7 @@ def _parse_query(query: str) -> Tuple[Optional[str], List[str]]:
     return new_query, groups
 
 
-def _build_main_query(query: str):
+def build_query_function(query: str):
     if not re_websearch.search(query):
         words = re_tsquery.findall(query)
         if words:

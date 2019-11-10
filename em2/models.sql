@@ -16,16 +16,16 @@ create table users (
   profile_type ProfileTypes,
   main_name varchar(63),
   last_name varchar(63),
-  -- TODO add sub-title or similar for organisation, titles, industry or legal name
+  strap_line varchar(127),  -- organisation, titles, industry or legal name
   image_url varchar(2047),
   profile_status ProfileStatus,
   profile_status_message varchar(511),
-  -- TODO search index
-  body text
+  body text,
+  vector tsvector
 );
 create index idx_user_visibility on users using btree (visibility);
 create index idx_user_type on users using btree (user_type);
--- for looking up email address
+-- for looking up partial email address
 create index idx_user_email_trgm on users using gin (email gin_trgm_ops);
 
 create table labels (
@@ -270,11 +270,13 @@ create table contacts (
   profile_type ProfileTypes,
   main_name varchar(63),
   last_name varchar(63),
+  strap_line varchar(127),  -- organisation, titles, industry or legal name
   image_url varchar(2047),
   profile_status ProfileStatus,
-  status_message varchar(512),
+  profile_status_message varchar(511),
   -- TODO search index
   body text,
+  vector tsvector,
   unique (owner, profile_user)
 );
 

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from enum import Enum
 from io import BytesIO
-from typing import List
+from typing import List, Optional
 from uuid import uuid4
 
 import pytest
@@ -35,6 +35,8 @@ from em2.worker import worker_settings
 
 from . import dummy_server
 from .resolver import TestDNSResolver
+
+commit_transactions = 'KEEP_DB' in os.environ
 
 
 @pytest.fixture(scope='session', name='settings_session')
@@ -114,7 +116,10 @@ async def _fix_db_conn(loop, settings, main_db_create):
 
     yield DummyPgPool(conn)
 
-    await tr.rollback()
+    if commit_transactions:
+        await tr.commit()
+    else:
+        await tr.rollback()
     await conn.close()
 
 
@@ -158,6 +163,13 @@ class UserTestClient(TestClient):
         r = await self.get(path, **kwargs)
         assert r.status == status, await r.text()
         return await r.json()
+
+    async def get_ndjson(self, path, *, status=200, **kwargs):
+        r = await self.get(path, **kwargs)
+        assert r.status == status, await r.text()
+        assert r.content_type == 'application/x-ndjson'
+        text = await r.text()
+        return [json.loads(line) for line in text.split('\n') if line]
 
 
 @pytest.fixture(name='resolver')
@@ -268,8 +280,8 @@ class User:
     last_name: str
     password: str
     auth_user_id: int
-    id: int = None
-    session_id: int = None
+    id: Optional[int] = None
+    session_id: Optional[int] = None
 
 
 @dataclass
@@ -321,6 +333,52 @@ class Factory:
         user = User(email, first_name, last_name, pw, auth_user_id, user_id, session_id)
         self.user = self.user or user
         return user
+
+    async def create_simple_user(
+        self,
+        email: str = None,
+        visibility: str = None,
+        profile_type: str = None,
+        main_name: str = 'John',
+        last_name: str = None,
+        strap_line: str = None,
+        image_url: str = None,
+        profile_status: str = None,
+        profile_status_message: str = None,
+        body: str = None,
+    ):
+        if email is None:
+            email = f'testing-{self.email_index}@example.com'
+            self.email_index += 1
+        user_id = await self.conn.fetchval_b(
+            'insert into users (:values__names) values :values on conflict (email) do nothing returning id',
+            values=Values(
+                email=email,
+                visibility=visibility,
+                profile_type=profile_type,
+                main_name=main_name,
+                last_name=last_name,
+                strap_line=strap_line,
+                image_url=image_url,
+                profile_status=profile_status,
+                profile_status_message=profile_status_message,
+                body=body,
+            ),
+        )
+        if not user_id:
+            raise RuntimeError(f'user with email {email} already exists')
+
+        await self.conn.execute(
+            """
+            update users set
+              vector=setweight(to_tsvector(main_name || ' ' || coalesce(last_name, '')), 'A') ||
+                     setweight(to_tsvector(coalesce(strap_line, '')), 'B') ||
+                     to_tsvector(coalesce(body, ''))
+            where id=$1
+            """,
+            user_id,
+        )
+        return user_id
 
     def url(self, name, *, query=None, **kwargs):
         if self.user and name.startswith('ui:'):
@@ -629,7 +687,10 @@ async def _fix_alt_db_conn(loop, alt_settings, alt_db_create):
 
     yield DummyPgPool(conn)
 
-    await tr.rollback()
+    if commit_transactions:
+        await tr.commit()
+    else:
+        await tr.rollback()
     await conn.close()
 
 

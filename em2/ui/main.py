@@ -67,7 +67,7 @@ async def create_app_ui(main_app: web.Application):
         web.get(s + 'auth/check/', auth_check, name='auth-check'),
         web.post(s + 'auth/logout/', logout, name='auth-logout'),
         # different app?:
-        web.get(s + 'contacts/lookup-email/', ContactSearch.view(), name='contacts-lookup-email'),
+        web.get(s + 'contacts/search/', ContactSearch.view(), name='contacts-search'),
     ]
     middleware = (
         csrf_middleware,

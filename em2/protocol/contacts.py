@@ -18,12 +18,14 @@ async def update_profiles(ctx, users: List[Tuple[int, str]]):
 
 class ProfileModel(BaseModel):
     profile_type: Literal['personal', 'work', 'organisation']
+    visibility: Literal['public', 'public-searchable']
     main_name: constr(max_length=63)
-    last_name: constr(max_length=63)
-    image_url: constr(max_length=2047)
+    last_name: constr(max_length=63) = None
+    strap_line: constr(max_length=127) = None
+    image_url: constr(max_length=2047) = None
     profile_status: Literal['active', 'away', 'dormant']
-    profile_status_message: constr(max_length=511)
-    body: constr(max_length=5000)
+    profile_status_message: constr(max_length=511) = None
+    body: constr(max_length=5000) = None
 
 
 class ContactUpdate:
@@ -52,8 +54,23 @@ class ContactUpdate:
             raise
 
         if r.status == 200:
-            await self.pg.execute_b(
-                'update users set update_ts=now(), :values where id=:user_id',
-                values=Values(**r.model.dict()),
-                user_id=user_id,
-            )
+            await self.update_db(user_id, r.model)
+
+    async def update_db(self, user_id: int, model: ProfileModel):
+        await self.pg.execute_b(
+            """
+            update users set
+              update_ts=now(),
+              vector=setweight(to_tsvector(:name), 'A') ||
+                     setweight(to_tsvector(:strap_line), 'B') ||
+                     to_tsvector(:body),
+              :values
+            where  id=:user_id
+            """
+            "",
+            values=Values(**model.dict()),
+            name=f'{model.main_name} {model.last_name or ""}',
+            strap_line=model.strap_line,
+            body=model.body and model.body[:500],
+            user_id=user_id,
+        )

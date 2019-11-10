@@ -1,75 +1,98 @@
 import asyncio
 
-import ujson
 from aiohttp.web import StreamResponse
 from atoolbox import parse_request_query
-from pydantic import BaseModel, constr, validate_email
+from buildpg import V, funcs
+from pydantic import BaseModel, constr, validate_email, validator
+
+from em2.search import build_query_function
 
 from .utils import View
 
 
 class ContactSearch(View):
     response = None
+    search_sql = """
+    select json_strip_nulls(row_to_json(t)) from (
+      select
+        u.email,
+        c.id is not null is_contact,
+        coalesce(c.main_name, u.main_name) main_name,
+        coalesce(c.last_name, u.last_name) last_name,
+        coalesce(c.strap_line, u.strap_line) strap_line,
+        coalesce(c.image_url, u.image_url) image_url,
+        coalesce(c.profile_status, u.profile_status) profile_status,
+        coalesce(c.profile_status_message, u.profile_status_message) profile_status_message
+      from users u
+      left join contacts c on u.id = c.profile_user
+      where u.id != :this_user and :where
+    ) t
+    """
 
     class Model(BaseModel):
-        query: constr(min_length=3, max_length=256, strip_whitespace=True)  # doesn't have to be an email address
+        query: constr(min_length=3, max_length=256, strip_whitespace=True)
+
+        @validator('query')
+        def strip_percent(cls, v):
+            return v.strip('%')
 
     async def call(self):
-        # TODO:
-        # add strapline, status, and image
-        # return a priority for overwriting existing result
-        # return a sort ranking
         m = parse_request_query(self.request, self.Model)
 
         self.response = StreamResponse()
         self.response.content_type = 'application/x-ndjson'
         await self.response.prepare(self.request)
 
-        query = m.query.lower().strip('%')
+        email = None
         try:
-            name, email = validate_email(query)
+            _, email = validate_email(m.query)
         except ValueError:
-            searches = [self.approximate_search(query, query)]
+            pass
         else:
-            searches = [self.approximate_search(email, name)]
-        await asyncio.gather(*searches)
+            where = funcs.AND(
+                V('email') == email.lower(),
+                funcs.OR(
+                    V('c.owner') == self.session.user_id,
+                    V('u.visibility') == 'public',
+                    V('u.visibility') == 'public-searchable',
+                ),
+            )
+            json_str = await self.conn.fetchval_b(self.search_sql, this_user=self.session.user_id, where=where)
+            if json_str:
+                await self.write_line(json_str)
+                # got an exact result, no need to go further
+                return self.response
 
+        await asyncio.gather(self.tsvector_search(m), self.partial_email_search(m))
+
+        if email:
+            pass
+            # TODO look up node for email domain
         return self.response
 
-    async def write_link(self, email, name=None):
-        r = {'email': email}
-        if name:
-            r['name'] = name
-        await self.response.write(ujson.dumps(r).encode() + b'\n')
+    async def write_line(self, json_str: str):
+        await self.response.write(json_str.encode() + b'\n')
 
-    async def approximate_search(self, email: str, name: str = None):
-        # could in theory use a cursor here, would it help
-        # TODO change where "u.email or c.tsv or u.tsv"
-        results = await self.conn.fetch(
-            """
-            select u.email,
-            trim(both ' ' from coalesce(c.main_name, u.main_name, '') || ' ' || coalesce(c.last_name, u.last_name, ''))
-            from contacts as c
-            join users u on u.id = c.profile_user
-            where (c.owner=$1 or u.visibility='public-searchable') and u.email like $2
-            """,
-            self.session.user_id,
-            f'%{email}%',
+    async def tsvector_search(self, m: Model):
+        query_func = build_query_function(m.query)
+        where = funcs.AND(
+            funcs.OR(V('u.vector').matches(query_func), V('c.vector').matches(query_func)),
+            funcs.OR(V('c.owner') == self.session.user_id, V('u.visibility') == 'public-searchable'),
         )
-        for email, name in results:
-            await self.write_link(email, name)
+        q = await self.conn.fetch_b(self.search_sql, this_user=self.session.user_id, where=where)
+        for r in q:
+            await self.write_line(r[0])
 
-    async def exact_search(self, email: str):
-        r = await self.conn.fetchrow(
-            """
-            select email, trim(both ' ' from coalesce(main_name || '') || ' ' || coalesce(last_name || ''))
-            from users
-            where visibility='public' and email=$1
-            """,
-            email,
+    async def partial_email_search(self, m: Model):
+        if ' ' in m.query:
+            return
+        # could be a partial email address
+        where = funcs.AND(
+            V('email').like(f'%{m.query.lower()}%'),
+            funcs.OR(V('c.owner') == self.session.user_id, V('u.visibility') == 'public-searchable'),
         )
-        if r:
-            await self.write_link(*r)
-        else:
-            pass
-            # TODO check the email address's node for details
+        # use a different connection to avoid conflicting with tsvector_search
+        pg = self.request.app['pg']
+        q = await pg.fetch_b(self.search_sql, this_user=self.session.user_id, where=where)
+        for r in q:
+            await self.write_line(r[0])
