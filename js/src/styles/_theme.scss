@@ -168,6 +168,10 @@ body {
   .rbt-menu li.disabled {  // nothing found message
     font-size: 0.8rem;
   }
+
+  li.active .text-muted {
+    color: $gray-300 !important;
+  }
 }
 
 .conv-list {

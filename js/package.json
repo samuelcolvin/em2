@@ -22,6 +22,7 @@
     "immutable": "^4.0.0-rc.12",
     "is-hotkey": "^0.1.4",
     "is-url": "^1.2.4",
+    "jaro-winkler": "^0.2.8",
     "lodash": "^4.17.13",
     "moment": "^2.24.0",
     "node-sass": "^4.11.0",
