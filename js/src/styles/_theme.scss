@@ -165,13 +165,20 @@ body {
   .form-control {
     height: auto;
   }
-  .rbt-menu li.disabled {  // nothing found message
-    font-size: 0.8rem;
+  .rbt-menu li {
+    height: 56px;
+    .disabled {  // nothing found message
+      font-size: 0.8rem;
+    }
+    &.active .text-muted {
+      color: $gray-300 !important;
+    }
+    a {
+      display: inline-block;
+      height: 100%;
+    }
   }
 
-  li.active .text-muted {
-    color: $gray-300 !important;
-  }
 }
 
 .conv-list {

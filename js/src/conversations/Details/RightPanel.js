@@ -44,6 +44,13 @@ const ScrollSpy = ({children}) => {
 
 const RightPanel = ({state, locked, set_participants, add_participants, remove_participants, ctx}) => {
   const disabled = locked('extra_prts')
+  const add_prts = () => {
+    set_participants([])
+    setTimeout(() => document.getElementById('participants').focus(), 100)
+  }
+
+  const participants = Object.values(state.conv.participants)
+
   return (
     <ScrollSpy>
       <div className="box no-pad pb-3">
@@ -64,7 +71,7 @@ const RightPanel = ({state, locked, set_participants, add_participants, remove_p
             }
           </div>
         </div>
-        {Object.values(state.conv.participants).map(p => (
+        {participants.map(p => (
           <div key={p.id} className="d-flex">
             <div className="py-1">{p.email}</div>
             {p.email !== ctx.user.email ? (
@@ -87,6 +94,7 @@ const RightPanel = ({state, locked, set_participants, add_participants, remove_p
               disabled={disabled}
               existing_participants={Object.keys(state.conv.participants).length}
               onChange={extra_prts => set_participants(extra_prts)}
+              ignore={participants.map(p => p.email)}
             />
 
             <div className="d-flex flex-row-reverse mt-2">
@@ -102,10 +110,7 @@ const RightPanel = ({state, locked, set_participants, add_participants, remove_p
           </div>
         ) : !on_mobile && (
           <div className="text-right mt-2">
-            <Button color="primary"
-                    disabled={disabled}
-                    size="sm"
-                    onClick={() => set_participants([])}>
+            <Button color="primary" disabled={disabled} size="sm" onClick={add_prts}>
               Add Participants
             </Button>
           </div>

@@ -69,7 +69,7 @@ class Participants extends React.Component {
 
   search = async query => {
     this.setState(s => ({ongoing_searches: s.ongoing_searches + 1}))
-    const skip = new Set(this.props.value.map(v => v.email))
+    const skip = new Set([...this.props.value.map(v => v.email), ...(this.props.ignore || [])])
 
     await window.logic.contacts.email_lookup(query,o => {
       if (!skip.has(o.email)) {
@@ -113,6 +113,9 @@ class Participants extends React.Component {
     const options = Object.values(this.state.options)
       .map(o => Object.assign(o, {s: this.distance(o)}))
       .sort((a, b) => b.s - a.s)
+
+    const input_id = this.props.id || 'participants-input'
+    const input_name = this.props.name || 'participants-input'
     return (
       <div>
         <AsyncTypeahead
@@ -122,10 +125,10 @@ class Participants extends React.Component {
           onSearch={this.search}
           selected={this.props.value}
           disabled={this.props.disabled}
-          name={this.props.name}
-          id={this.props.name}
+          name={input_name}
+          id={input_id}
           required={this.props.required}
-          inputProps={{onPaste: this.onPaste}}
+          inputProps={{onPaste: this.onPaste, id: input_id, name: input_name}}
           onChange={this.onChange}
           onInputChange={t => this.setState({text: t.toLocaleString()})}
         />
@@ -139,17 +142,16 @@ class Participants extends React.Component {
 
 const ParticipantsWithContext = WithContext(Participants)
 
-export default ({className, field, disabled, error, value, onChange, existing_participants}) => (
+export default ({className, field, error, value, existing_participants, ...props}) => (
   <FormGroup className={className || field.className}>
     <InputLabel field={field}/>
     <ParticipantsWithContext
       value={value || []}
-      disabled={disabled}
       name={field.name}
       id={field.name}
       required={field.required}
       existing_participants={existing_participants || 0}
-      onChange={onChange}
+      {...props}
     />
     {error && <FormFeedback>{error}</FormFeedback>}
     <InputHelpText field={field}/>
