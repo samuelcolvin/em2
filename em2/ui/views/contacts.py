@@ -1,7 +1,7 @@
 import asyncio
 
 from aiohttp.web import StreamResponse
-from atoolbox import parse_request_query
+from atoolbox import get_offset, parse_request_query, raw_json_response
 from buildpg import V, funcs
 from pydantic import BaseModel, constr, validate_email, validator
 
@@ -21,8 +21,8 @@ class ContactSearch(View):
         coalesce(c.last_name, u.last_name) last_name,
         coalesce(c.strap_line, u.strap_line) strap_line,
         coalesce(c.image_url, u.image_url) image_url,
-        coalesce(c.profile_status, u.profile_status) profile_status,
-        coalesce(c.profile_status_message, u.profile_status_message) profile_status_message
+        u.profile_status,
+        u.profile_status_message
       from users u
       left join contacts c on u.id = c.profile_user
       where u.id != :this_user and :where
@@ -96,3 +96,79 @@ class ContactSearch(View):
         q = await pg.fetch_b(self.search_sql, this_user=self.session.user_id, where=where)
         for r in q:
             await self.write_line(r[0])
+
+
+class ContactsList(View):
+    sql = """
+    select json_build_object(
+      'items', items,
+      'pages', pages
+    ) from (
+      select coalesce(array_to_json(array_agg(json_strip_nulls(row_to_json(t)))), '[]') items
+      from (
+        select
+          c.id,
+          p.email,
+          coalesce(c.main_name, p.main_name) main_name,
+          coalesce(c.last_name, p.last_name) last_name,
+          coalesce(c.strap_line, p.strap_line) strap_line,
+          coalesce(c.image_url, p.image_url) image_url,
+          p.profile_status,
+          p.profile_status_message
+        from contacts c
+        join users p on c.profile_user = p.id
+        where :where
+        order by coalesce(c.main_name, p.main_name)
+        limit 50
+        offset :offset
+      ) t
+    ) items, (
+      select (count(*) - 1) / 50 + 1 pages from contacts c where :where
+    ) pages
+    """
+
+    async def call(self):
+        raw_json = await self.conn.fetchval_b(
+            self.sql, where=V('c.owner') == self.session.user_id, offset=get_offset(self.request, paginate_by=50)
+        )
+        return raw_json_response(raw_json)
+
+
+all_sql = """
+select json_build_object(
+  'contacts', contacts
+) from (
+  select coalesce(array_to_json(array_agg(json_strip_nulls(row_to_json(t)))), '[]') contacts
+  from (
+    select
+      c.id,
+      c.profile_user user_id,
+      p.email,
+
+      c.profile_type c_profile_type,
+      c.main_name c_main_name,
+      c.last_name c_last_name,
+      c.strap_line c_strap_line,
+      c.image_url c_image_url,
+      c.image_url c_image_url,
+      c.body contact_body,
+
+      p.visibility p_visibility,
+      p.profile_type p_profile_type,
+      p.main_name p_main_name,
+      p.last_name p_last_name,
+      p.strap_line p_strap_line,
+      p.image_url p_image_url,
+      p.image_url p_image_url,
+      p.body p_body,
+      p.profile_status,
+      p.profile_status_message
+    from contacts c
+    join users p on c.profile_user = p.id
+    where :where
+    order by coalesce(c.main_name, p.main_name)
+    limit 50
+    offset :offset
+  ) t
+) conversations
+"""

@@ -8,6 +8,7 @@ import ListConversations from './conversations/List'
 import SearchResults from './conversations/SearchResults'
 import ConversationDetails from './conversations/Details'
 import CreateConversation from './conversations/Create'
+import ContactsList from './contacts/List'
 import Wait from './conversations/Wait'
 
 const ListGroupItem = ({className, to, active, icon, title, count, count_unseen}) => (
@@ -88,6 +89,17 @@ class LeftMenu_ extends React.Component {
                 count_unseen={m.unseen && this.state.flags['unseen']}
               />
             ))}
+          </ListGroup>
+        </div>
+
+        <div className="box no-pad">
+          <ListGroup>
+            <ListGroupItem
+              to="/contacts/"
+              active={this.props.ctx.menu_item === 'contacts'}
+              icon={fas.faAddressBook}
+              title="Contacts"
+            />
           </ListGroup>
         </div>
 
@@ -237,6 +249,7 @@ export const RoutesWithMenu = () => (
       <Route exact path="/create/" component={CreateConversation}/>
       <Route path="/:key([a-f0-9]{10,64})/" render={render_conv_details}/>
       <Route path="/wait/:key([a-f0-9]{10,64})/" component={Wait}/>
+      <Route exact path="/contacts/" component={ContactsList}/>
       <Route component={NotFound}/>
     </Switch>
   </WithMenu>

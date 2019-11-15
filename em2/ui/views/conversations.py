@@ -40,12 +40,11 @@ from .utils import ExecView, View
 
 
 class ConvList(View):
-    # FIXME we can remove counts
     sql = """
     select json_build_object(
       'conversations', conversations
     ) from (
-      select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') as conversations
+      select coalesce(array_to_json(array_agg(row_to_json(t))), '[]') conversations
       from (
         select c.key, c.created_ts,
           coalesce(p.removal_updated_ts, c.updated_ts) updated_ts,

@@ -2,12 +2,7 @@ import React from 'react'
 import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
-import {
-  Col,
-  Row,
-  ButtonGroup,
-  Button,
-} from 'reactstrap'
+import {Col, Row, ButtonGroup, Button} from 'reactstrap'
 import {WithContext, Form} from 'reactstrap-toolbox'
 import {EditorInput} from './../Editor'
 import ParticipantsInput from './ParticipantsInput'

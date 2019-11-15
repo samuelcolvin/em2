@@ -74,7 +74,9 @@ export default class WebPush {
   }
 
   on_message = event => {
-    if (event.data.user_id !== this._main.session.current.user_id) {
+    // FIXME work out what the error here is
+    console.debug('web_push on_message', event, this._main.session.current)
+    if (!event.data || (event.data.user_id !== this._main.session.current.user_id)) {
       event.ports[0].postMessage(false)
       return
     }

@@ -17,6 +17,16 @@ export default class Contacts {
   constructor (main) {
     this._main = main
     this._debounce_lookup = debounce(this._raw_lookup, 300)
+    this._requests = this._main.requests
+  }
+
+  list = async page => {
+    const online = await this._main.online()
+    if (online) {
+      const r = await this._requests.get('ui', `/${this._main.session.id}/contacts/`, {page})
+      return r.data
+    }
+    return {}
   }
 
   email_lookup = async (query, callback) => {
@@ -49,7 +59,7 @@ export default class Contacts {
 
   _raw_lookup = async (query, callback) => {
     const config = {raw_response: true, headers: {'Accept': 'application/x-ndjson'}}
-    const r = await this._main.requests.get('ui', `/${this._main.session.id}/contacts/search/`, {query}, config)
+    const r = await this._requests.get('ui', `/${this._main.session.id}/contacts/search/`, {query}, config)
     const stream = await ndjsonStream(r.body)
     const reader = stream.getReader()
     let s = await reader.read()

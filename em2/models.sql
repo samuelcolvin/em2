@@ -18,15 +18,16 @@ create table users (
   last_name varchar(63),
   strap_line varchar(127),  -- organisation, titles, industry or legal name
   image_url varchar(2047),
+  body text,
   profile_status ProfileStatus,
   profile_status_message varchar(511),
-  body text,
   vector tsvector
 );
-create index idx_user_visibility on users using btree (visibility);
-create index idx_user_type on users using btree (user_type);
+create index idx_users_visibility on users using btree (visibility);
+create index idx_users_type on users using btree (user_type);
 -- for looking up partial email address
-create index idx_user_email_trgm on users using gin (email gin_trgm_ops);
+create index idx_users_email_trgm on users using gin (email gin_trgm_ops);
+create index idx_users_vector on users using gin (vector);
 
 create table labels (
   id bigserial primary key,
@@ -272,13 +273,12 @@ create table contacts (
   last_name varchar(63),
   strap_line varchar(127),  -- organisation, titles, industry or legal name
   image_url varchar(2047),
-  profile_status ProfileStatus,
-  profile_status_message varchar(511),
-  -- TODO search index
+  -- TODO might need full name from coalesce for sorting
   body text,
   vector tsvector,
   unique (owner, profile_user)
 );
+create index idx_contacts_vector on contacts using gin (vector);
 
 -------------------------------------------------------------------------
 -- search table, this references conversations so must be the same db, --

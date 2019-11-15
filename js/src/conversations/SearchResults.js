@@ -53,14 +53,13 @@ class ConvListView extends React.Component {
         </div>
       )
     }
-    const user_email = this.props.ctx.user && this.props.ctx.user.email
     return (
-      <div>
+      <div className="conv-list">
         <div className="text-muted h6 pb-1">
           {c} search result{c === 1 ? '' : 's'} for "{this.state.query}"
         </div>
-        <div className="box conv-list">
-          <ConvList conversations={this.state.conversations} user_email={user_email}/>
+        <div className="box list-items">
+          <ConvList items={this.state.conversations} ctx={this.props.ctx}/>
         </div>
       </div>
     )
