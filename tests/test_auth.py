@@ -49,7 +49,7 @@ async def test_logout(cli, url, db_conn, factory: Factory):
     )
     events = [dict(e) for e in r]
     assert events == [
-        {'ip': IPv4Address('127.0.0.1'), 'action': 'login-pw', 'user_agent': 'Python/3.7 aiohttp/3.5.4'},
+        {'ip': IPv4Address('127.0.0.1'), 'action': 'login-pw', 'user_agent': RegexStr('Python/.+')},
         {'ip': IPv4Address('1.2.3.4'), 'action': 'update', 'user_agent': 'whatever'},
         {'ip': IPv4Address('255.255.255.1'), 'action': 'logout', 'user_agent': ''},
     ]

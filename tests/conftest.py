@@ -173,8 +173,8 @@ class UserTestClient(TestClient):
 
 
 @pytest.fixture(name='resolver')
-def _fix_resolver(dummy_server: DummyServer):
-    return TestDNSResolver(dummy_server)
+def _fix_resolver(dummy_server: DummyServer, loop):
+    return TestDNSResolver(dummy_server, loop=loop)
 
 
 @pytest.fixture(name='cli')
