@@ -253,7 +253,7 @@ class ConvDetailsView extends React.Component {
           ) : null}
         </div>
         <Row>
-          <Col xl="4 order-xl-8">
+          <Col xl="4" className="order-xl-8">
             <RightPanel
               locked={part => this.locked(part)}
               state={this.state}

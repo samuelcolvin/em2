@@ -44,7 +44,7 @@ const ConvListView = props => {
   return (
     <ListView
       className="conv-list"
-      title={props.ctx.user.name}
+      title={props.ctx.user && props.ctx.user.name}
       menu_item={flag}
       list_items={list_items}
       render={ConvList}

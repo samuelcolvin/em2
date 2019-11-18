@@ -134,41 +134,39 @@ class ContactsList(View):
         return raw_json_response(raw_json)
 
 
-all_sql = """
-select json_build_object(
-  'contacts', contacts
-) from (
-  select coalesce(array_to_json(array_agg(json_strip_nulls(row_to_json(t)))), '[]') contacts
-  from (
-    select
-      c.id,
-      c.profile_user user_id,
-      p.email,
+class ContactDetails(View):
+    sql = """
+    select json_strip_nulls(row_to_json(contact))
+    from (
+      select
+        c.id,
+        c.profile_user user_id,
+        p.email,
 
-      c.profile_type c_profile_type,
-      c.main_name c_main_name,
-      c.last_name c_last_name,
-      c.strap_line c_strap_line,
-      c.image_url c_image_url,
-      c.image_url c_image_url,
-      c.body contact_body,
+        c.profile_type c_profile_type,
+        c.main_name c_main_name,
+        c.last_name c_last_name,
+        c.strap_line c_strap_line,
+        c.image_url c_image_url,
+        c.image_url c_image_url,
+        c.body contact_body,
 
-      p.visibility p_visibility,
-      p.profile_type p_profile_type,
-      p.main_name p_main_name,
-      p.last_name p_last_name,
-      p.strap_line p_strap_line,
-      p.image_url p_image_url,
-      p.image_url p_image_url,
-      p.body p_body,
-      p.profile_status,
-      p.profile_status_message
-    from contacts c
-    join users p on c.profile_user = p.id
-    where :where
-    order by coalesce(c.main_name, p.main_name)
-    limit 50
-    offset :offset
-  ) t
-) conversations
-"""
+        p.visibility p_visibility,
+        p.profile_type p_profile_type,
+        p.main_name p_main_name,
+        p.last_name p_last_name,
+        p.strap_line p_strap_line,
+        p.image_url p_image_url,
+        p.image_url p_image_url,
+        coalesce(p.body, 'this is a test') p_body,
+        p.profile_status,
+        p.profile_status_message
+      from contacts c
+      join users p on c.profile_user = p.id
+      where c.owner=$1 and c.id=$2
+    ) contact
+    """
+
+    async def call(self):
+        raw_json = await self.conn.fetchval(self.sql, self.session.user_id, int(self.request.match_info['id']))
+        return raw_json_response(raw_json)
