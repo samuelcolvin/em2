@@ -1,10 +1,30 @@
 import React from 'react'
-// import {Link} from 'react-router-dom'
-import { Col, Row} from 'reactstrap'
+import {Link} from 'react-router-dom'
+import { Col, Row, ButtonGroup, Button} from 'reactstrap'
 import {Loading} from 'reactstrap-toolbox'
 import {withRouter} from 'react-router-dom'
-import {WithContext} from 'reactstrap-toolbox'
+import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+import * as fas from '@fortawesome/free-solid-svg-icons'
+import {WithContext, as_title} from 'reactstrap-toolbox'
 import {StatusDisplay} from './utils'
+
+
+const Detail = ({name, showIf, children}) => {
+  if (showIf === false || !children) {
+    return null
+  }
+  return (
+    <div className="my-2">
+      <div className="small text-muted">{name}</div>
+      <div className="pl-3">{children}</div>
+    </div>
+  )
+}
+
+const dft_icons = {
+  work: fas.faUserTie,
+  organisation: fas.faBuilding,
+}
 
 class DetailView extends React.Component {
   state = {}
@@ -36,62 +56,76 @@ class DetailView extends React.Component {
     }
   }
 
+  visibility_description = c => {
+    switch(c.p_visibility) {
+      case 'private':
+        return (
+          "This user has an em2 address with a profile which can only be seen once you've " +
+          "received an an email from them"
+        )
+      case 'public':
+        return "This user has an em2 address with a public profile which can only be accessed if you know their address"
+      case 'public-searchable':
+        return "This user has an em2 address with a public profile which can found by searching"
+      default:
+        return "This is an SMTP address no profile for the user is available"
+    }
+  }
+
   render () {
     const c = this.state.contact
     if (!c) {
       return <Loading/>
     }
     const name = this.name(c)
+    const image_url = c.c_image_url || c.p_image_url
     return (
-      <div className="box pt-4">
+      <div className="box pt-3">
         <Row>
-          <Col md="4" className="text-right">
-            <img src="/images/dft-user.png" className="contact" width="150" height="150" alt={name}/>
+          <Col lg="4">
+            <div className="contact-image">
+              {image_url ? (
+                <img src={image_url} className="rounded" width="150" height="150" alt={name}/>
+              ) : (
+                <FontAwesomeIcon icon={dft_icons[c.p_profile_type] || fas.faUser} size="7x"/>
+              )}
+            </div>
+            <div className="mt-3 text-right">
+              <ButtonGroup size="sm">
+                <Button color="success" tag={Link} to={`/create/?add=${encodeURI(c.email)}`}>
+                  <FontAwesomeIcon icon={fas.faKeyboard} className="mr-1"/>Compose
+                </Button>
+                <Button color="primary" tag={Link} to={`/contacts/${c.id}/edit/`}>
+                  <FontAwesomeIcon icon={fas.faEdit} className="mr-1"/>edit
+                </Button>
+              </ButtonGroup>
+            </div>
           </Col>
-          <Col md="8">
-            <h1 className="h3">{name}</h1>
-            <div className="my-2">{c.c_strap_line || c.p_strap_line}</div>
-            <div className="my-2">{c.email}</div>
-            <div className="my-2"><StatusDisplay {...c}/> {c.profile_status_message}</div>
+          <Col lg="8">
+            <h1 className="h3 pl-3">{name}</h1>
+            <div className="my-2 pl-3">{c.c_strap_line || c.p_strap_line}</div>
+            <div className="my-2 pl-3">
+              <Link to={`/create/?add=${encodeURI(c.email)}`}>{c.email}</Link>
+            </div>
+            <Detail name="Status" showIf={!!c.profile_status}>
+              <StatusDisplay {...c}/> {c.profile_status_message}
+            </Detail>
 
-            {c.c_body ? (
-              <div className="my-2">
-                <div className="text-muted">Details:</div> {c.c_body}
-              </div>
-            ) : null}
-            {c.p_body ? (
-              <div className="my-2">
-                <div className="text-muted">Profile Details:</div> {c.p_body}
-              </div>
-            ) : null}
-            <code><pre className="text-muted">{JSON.stringify(c, null, 2)}</pre></code>
+            <Detail name="Contact Type">{as_title(c.c_profile_type || c.p_profile_type || 'unknown')}</Detail>
+            <Detail name="Visibility">
+              {as_title(c.p_visibility || 'SMTP')}
+              <div className="smaller text-muted">({this.visibility_description(c)})</div>
+            </Detail>
+            <Detail name="Contact Details">{c.c_body}</Detail>
+            <Detail name="Profile Details">{c.p_body}</Detail>
+            {/*<code><pre className="text-muted">{JSON.stringify(c, null, 2)}</pre></code>*/}
           </Col>
         </Row>
+        <i>(TODO: show recent conversations)</i>
       </div>
     )
   }
 }
-
-// {
-//   "id": 1,
-//   "user_id": 4,
-//   "email": "pear@example.com",
-//   "c_profile_type": null,
-//   "c_main_name": null,
-//   "c_last_name": null,
-//   "c_strap_line": null,
-//   "c_image_url": null,
-//   "contact_body": null,
-//   "p_visibility": "public-searchable",
-//   "p_profile_type": "personal",
-//   "p_main_name": "Fred",
-//   "p_last_name": "Jones",
-//   "p_strap_line": null,
-//   "p_image_url": null,
-//   "p_body": null,
-//   "profile_status": "dormant",
-//   "profile_status_message": null
-// }
 
 
 export default withRouter(WithContext(DetailView))

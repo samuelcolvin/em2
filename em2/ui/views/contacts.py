@@ -149,7 +149,7 @@ class ContactDetails(View):
         c.strap_line c_strap_line,
         c.image_url c_image_url,
         c.image_url c_image_url,
-        c.body contact_body,
+        c.body c_body,
 
         p.visibility p_visibility,
         p.profile_type p_profile_type,

@@ -263,8 +263,18 @@ body {
   }
 }
 
-img.contact {
+.contact-image {
   border-radius: $border-radius;
+  background: #64B5F6;
+  width: 150px;
+  height: 150px;
+  color: white;
+  text-align: center;
+  margin-left: auto;
+  margin-bottom: 0.5rem;
+  svg {
+    margin-top: 1.4rem;
+  }
 }
 
 .conv-subject {
