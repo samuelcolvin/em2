@@ -3,12 +3,13 @@ import {Link} from 'react-router-dom'
 import {withRouter} from 'react-router-dom'
 import {WithContext} from 'reactstrap-toolbox'
 import ListView from '../utils/List'
-import {StatusDisplay} from './utils'
+import {ContactImage, StatusDisplay} from './utils'
 
 const ContactsList = ({items, ctx}) => items.map((c, i) => (
   // TODO show image
   <Link key={i} to={`/contacts/${c.id}/`} onClick={e => ctx.disable_nav && e.preventDefault()}>
-    <div>{c.main_name} {c.last_name}</div>
+    <div><ContactImage c={c}/></div>
+    <div className="pl-3">{c.main_name} {c.last_name}</div>
     <div><StatusDisplay {...c}/></div>
     <div className="text-muted">{c.email}</div>
   </Link>

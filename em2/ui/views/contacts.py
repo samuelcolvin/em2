@@ -113,6 +113,7 @@ class ContactsList(View):
           coalesce(c.last_name, p.last_name) last_name,
           coalesce(c.strap_line, p.strap_line) strap_line,
           coalesce(c.image_url, p.image_url) image_url,
+          coalesce(c.profile_type, p.profile_type) profile_type,
           p.profile_status,
           p.profile_status_message
         from contacts c

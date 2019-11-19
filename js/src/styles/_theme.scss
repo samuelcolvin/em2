@@ -259,21 +259,39 @@ body {
 
 .contacts-list .list-items {
   > a {
-    grid-template-columns: 220px 100px 1fr;
+    grid-template-columns: 40px 220px 100px 1fr;
+    align-items: center;
   }
 }
 
 .contact-image {
-  border-radius: $border-radius;
   background: #64B5F6;
-  width: 150px;
-  height: 150px;
   color: white;
   text-align: center;
-  margin-left: auto;
-  margin-bottom: 0.5rem;
-  svg {
-    margin-top: 1.4rem;
+  &.large {
+    margin-left: auto;
+    border-radius: $border-radius;
+    width: 150px;
+    height: 150px;
+    svg {
+      margin-top: 1.4rem;
+      font-size: 7em;
+    }
+    img {
+      border-radius: $border-radius;
+    }
+  }
+  &.small {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    svg {
+      margin-top: 0.55rem;
+      font-size: 1.8em;
+    }
+    img {
+      border-radius: 50%;
+    }
   }
 }
 

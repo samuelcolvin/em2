@@ -1,12 +1,12 @@
 import React from 'react'
 import {Link} from 'react-router-dom'
-import { Col, Row, ButtonGroup, Button} from 'reactstrap'
+import {Col, Row, ButtonGroup, Button} from 'reactstrap'
 import {Loading} from 'reactstrap-toolbox'
 import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, as_title} from 'reactstrap-toolbox'
-import {StatusDisplay} from './utils'
+import {StatusDisplay, ContactImage, contact_name} from './utils'
 
 
 const Detail = ({name, showIf, children}) => {
@@ -19,11 +19,6 @@ const Detail = ({name, showIf, children}) => {
       <div className="pl-3">{children}</div>
     </div>
   )
-}
-
-const dft_icons = {
-  work: fas.faUserTie,
-  organisation: fas.faBuilding,
 }
 
 class DetailView extends React.Component {
@@ -43,17 +38,7 @@ class DetailView extends React.Component {
     this.props.ctx.setMenuItem('contacts')
     const contact = await window.logic.contacts.details(this.props.match.params.id)
     this.setState({contact})
-    this.props.ctx.setTitle(this.name(contact))
-  }
-
-  name = c => {
-    if (c.c_main_name) {
-      return `${c.c_main_name} ${c.c_last_name || ''}`.trim()
-    } else if (c.p_main_name) {
-      return `${c.p_main_name} ${c.p_last_name || ''}`.trim()
-    } else {
-      return c.email
-    }
+    this.props.ctx.setTitle(contact_name(contact))
   }
 
   visibility_description = c => {
@@ -77,19 +62,12 @@ class DetailView extends React.Component {
     if (!c) {
       return <Loading/>
     }
-    const name = this.name(c)
-    const image_url = c.c_image_url || c.p_image_url
+    const name = contact_name(c)
     return (
       <div className="box pt-3">
         <Row>
           <Col lg="4">
-            <div className="contact-image">
-              {image_url ? (
-                <img src={image_url} className="rounded" width="150" height="150" alt={name}/>
-              ) : (
-                <FontAwesomeIcon icon={dft_icons[c.p_profile_type] || fas.faUser} size="7x"/>
-              )}
-            </div>
+            <ContactImage c={c} large/>
             <div className="mt-3 text-right">
               <ButtonGroup size="sm">
                 <Button color="success" tag={Link} to={`/create/?add=${encodeURI(c.email)}`}>
