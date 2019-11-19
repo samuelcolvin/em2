@@ -70,7 +70,7 @@ class DetailView extends React.Component {
             <ContactImage c={c} large/>
             <div className="mt-3 text-right">
               <ButtonGroup size="sm">
-                <Button color="success" tag={Link} to={`/create/?add=${encodeURI(c.email)}`}>
+                <Button color="success" tag={Link} to={`/create/?participant=${encodeURI(c.email)}`}>
                   <FontAwesomeIcon icon={fas.faKeyboard} className="mr-1"/>Compose
                 </Button>
                 <Button color="primary" tag={Link} to={`/contacts/${c.id}/edit/`}>
@@ -83,7 +83,7 @@ class DetailView extends React.Component {
             <h1 className="h3 pl-3">{name}</h1>
             <div className="my-2 pl-3">{c.c_strap_line || c.p_strap_line}</div>
             <div className="my-2 pl-3">
-              <Link to={`/create/?add=${encodeURI(c.email)}`}>{c.email}</Link>
+              <Link to={`/create/?participant=${encodeURI(c.email)}`}>{c.email}</Link>
             </div>
             <Detail name="Status" showIf={!!c.profile_status}>
               <StatusDisplay {...c}/> {c.profile_status_message}
@@ -99,7 +99,7 @@ class DetailView extends React.Component {
             {/*<code><pre className="text-muted">{JSON.stringify(c, null, 2)}</pre></code>*/}
           </Col>
         </Row>
-        <i>(TODO: show recent conversations)</i>
+        <i className="text-danger">(TODO: show recent conversations)</i>
       </div>
     )
   }

@@ -1,4 +1,5 @@
 import React from 'react'
+import {withRouter} from 'react-router-dom'
 import {AsyncTypeahead, Token, Highlighter} from 'react-bootstrap-typeahead'
 import {FormGroup, FormFeedback} from 'reactstrap'
 import * as fas from '@fortawesome/free-solid-svg-icons'
@@ -66,6 +67,15 @@ const max_participants = 64
 
 class Participants extends React.Component {
   state = {options: [], ongoing_searches: 0, text: ''}
+
+  async componentDidMount() {
+    // could maybe do this more efficiently using multiple get args
+    const m = this.props.location.search.match(/participant=([^&=]+)/i)
+    if (m) {
+      await window.logic.contacts.email_lookup(m[1],o => this.props.onChange([o]))
+      this.props.history.replace(this.props.location.pathname)
+    }
+  }
 
   search = async query => {
     this.setState(s => ({ongoing_searches: s.ongoing_searches + 1}))
@@ -140,7 +150,7 @@ class Participants extends React.Component {
   }
 }
 
-const ParticipantsWithContext = WithContext(Participants)
+const ParticipantsWithContext = WithContext(withRouter(Participants))
 
 export default ({className, field, error, value, existing_participants, ...props}) => (
   <FormGroup className={className || field.className}>
