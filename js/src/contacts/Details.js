@@ -37,8 +37,12 @@ class DetailView extends React.Component {
   update = async () => {
     this.props.ctx.setMenuItem('contacts')
     const contact = await window.logic.contacts.details(this.props.match.params.id)
-    this.setState({contact})
-    this.props.ctx.setTitle(contact_name(contact))
+    if (contact) {
+      this.setState({contact})
+      this.props.ctx.setTitle(contact_name(contact))
+    } else {
+      this.setState({not_found: true})
+    }
   }
 
   visibility_description = c => {
@@ -58,6 +62,9 @@ class DetailView extends React.Component {
   }
 
   render () {
+    if (this.state.not_found) {
+      return <div>Contact not found.</div>
+    }
     const c = this.state.contact
     if (!c) {
       return <Loading/>

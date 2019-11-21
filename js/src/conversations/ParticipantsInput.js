@@ -68,7 +68,7 @@ const max_participants = 64
 class Participants extends React.Component {
   state = {options: [], ongoing_searches: 0, text: ''}
 
-  async componentDidMount() {
+  async componentDidMount () {
     // could maybe do this more efficiently using multiple get args
     const m = this.props.location.search.match(/participant=([^&=]+)/i)
     if (m) {
