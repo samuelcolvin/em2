@@ -25,7 +25,7 @@ class ProfileModel(BaseModel):
     image_url: constr(max_length=2047) = None
     profile_status: Literal['active', 'away', 'dormant']
     profile_status_message: constr(max_length=511) = None
-    body: constr(max_length=5000) = None
+    details: constr(max_length=5000) = None
 
 
 class ContactUpdate:
@@ -63,7 +63,7 @@ class ContactUpdate:
               update_ts=now(),
               vector=setweight(to_tsvector(:name), 'A') ||
                      setweight(to_tsvector(:strap_line), 'B') ||
-                     to_tsvector(:body),
+                     to_tsvector(:details),
               :values
             where  id=:user_id
             """
@@ -71,6 +71,6 @@ class ContactUpdate:
             values=Values(**model.dict()),
             name=f'{model.main_name} {model.last_name or ""}',
             strap_line=model.strap_line,
-            body=model.body and model.body[:500],
+            details=model.details and model.details[:500],
             user_id=user_id,
         )

@@ -477,7 +477,8 @@ async def get_profile(request):
         conn.fetchrow(
             """
             select row_to_json(t) from (
-              select profile_type, main_name, last_name, image_url, profile_status, profile_status_message, body
+              select profile_type, main_name, last_name, image_url, profile_status, profile_status_message,
+                profile_details details
               from users
               where email=$1 and user_type='local' and visibility!='private'
             ) t

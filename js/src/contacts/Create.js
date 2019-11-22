@@ -10,11 +10,11 @@ const RenderFields = ({fields, RenderField}) => (
     </Col>
     <Col lg="8">
       <RenderField field={fields.email}/>
-      <RenderField field={fields.profile_type} optional/>
-      <RenderField field={fields.main_name} optional/>
+      <RenderField field={fields.profile_type}/>
+      <RenderField field={fields.main_name}/>
       <RenderField field={fields.last_name} optional/>
-      <RenderField field={fields.strap_line} optional/>
-      <RenderField field={fields.body} optional/>
+      <RenderField field={fields.strap_line}/>
+      <RenderField field={fields.details}/>
     </Col>
   </Row>
 )
@@ -33,7 +33,7 @@ const Create = ({ctx, history}) => {
     main_name: {title: 'First Name', max_length: 63},
     last_name: {max_length: 63},
     strap_line: {max_length: 127},
-    body: {type: 'rich_text'},
+    details: {type: 'rich_text'},
   }
   if (form_data.profile_type === 'organisation') {
     fields = {
@@ -41,7 +41,15 @@ const Create = ({ctx, history}) => {
       profile_type: {type: 'select', choices: ['personal', 'work', 'organisation']},
       main_name: {title: 'Name', max_length: 63},
       strap_line: {max_length: 127},
-      body: {type: 'rich_text'},
+      details: {type: 'rich_text'},
+    }
+  }
+
+  const submit_data = () => {
+    if (form_data.details && form_data.details.has_changed) {
+      return {...form_data, details: form_data.details.markdown}
+    } else {
+      return {...form_data, details: null}
     }
   }
 
@@ -50,6 +58,7 @@ const Create = ({ctx, history}) => {
       <Form
         fields={fields}
         form_data={form_data}
+        submit_data={submit_data}
         function={window.logic.contacts.create}
         submitted={r => history.push(`/contacts/${r.data.id}/`)}
         RenderFields={RenderFields}

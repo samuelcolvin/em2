@@ -11,7 +11,7 @@ from em2.utils.web import add_access_control, build_index
 
 from .middleware import user_middleware
 from .views.auth import AuthExchangeToken, auth_check, logout
-from .views.contacts import ContactDetails, ContactSearch, ContactsList
+from .views.contacts import ContactCreate, ContactDetails, ContactSearch, ContactsList
 from .views.conversations import (
     ConvAct,
     ConvActions,
@@ -69,6 +69,7 @@ async def create_app_ui(main_app: web.Application):
         # contacts views:
         web.get(s + 'contacts/', ContactsList.view(), name='contacts-list'),
         web.get(s + 'contacts/search/', ContactSearch.view(), name='contacts-search'),
+        web.post(s + 'contacts/create/', ContactCreate.view(), name='contacts-create'),
         web.get(s + r'contacts/{id:\d+}/', ContactDetails.view(), name='contact-details'),
     ]
     middleware = (

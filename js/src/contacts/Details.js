@@ -101,8 +101,8 @@ class DetailView extends React.Component {
               {as_title(c.p_visibility || 'SMTP')}
               <div className="smaller text-muted">({this.visibility_description(c)})</div>
             </Detail>
-            <Detail name="Contact Details">{c.c_body}</Detail>
-            <Detail name="Profile Details">{c.p_body}</Detail>
+            <Detail name="Contact Details">{c.c_details}</Detail>
+            <Detail name="Profile Details">{c.p_details}</Detail>
             {/*<code><pre className="text-muted">{JSON.stringify(c, null, 2)}</pre></code>*/}
           </Col>
         </Row>

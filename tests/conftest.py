@@ -345,7 +345,7 @@ class Factory:
         image_url: str = None,
         profile_status: str = None,
         profile_status_message: str = None,
-        body: str = None,
+        profile_details: str = None,
     ):
         if email is None:
             email = f'testing-{self.email_index}@example.com'
@@ -362,7 +362,7 @@ class Factory:
                 image_url=image_url,
                 profile_status=profile_status,
                 profile_status_message=profile_status_message,
-                body=body,
+                profile_details=profile_details,
             ),
         )
         if not user_id:
@@ -373,7 +373,7 @@ class Factory:
             update users set
               vector=setweight(to_tsvector(main_name || ' ' || coalesce(last_name, '')), 'A') ||
                      setweight(to_tsvector(coalesce(strap_line, '')), 'B') ||
-                     to_tsvector(coalesce(body, ''))
+                     to_tsvector(coalesce(profile_details, ''))
             where id=$1
             """,
             user_id,

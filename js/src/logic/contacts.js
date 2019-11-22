@@ -39,8 +39,9 @@ export default class Contacts {
   }
 
   create = async data => {
-    console.log('create:', data)
-    return {status: 200, data: {id: 42}}
+    return await this._requests.post(
+      'ui', `/${this._main.session.id}/contacts/create/`, data, {expected_status: [201, 409]}
+    )
   }
 
   email_lookup = async (query, callback) => {

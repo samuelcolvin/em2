@@ -1,13 +1,14 @@
 import asyncio
 
 from aiohttp.web import StreamResponse
-from atoolbox import get_offset, parse_request_query, raw_json_response
-from buildpg import V, funcs
-from pydantic import BaseModel, constr, validate_email, validator
+from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
+from buildpg import V, Values, funcs
+from pydantic import BaseModel, EmailStr, constr, validate_email, validator
+from typing_extensions import Literal
 
 from em2.search import build_query_function
 
-from .utils import View
+from .utils import ExecView, View
 
 
 class ContactSearch(View):
@@ -150,7 +151,7 @@ class ContactDetails(View):
         c.strap_line c_strap_line,
         c.image_url c_image_url,
         c.image_url c_image_url,
-        c.body c_body,
+        c.details c_details,
 
         p.visibility p_visibility,
         p.profile_type p_profile_type,
@@ -159,7 +160,7 @@ class ContactDetails(View):
         p.strap_line p_strap_line,
         p.image_url p_image_url,
         p.image_url p_image_url,
-        coalesce(p.body, 'this is a test') p_body,
+        coalesce(p.profile_details, 'this is a test') p_details,
         p.profile_status,
         p.profile_status_message
       from contacts c
@@ -171,3 +172,45 @@ class ContactDetails(View):
     async def call(self):
         raw_json = await self.conn.fetchval(self.sql, self.session.user_id, int(self.request.match_info['id']))
         return raw_json_response(raw_json)
+
+
+class ContactCreate(ExecView):
+    class Model(BaseModel):
+        email: EmailStr
+        profile_type: Literal['personal', 'work', 'organisation'] = 'personal'
+        # TODO image_url
+        main_name: constr(max_length=63) = None
+        last_name: constr(max_length=63) = None
+        strap_line: constr(max_length=127) = None
+        details: constr(max_length=2000) = None
+
+        @validator('email')
+        def check_email_length(cls, v):
+            if len(v) > 255:
+                raise ValueError('email addresses may not be longer than 255 characters')
+            return v
+
+        @validator('last_name')
+        def clear_last_name_organisation(cls, v, values):
+            if values.get('profile_type') == 'organisation':
+                return None
+            return v
+
+    async def execute(self, contact: Model):
+        user_id = await self.conns.main.fetchval(
+            'insert into users (email) values ($1) on conflict (email) do nothing returning id', contact.email
+        )
+        if not user_id:
+            # email address already exists
+            user_id = await self.conns.main.fetchval('select id from users where email=$1', contact.email)
+        contact_id = await self.conns.main.fetchval_b(
+            """
+            insert into contacts (:values__names) values :values
+            on conflict (owner, profile_user) do nothing returning id
+            """,
+            values=Values(owner=self.session.user_id, profile_user=user_id, **contact.dict(exclude={'email'})),
+        )
+        if not contact_id:
+            msg = 'you already have a contact with this email address'
+            raise JsonErrors.HTTPConflict(msg, details=[{'loc': ['email'], 'msg': msg}])
+        return dict(id=contact_id, status_=201)
