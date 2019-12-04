@@ -139,7 +139,7 @@ class UploadFile(View):
         await self.redis.enqueue_job(
             'delete_stale_upload', c.id, content_id, storage_path, _defer_by=self.settings.upload_pending_ttl
         )
-        return json_response(content_id=content_id, **d)
+        return json_response(file_id=content_id, **d)
 
 
 async def delete_stale_upload(ctx, conv_id: int, content_id: str, storage_path: str):

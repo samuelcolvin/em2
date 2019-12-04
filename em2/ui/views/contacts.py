@@ -1,5 +1,5 @@
 import asyncio
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from aiohttp.web import StreamResponse
 from aiohttp.web_exceptions import HTTPNotImplemented
@@ -186,6 +186,7 @@ class ContactCreate(ExecView):
         last_name: constr(max_length=63) = None
         strap_line: constr(max_length=127) = None
         details: constr(max_length=2000) = None
+        image: UUID = None
 
         @validator('email')
         def check_email_length(cls, v):
@@ -255,7 +256,7 @@ class UploadImage(View):
         storage_path = 's3://{}/{}'.format(bucket, d['fields']['Key'])
         await self.redis.setex(tmp_image_cache_key(image_id), self.settings.upload_pending_ttl, storage_path)
         await self.redis.enqueue_job('delete_stale_image', image_id, _defer_by=self.settings.upload_pending_ttl)
-        return json_response(**d)
+        return json_response(file_id=image_id, **d)
 
 
 async def delete_stale_image(ctx, image_id: str):

@@ -140,7 +140,7 @@ class ConvDetailsView extends React.Component {
       await this.act({
         act: 'message:add',
         body: this.state.new_message.markdown,
-        files: this.state.files.filter(f => f.done).map(f => f.content_id),
+        files: this.state.files.filter(f => f.done).map(f => f.file_id),
       })
     }
   }

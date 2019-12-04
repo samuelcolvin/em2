@@ -32,7 +32,7 @@ const Create = ({ctx, history}) => {
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   let fields = {
-    email: {max_length: 255, type: 'email'},
+    email: {max_length: 255, type: 'email', required: true},
     profile_type: {type: 'select', choices: ['personal', 'work', 'organisation'], default: 'personal'},
     main_name: {title: 'First Name', max_length: 63},
     last_name: {max_length: 63},
@@ -42,20 +42,20 @@ const Create = ({ctx, history}) => {
   }
   if (form_data.profile_type === 'organisation') {
     fields = {
-      email: {max_length: 255, type: 'email'},
+      email: {max_length: 255, type: 'email', required: true},
       profile_type: {type: 'select', choices: ['personal', 'work', 'organisation']},
       main_name: {title: 'Name', max_length: 63},
       strap_line: {max_length: 127},
       details: {type: 'rich_text'},
+      image: {type: 'image', extra: {request_file_upload: window.logic.contacts.request_image_upload}}
     }
   }
 
-  const submit_data = () => {
-    if (form_data.details && form_data.details.has_changed) {
-      return {...form_data, details: form_data.details.markdown}
-    } else {
-      return {...form_data, details: null}
-    }
+  const submit_data = (data) => {
+    data.details = (data.details && data.details.has_changed) ? data.details.markdown : null
+    data.image = data.image ? data.image.file_id : null
+    console.log('data:', data)
+    return data
   }
 
   return (

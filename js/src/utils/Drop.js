@@ -112,7 +112,7 @@ export default class Drop extends React.Component {
     xhr.open('POST', data.url, true)
     xhr.onload = event => {
       if (xhr.status === 204) {
-        this.props.update_file(key, {progress: null, icon: fas.faCheck, content_id: data.content_id, done: true})
+        this.props.update_file(key, {progress: null, icon: fas.faCheck, file_id: data.file_id, done: true})
       } else {
         // const response_data = error_response(xhr)
         console.warn('uploading file failed at end', xhr)
