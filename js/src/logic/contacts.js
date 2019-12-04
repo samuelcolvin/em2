@@ -72,6 +72,12 @@ export default class Contacts {
     return [results.filter(v => v), results.filter(v => !v).length]
   }
 
+  request_image_upload = async (filename, content_type, size) => {
+    const args = {filename, content_type, size}
+    const r = await this._requests.get('ui', `/${this._main.session.id}/contacts/upload-image/`, args)
+    return r.data
+  }
+
   _raw_lookup = async (query, callback) => {
     const config = {raw_response: true, headers: {'Accept': 'application/x-ndjson'}}
     const r = await this._requests.get('ui', `/${this._main.session.id}/contacts/search/`, {query}, config)

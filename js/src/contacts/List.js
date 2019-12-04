@@ -1,6 +1,9 @@
 import React from 'react'
 import {Link} from 'react-router-dom'
 import {withRouter} from 'react-router-dom'
+import {Button} from 'reactstrap'
+import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
+import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext} from 'reactstrap-toolbox'
 import ListView from '../utils/List'
 import {ContactImage, StatusDisplay} from './utils'
@@ -16,13 +19,20 @@ const ContactsList = ({items, ctx}) => items.map((c, i) => (
 ))
 
 export default withRouter(WithContext(props => (
-  <ListView
-    className="contacts-list"
-    title="Contacts"
-    menu_item="contacts"
-    list_items={window.logic.contacts.list}
-    render={ContactsList}
-    none_text="No Contacts found"
-    {...props}
-  />
+  <div>
+    <div className="mb-2">
+      <Button color="success" tag={Link} to="/contacts/create/">
+        <FontAwesomeIcon icon={fas.faPlus} className="mr-1"/>New Contact
+      </Button>
+    </div>
+    <ListView
+      className="contacts-list"
+      title="Contacts"
+      menu_item="contacts"
+      list_items={window.logic.contacts.list}
+      render={ContactsList}
+      none_text="No Contacts found"
+      {...props}
+    />
+  </div>
 )))

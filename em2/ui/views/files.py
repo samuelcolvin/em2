@@ -101,9 +101,6 @@ class GetHtmlImage(View):
         raise HTTPFound(url)
 
 
-upload_pending_ttl = 3600
-
-
 class UploadFile(View):
     class QueryModel(BaseModel):
         filename: constr(max_length=100)
@@ -138,9 +135,9 @@ class UploadFile(View):
             size=m.size,
         )
         storage_path = 's3://{}/{}'.format(bucket, d['fields']['Key'])
-        await self.redis.setex(file_upload_cache_key(c.id, content_id), upload_pending_ttl, storage_path)
+        await self.redis.setex(file_upload_cache_key(c.id, content_id), self.settings.upload_pending_ttl, storage_path)
         await self.redis.enqueue_job(
-            'delete_stale_upload', c.id, content_id, storage_path, _defer_by=upload_pending_ttl
+            'delete_stale_upload', c.id, content_id, storage_path, _defer_by=self.settings.upload_pending_ttl
         )
         return json_response(content_id=content_id, **d)
 

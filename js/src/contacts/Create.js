@@ -3,10 +3,14 @@ import {withRouter} from 'react-router-dom'
 import {Col, Row} from 'reactstrap'
 import {WithContext, Form} from 'reactstrap-toolbox'
 import {EditorInput} from './../Editor'
+import ImageInput from '../utils/ImageInput'
 
 const RenderFields = ({fields, RenderField}) => (
   <Row>
     <Col lg="4">
+      <div className="image-preview-right text-right">
+        <RenderField field={fields.image}/>
+      </div>
     </Col>
     <Col lg="8">
       <RenderField field={fields.email}/>
@@ -34,6 +38,7 @@ const Create = ({ctx, history}) => {
     last_name: {max_length: 63},
     strap_line: {max_length: 127},
     details: {type: 'rich_text'},
+    image: {type: 'image', extra: {request_file_upload: window.logic.contacts.request_image_upload}}
   }
   if (form_data.profile_type === 'organisation') {
     fields = {
@@ -62,7 +67,7 @@ const Create = ({ctx, history}) => {
         function={window.logic.contacts.create}
         submitted={r => history.push(`/contacts/${r.data.id}/`)}
         RenderFields={RenderFields}
-        type_lookup={{rich_text: EditorInput}}
+        type_lookup={{rich_text: EditorInput, image: ImageInput}}
         onChange={set_form_data}
       />
     </div>

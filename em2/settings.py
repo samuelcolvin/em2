@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     s3_cache_bucket: str = None
     max_ref_image_size = 10 * 1024 ** 2
     max_ref_image_count = 20
+    upload_pending_ttl = 3600
 
     vapid_private_key: str = None
     vapid_sub_email: EmailStr = None

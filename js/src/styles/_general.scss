@@ -102,3 +102,99 @@
   color: lighten($link-color, 20%);
   border: none;
 }
+
+@mixin file-preview-size($width, $height) {
+  $total-height: $height + 40px;
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  .file-summary {
+    height: $total-height;
+  }
+  .file-summary-main {
+    width: $width;
+  }
+  .file-preview {
+    width: $width;
+    height: $height;
+    img {
+      width: $width;
+      max-height: $height;
+    }
+  }
+  .preview-overlay {
+    top: -$total-height;
+    height: $total-height;
+  }
+}
+
+.dropzone {
+  position: relative;
+  outline: none;
+  .file-summary {
+    font-size: 12px;
+    margin: 0 20px;
+    text-align: center;
+    //border: 1px dotted #888;
+  }
+  .file-summary-main {
+    height: 100%;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+  .file-preview {
+    margin: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    img {
+      object-fit: cover;
+    }
+  }
+  .preview-overlay {
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    width: 100%;
+    z-index: 999;
+    color: #888;
+    background: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+  }
+  .full-overlay {
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 999;
+    border: 4px dashed #ccc;
+    color: #ccc;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.8);
+  }
+  .multi-previews {
+    margin-top: 5px;
+    @include file-preview-size(100px, 50px);
+  }
+  $image-size: 150px;
+  .image-preview {
+    @include file-preview-size($image-size, $image-size);
+    .no-image {
+      width: $image-size;
+      height: $image-size;
+      border: 1px solid $border-color;
+      border-radius: $border-radius;
+      margin: 0 20px 10px;
+    }
+  }
+}
+
+.image-preview-right {
+  .image-preview {
+    flex-direction: row-reverse;
+  }
+}

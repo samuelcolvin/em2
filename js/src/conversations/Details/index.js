@@ -5,10 +5,10 @@ import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, Loading, confirm_modal} from 'reactstrap-toolbox'
 import {Editor, empty_editor, from_markdown} from '../../Editor'
+import Drop, {FileSummary} from '../../utils/Drop'
 import Message from './Message'
 import RightPanel from './RightPanel'
 import Subject from './Subject'
-import Drop from './Drop'
 
 const initial_state = {
   locked: false,
@@ -20,6 +20,18 @@ const initial_state = {
   msg_modify_id: null,
   msg_modify_body: null,
 }
+
+const DropHelp = ({onClick}) => (
+  <span className="text-muted">
+    Drag and drop files, or click <a href="." onClick={onClick}>here</a> to select a file to attach.
+  </span>
+)
+
+const DropSummary = ({files, locked, remove_file}) => (
+  <div className="multi-previews">
+    {files.map((file, i) => <FileSummary key={i} {...file} locked={locked} remove_file={remove_file}/>)}
+  </div>
+)
 
 class ConvDetailsView extends React.Component {
   state = initial_state
@@ -231,6 +243,7 @@ class ConvDetailsView extends React.Component {
       return <Loading/>
     }
     const new_message_locked = this.locked('new_message')
+    const request_file_upload = (...args) => window.logic.conversations.request_file_upload(this.state.conv.key, ...args)
     return (
       <div>
         <Subject
@@ -283,12 +296,15 @@ class ConvDetailsView extends React.Component {
                 </span>
               </div>
               <div className="py-2">
-                <Drop conv={this.state.conv.key}
+                <Drop request_file_upload={request_file_upload}
+                      help={DropHelp}
+                      summary={DropSummary}
                       files={this.state.files}
                       locked={new_message_locked}
                       add_file={this.add_file}
                       remove_file={this.remove_file}
-                      update_file={this.update_file}>
+                      update_file={this.update_file}
+                      maxSize={1024**3}>
                   <Editor
                     placeholder="reply to all..."
                     disabled={new_message_locked}

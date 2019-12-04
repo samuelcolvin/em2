@@ -9,7 +9,7 @@ const is_file_drag = e => e.dataTransfer.types.length === 1 && e.dataTransfer.ty
 const failed_icon = fas.faMinusCircle
 
 
-const FileSummary = props => {
+export const FileSummary = props => {
   const [over, setOver] = React.useState(false)
   const ref = React.createRef()
   const set_over = e => setOver(e.type === 'mouseenter')
@@ -32,7 +32,7 @@ const FileSummary = props => {
             <FontAwesomeIcon icon={props.preview_icon} size="3x"/>
           )}
         </div>
-        {props.filename}
+        <span className="file-name">{props.filename}</span>
         <div>
           {props.progress ? (
             <Progress value={props.progress} className="mt-1"/>
@@ -54,6 +54,12 @@ const FileSummary = props => {
     </div>
   )
 }
+
+const DefaultHelpComponent = ({onClick}) => (
+  <span className="text-muted">
+    Drag and drop files, or click <a href="." onClick={onClick}>here</a> to select one.
+  </span>
+)
 
 export default class Drop extends React.Component {
   state = {}
@@ -94,7 +100,7 @@ export default class Drop extends React.Component {
   }
 
   upload_file = async (key, file) => {
-    const data = await window.logic.conversations.request_file_upload(this.props.conv, file.name, file.type, file.size)
+    const data = await this.props.request_file_upload(file.name, file.type, file.size)
 
     const form_data = new FormData()
     for (let [name, value] of Object.entries(data.fields)) {
@@ -126,9 +132,7 @@ export default class Drop extends React.Component {
     this.uploads[key] = xhr
   }
 
-  set_files = () => (
-    this.props.set_files(Object.values(this.state).filter(i => i && i.content_id).map(i => i.content_id))
-  )
+  get_key = file => `${file.name}-${file.size}-${file.lastModified}`
 
   onDrop = (accepted_files, refused_files) => {
     if (this.props.locked) {
@@ -136,8 +140,8 @@ export default class Drop extends React.Component {
     }
     this.setState({already_uploaded: false, dragging: false})
     for (let file of accepted_files) {
-      const key = `${file.name}-${file.size}-${file.lastModified}`
-      if (this.state[key]) {
+      const key = this.get_key(file)
+      if (this.props.files.find(f => f.key === key)) {
         this.setState({already_uploaded: true})
       } else {
         const f = {key, filename: file.name, size: file_size(file.size), file_key: key, progress: 1}
@@ -150,12 +154,24 @@ export default class Drop extends React.Component {
         this.upload_file(key, file)
       }
     }
-    if (refused_files.length) {
-      throw Error('refused files not supported')
+    for (let file of refused_files) {
+      const key = this.get_key(file)
+      if (this.props.files.find(f => f.key === key)) {
+        this.setState({already_uploaded: true})
+      } else {
+        this.props.add_file({
+          key,
+          filename: file.name,
+          progress: null,
+          icon: failed_icon,
+          preview_icon: failed_icon,
+          message: 'Invalid file'
+        })
+      }
     }
   }
 
-  onClickAttach = e => {
+  selectDialog = e => {
     e.preventDefault()
     if (!this.props.locked) {
       this.drop_ref.current && this.drop_ref.current.open()
@@ -171,29 +187,26 @@ export default class Drop extends React.Component {
   }
 
   render () {
+    const HelpComponent = this.props.help || DefaultHelpComponent
+    const SummaryComponent = this.props.summary
     return (
       <div>
         <Dropzone ref={this.drop_ref}
                   onDrop={this.onDrop}
                   noClick={true}
-                  maxSize={1024**3}
-                  onDragStart={e => console.log('onDragStart', e)}>
+                  maxSize={this.props.maxSize}
+                  accept={this.props.acceptable_files}>
           {({getRootProps, getInputProps}) => (
             <div className="dropzone mb-1" {...getRootProps()}>
               {this.props.children}
               <input {...getInputProps()}/>
               <span className="text-muted">
-                Drag and drop files, or click <a href="." onClick={this.onClickAttach}>here</a>
-                &nbsp;to select a file to attach.
+                <HelpComponent onClick={this.selectDialog}/>
               </span>
-              <div className="previews">
-                {this.props.files.map((file, i) => (
-                  <FileSummary key={i} {...file} locked={this.props.locked} remove_file={this.remove_file}/>
-                ))}
-              </div>
+              {SummaryComponent && <SummaryComponent {...this.props} remove_file={this.remove_file}/>}
               <div className={`full-overlay ${!this.props.locked && this.state.dragging ? 'd-flex': 'd-none'}`}>
                 <div className="h1">
-                  Drop files here
+                  {this.props.hover_msg || 'Drop files here'}
                 </div>
               </div>
             </div>

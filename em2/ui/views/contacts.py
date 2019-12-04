@@ -1,12 +1,15 @@
 import asyncio
+from uuid import uuid4
 
 from aiohttp.web import StreamResponse
-from atoolbox import JsonErrors, get_offset, parse_request_query, raw_json_response
+from aiohttp.web_exceptions import HTTPNotImplemented
+from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
 from buildpg import V, Values, funcs
-from pydantic import BaseModel, EmailStr, constr, validate_email, validator
+from pydantic import BaseModel, EmailStr, conint, constr, validate_email, validator
 from typing_extensions import Literal
 
 from em2.search import build_query_function
+from em2.utils.storage import S3, image_extensions, parse_storage_uri
 
 from .utils import ExecView, View
 
@@ -160,7 +163,7 @@ class ContactDetails(View):
         p.strap_line p_strap_line,
         p.image_url p_image_url,
         p.image_url p_image_url,
-        coalesce(p.profile_details, 'this is a test') p_details,
+        p.profile_details p_details,
         p.profile_status,
         p.profile_status_message
       from contacts c
@@ -214,3 +217,55 @@ class ContactCreate(ExecView):
             msg = 'you already have a contact with this email address'
             raise JsonErrors.HTTPConflict(msg, details=[{'loc': ['email'], 'msg': msg}])
         return dict(id=contact_id, status_=201)
+
+
+def tmp_image_cache_key(content_id: str) -> str:
+    return f'image-upload-{content_id}'
+
+
+class UploadImage(View):
+    class QueryModel(BaseModel):
+        filename: constr(max_length=100)
+        content_type: str
+        # default to 10 MB
+        size: conint(le=10 * 1024 ** 2)
+
+        @validator('content_type')
+        def check_content_type(cls, v: str) -> str:
+            assert v in image_extensions, 'Invalid image Content-Type'
+            return v
+
+    async def call(self):
+        s = self.settings
+        if not all((s.aws_secret_key, s.aws_access_key, s.s3_file_bucket)):  # pragma: no cover
+            raise HTTPNotImplemented(text="Storage keys not set, can't upload files")
+
+        m = parse_request_query(self.request, self.QueryModel)
+        image_id = str(uuid4())
+
+        bucket = s.s3_file_bucket
+        d = S3(s).signed_upload_url(
+            bucket=bucket,
+            path=f'contacts/temp/{self.session.user_id}/{image_id}/',
+            filename=m.filename,
+            content_type=m.content_type,
+            content_disp=True,
+            size=m.size,
+        )
+        storage_path = 's3://{}/{}'.format(bucket, d['fields']['Key'])
+        await self.redis.setex(tmp_image_cache_key(image_id), self.settings.upload_pending_ttl, storage_path)
+        await self.redis.enqueue_job('delete_stale_image', image_id, _defer_by=self.settings.upload_pending_ttl)
+        return json_response(**d)
+
+
+async def delete_stale_image(ctx, image_id: str):
+    """
+    Delete an uploaded image if the cache key still exists.
+    """
+    storage_path = await ctx['redis'].get(tmp_image_cache_key(image_id))
+    key_exists = await ctx['redis'].delete(tmp_image_cache_key(image_id))
+    if key_exists:
+        _, bucket, path = parse_storage_uri(storage_path)
+        async with S3(ctx['settings']) as s3_client:
+            await s3_client.delete(bucket, path)
+        return 1
