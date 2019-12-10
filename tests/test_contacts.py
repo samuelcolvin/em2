@@ -4,6 +4,7 @@ from pytest_toolbox.comparison import AnyInt, RegexStr
 
 from em2.contacts import add_contacts
 from em2.core import Action, ActionTypes
+from em2.ui.views.contacts import delete_stale_image
 
 from .conftest import Factory, UserTestClient, create_image
 
@@ -144,7 +145,7 @@ async def test_create_contact(factory: Factory, cli: UserTestClient, db_conn):
     user = await factory.create_user()
 
     assert await db_conn.fetchval('select count(*) from contacts') == 0
-    data = dict(email='foobar@example.org', main_name='Frank')
+    data = dict(email='foobar@example.org', main_name='Frank', last_name='Skinner')
     r = await cli.post_json(factory.url('ui:contacts-create'), data=data, status=201)
     assert await db_conn.fetchval('select count(*) from contacts') == 1
     c = dict(await db_conn.fetchrow('select * from contacts'))
@@ -153,7 +154,7 @@ async def test_create_contact(factory: Factory, cli: UserTestClient, db_conn):
     assert c['owner'] == user.id
     assert await db_conn.fetchval('select email from users where id=$1', c['profile_user']) == 'foobar@example.org'
     assert c['main_name'] == 'Frank'
-    assert c['last_name'] is None
+    assert c['last_name'] == 'Skinner'
 
 
 async def test_create_contact_with_image(factory: Factory, cli: UserTestClient, db_conn, dummy_server):
@@ -181,3 +182,69 @@ async def test_create_contact_with_image(factory: Factory, cli: UserTestClient, 
         'details': None,
         'vector': None,
     }
+
+
+async def test_create_contact_missing_image(factory: Factory, cli: UserTestClient):
+    await factory.create_user()
+
+    data = dict(email='foobar@example.org', image='2a84b4c7-caaa-4f6f-8570-b75d1811f978')
+    r = await cli.post_json(factory.url('ui:contacts-create'), data=data, status=400)
+    assert await r.json() == {'message': 'image not found', 'details': [{'loc': ['image'], 'msg': 'image not found'}]}
+
+
+async def test_create_contact_invalid_image(factory: Factory, cli: UserTestClient, dummy_server):
+    await factory.create_user()
+
+    q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
+    obj = await cli.get_json(factory.url('ui:contacts-upload-image', query=q))
+    path = obj['fields']['Key']
+    dummy_server.app['s3_files'][path] = create_image()
+
+    dummy_server.app['s3_files'][obj['fields']['Key']] = b'xx'
+
+    data = dict(email='foobar@example.org', image=obj['file_id'])
+    r = await cli.post_json(factory.url('ui:contacts-create'), data=data, status=400)
+    assert await r.json() == {'message': 'invalid image', 'details': [{'loc': ['image'], 'msg': 'invalid image'}]}
+
+
+async def test_create_duplicate_contact(factory: Factory, cli: UserTestClient, db_conn):
+    await factory.create_user()
+
+    assert await db_conn.fetchval('select count(*) from contacts') == 0
+    data = dict(email='foobar@example.org', main_name='Frank')
+    await cli.post_json(factory.url('ui:contacts-create'), data=data, status=201)
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    await cli.post_json(factory.url('ui:contacts-create'), data=data, status=409)
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+
+
+async def test_create_contact_existing_user(factory: Factory, cli: UserTestClient, db_conn):
+    await factory.create_user()
+
+    contact_user_id = await factory.create_simple_user(email='foobar@example.org', main_name='a')
+    assert await db_conn.fetchval('select count(*) from contacts') == 0
+    data = dict(email='foobar@example.org', main_name='Frank')
+    await cli.post_json(factory.url('ui:contacts-create'), data=data, status=201)
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select profile_user from contacts') == contact_user_id
+
+
+async def test_create_org_contact(factory: Factory, cli: UserTestClient, db_conn):
+    await factory.create_user()
+
+    data = dict(email='foobar@example.org', profile_type='organisation', main_name='Frank', last_name='xxx')
+    await cli.post_json(factory.url('ui:contacts-create'), data=data, status=201)
+    c = await db_conn.fetchrow('select * from contacts')
+    assert c['profile_type'] == 'organisation'
+    assert c['main_name'] == 'Frank'
+    assert c['last_name'] is None
+
+
+async def test_delete_stale_image(factory: Factory, cli: UserTestClient, worker_ctx):
+    await factory.create_user()
+
+    q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
+    obj = await cli.get_json(factory.url('ui:contacts-upload-image', query=q))
+
+    assert await delete_stale_image(worker_ctx, obj['file_id']) == 1
+    assert await delete_stale_image(worker_ctx, obj['file_id']) is None

@@ -191,12 +191,6 @@ class ContactCreate(ExecView):
         details: constr(max_length=2000) = None
         image: UUID = None
 
-        @validator('email')
-        def check_email_length(cls, v):
-            if len(v) > 255:
-                raise ValueError('email addresses may not be longer than 255 characters')
-            return v
-
         @validator('last_name')
         def clear_last_name_organisation(cls, v, values):
             if values.get('profile_type') == 'organisation':
@@ -222,7 +216,8 @@ class ContactCreate(ExecView):
                 storage_path = await self.redis.get(cache_key)
                 key_exists = await self.redis.delete(cache_key)
                 if not key_exists:
-                    raise JsonErrors.HTTPBadRequest(message='image not found')
+                    msg = 'image not found'
+                    raise JsonErrors.HTTPBadRequest(msg, details=[{'loc': ['image'], 'msg': msg}])
 
                 _, bucket, path = parse_storage_uri(storage_path)
                 body = await s3_client.download(bucket, path)
