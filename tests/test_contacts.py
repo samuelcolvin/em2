@@ -1,12 +1,14 @@
 from operator import itemgetter
 
+import pytest
 from pytest_toolbox.comparison import AnyInt, RegexStr
 
 from em2.contacts import add_contacts
 from em2.core import Action, ActionTypes
 from em2.ui.views.contacts import delete_stale_image
+from em2.utils.images import InvalidImage, _do_resize, _resize_crop_dims
 
-from .conftest import Factory, UserTestClient, create_image
+from .conftest import Factory, UserTestClient, create_image, create_raw_image
 
 
 async def test_create_conv(cli: UserTestClient, factory: Factory, db_conn):
@@ -248,3 +250,23 @@ async def test_delete_stale_image(factory: Factory, cli: UserTestClient, worker_
 
     assert await delete_stale_image(worker_ctx, obj['file_id']) == 1
     assert await delete_stale_image(worker_ctx, obj['file_id']) is None
+
+
+def test_resize_crop_dims():
+    img1 = create_raw_image(800, 400)
+    assert _resize_crop_dims(img1, 200, 200) == ((400, 200), (100, 0, 300, 200))
+    assert _resize_crop_dims(img1, 400, 400) == ((800, 400), (200, 0, 600, 400))
+
+    img2 = create_raw_image(400, 800)
+    assert _resize_crop_dims(img2, 200, 200) == ((200, 400), (0, 100, 200, 300))
+
+    img3 = create_raw_image(200, 200)
+    assert _resize_crop_dims(img3, 200, 200) == (None, None)
+
+
+def test_do_resize():
+    assert _do_resize(create_raw_image(800, 400), [(200, 200)]).size == (200, 200)
+    assert _do_resize(create_raw_image(200, 200), [(200, 200)]).size == (200, 200)
+
+    with pytest.raises(InvalidImage, match='image too small, minimum size 200 x 200'):
+        _do_resize(create_raw_image(100, 300), [(200, 200)])

@@ -798,9 +798,14 @@ async def _fix_alt_worker(alt_redis, alt_worker_ctx):
     await worker.close()
 
 
-def create_image(width: int = 600, height: int = 600, mode: str = 'RGB', format: str = 'JPEG') -> bytes:
-    stream = BytesIO()
+def create_raw_image(width: int = 600, height: int = 600, mode: str = 'RGB') -> Image:
     image = Image.new(mode, (width, height), (50, 100, 150))
     ImageDraw.Draw(image).line((0, 0) + image.size, fill=128)
+    return image
+
+
+def create_image(width: int = 600, height: int = 600, mode: str = 'RGB', format: str = 'JPEG') -> bytes:
+    image = create_raw_image(width, height, mode)
+    stream = BytesIO()
     image.save(stream, format=format, optimize=True)
     return stream.getvalue()
