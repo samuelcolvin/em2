@@ -71,7 +71,7 @@ async def create_app_ui(main_app: web.Application):
         web.get(s + 'contacts/search/', ContactSearch.view(), name='contacts-search'),
         web.post(s + 'contacts/create/', ContactCreate.view(), name='contacts-create'),
         web.get(s + 'contacts/upload-image/', UploadImage.view(), name='contacts-upload-image'),
-        web.get(s + r'contacts/{id:\d+}/', ContactDetails.view(), name='contact-details'),
+        web.get(s + r'contacts/{id:\d+}/', ContactDetails.view(), name='contacts-details'),
     ]
     middleware = (
         csrf_middleware,

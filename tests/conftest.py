@@ -418,9 +418,9 @@ class Factory:
 
     async def create_label(self, name='Test Label', *, user_id=None, ordering=None, color=None, description=None):
         val = dict(name=name, user_id=user_id or self.user.id, ordering=ordering, color=color, description=description)
-        values = Values(**{k: v for k, v in val.items() if v is not None})
         return await self.conn.fetchval_b(
-            'insert into labels (:values__names) values :values returning id', values=values
+            'insert into labels (:values__names) values :values returning id',
+            values=Values(**{k: v for k, v in val.items() if v is not None}),
         )
 
     async def act(self, conv_id: int, action: Action) -> List[int]:
@@ -434,6 +434,35 @@ class Factory:
             if action_ids:
                 await push_multiple(self.conns, conv_id, action_ids)
             return action_ids
+
+    async def create_contact(
+        self,
+        owner: int,
+        user_id: int,
+        *,
+        profile_type: str = None,
+        main_name: str = None,
+        last_name: str = None,
+        strap_line: str = None,
+        image_storage: str = None,
+        **kwargs,
+    ):
+        val = dict(
+            owner=owner,
+            profile_user=user_id,
+            profile_type=profile_type,
+            main_name=main_name,
+            last_name=last_name,
+            strap_line=strap_line,
+            image_storage=image_storage,
+            **kwargs,
+        )
+        contact_id = await self.conn.fetchval_b(
+            'insert into contacts (:values__names) values :values returning id',
+            values=Values(**{k: v for k, v in val.items() if v is not None}),
+        )
+        # TODO update contact search vector
+        return contact_id
 
 
 @pytest.fixture(name='factory')
@@ -767,3 +796,11 @@ async def _fix_alt_worker(alt_redis, alt_worker_ctx):
 
     worker.pool = None
     await worker.close()
+
+
+def create_image(width: int = 600, height: int = 600, mode: str = 'RGB', format: str = 'JPEG') -> bytes:
+    stream = BytesIO()
+    image = Image.new(mode, (width, height), (50, 100, 150))
+    ImageDraw.Draw(image).line((0, 0) + image.size, fill=128)
+    image.save(stream, format=format, optimize=True)
+    return stream.getvalue()

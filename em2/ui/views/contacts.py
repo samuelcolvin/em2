@@ -169,10 +169,11 @@ class ContactDetails(View):
     """
 
     async def call(self):
-        contact = dict(await self.conn.fetchrow(self.sql, self.session.user_id, int(self.request.match_info['id'])))
+        r = await self.conn.fetchrow(self.sql, self.session.user_id, int(self.request.match_info['id']))
+        contact = {k: v for k, v in r.items() if v is not None and not k.endswith('image_storage')}
         s3 = S3(self.settings)
         for prefix in ('c_', 'p_'):
-            storage = contact.pop(prefix + 'image_storage')
+            storage = r[prefix + 'image_storage']
             if storage:
                 _, bucket, path = parse_storage_uri(storage)
                 contact[prefix + 'image_url'] = s3.signed_download_url(bucket, path)
@@ -215,6 +216,7 @@ class ContactCreate(ExecView):
             if not all((s.aws_secret_key, s.aws_access_key, s.s3_file_bucket)):  # pragma: no cover
                 raise HTTPNotImplemented(text="Storage keys not set, can't upload files")
 
+            image_data = None
             if contact.image:
                 cache_key = tmp_image_cache_key(str(contact.image))
                 storage_path = await self.redis.get(cache_key)
