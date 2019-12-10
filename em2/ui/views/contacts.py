@@ -1,15 +1,17 @@
 import asyncio
 from uuid import UUID, uuid4
 
+import ujson
 from aiohttp.web import StreamResponse
 from aiohttp.web_exceptions import HTTPNotImplemented
-from atoolbox import JsonErrors, get_offset, json_response, parse_request_query, raw_json_response
+from asyncpg import Record
+from atoolbox import JsonErrors, get_offset, json_response, parse_request_query
 from buildpg import V, Values, funcs
 from pydantic import BaseModel, EmailStr, conint, constr, validate_email, validator
 from typing_extensions import Literal
 
 from em2.search import build_query_function
-from em2.utils.storage import S3, S3Client, image_extensions, parse_storage_uri
+from em2.utils.storage import S3, image_extensions, parse_storage_uri, set_image_url
 
 from ...settings import Settings
 from ...utils import listify
@@ -20,20 +22,18 @@ from .utils import ExecView, View
 class ContactSearch(View):
     response = None
     search_sql = """
-    select json_strip_nulls(row_to_json(t)) from (
-      select
-        u.email,
-        c.id is not null is_contact,
-        coalesce(c.main_name, u.main_name) main_name,
-        coalesce(c.last_name, u.last_name) last_name,
-        coalesce(c.strap_line, u.strap_line) strap_line,
-        coalesce(c.image_url, u.image_url) image_url,
-        u.profile_status,
-        u.profile_status_message
-      from users u
-      left join contacts c on u.id = c.profile_user
-      where u.id != :this_user and :where
-    ) t
+    select
+      u.email,
+      c.id is not null is_contact,
+      coalesce(c.main_name, u.main_name) main_name,
+      coalesce(c.last_name, u.last_name) last_name,
+      coalesce(c.strap_line, u.strap_line) strap_line,
+      coalesce(c.thumb_storage, u.thumb_storage) image_storage,
+      u.profile_status,
+      u.profile_status_message
+    from users u
+    left join contacts c on u.id = c.profile_user
+    where u.id != :this_user and :where
     """
 
     class Model(BaseModel):
@@ -64,9 +64,9 @@ class ContactSearch(View):
                     V('u.visibility') == 'public-searchable',
                 ),
             )
-            json_str = await self.conn.fetchval_b(self.search_sql, this_user=self.session.user_id, where=where)
-            if json_str:
-                await self.write_line(json_str)
+            r = await self.conn.fetchrow_b(self.search_sql, this_user=self.session.user_id, where=where)
+            if r:
+                await self.write_line(r)
                 # got an exact result, no need to go further
                 return self.response
 
@@ -77,8 +77,8 @@ class ContactSearch(View):
             # TODO look up node for email domain
         return self.response
 
-    async def write_line(self, json_str: str):
-        await self.response.write(json_str.encode() + b'\n')
+    async def write_line(self, row: Record):
+        await self.response.write(ujson.dumps(set_image_url(row, self.settings)).encode() + b'\n')
 
     async def tsvector_search(self, m: Model):
         query_func = build_query_function(m.query)
@@ -88,7 +88,7 @@ class ContactSearch(View):
         )
         q = await self.conn.fetch_b(self.search_sql, this_user=self.session.user_id, where=where)
         for r in q:
-            await self.write_line(r[0])
+            await self.write_line(r)
 
     async def partial_email_search(self, m: Model):
         if ' ' in m.query:
@@ -102,7 +102,7 @@ class ContactSearch(View):
         pg = self.request.app['pg']
         q = await pg.fetch_b(self.search_sql, this_user=self.session.user_id, where=where)
         for r in q:
-            await self.write_line(r[0])
+            await self.write_line(r)
 
 
 class ContactsList(View):
@@ -136,14 +136,8 @@ class ContactsList(View):
 
     @listify
     async def get_items(self, where, offset):
-        s3 = S3(self.settings)
         for r in await self.conn.fetch_b(self.items_sql, where=where, offset=offset):
-            contact = dict(r)
-            image_storage = contact.pop('image_storage')
-            if image_storage:
-                _, bucket, path = parse_storage_uri(image_storage)
-                contact['image_url'] = s3.signed_download_url(bucket, path)
-            yield contact
+            yield set_image_url(r, self.settings)
 
 
 class ContactDetails(View):

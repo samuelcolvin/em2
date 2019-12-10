@@ -38,7 +38,7 @@ const Create = ({ctx, history}) => {
     last_name: {max_length: 63},
     strap_line: {max_length: 127},
     details: {type: 'rich_text'},
-    image: {type: 'image', extra: {request_file_upload: window.logic.contacts.request_image_upload}}
+    image: {type: 'image', extra: {request_file_upload: window.logic.contacts.request_image_upload}},
   }
 
   if (form_data.profile_type === 'organisation') {

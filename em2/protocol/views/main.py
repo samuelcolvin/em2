@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
 import nacl.encoding
-from atoolbox import JsonErrors, json_response, parse_request_query, raw_json_response
+from atoolbox import JsonErrors, json_response, parse_request_query
 from buildpg.asyncpg import BuildPgConnection
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, Extra, PositiveInt, conint, constr, validator
 from typing_extensions import Literal
@@ -23,7 +23,7 @@ from em2.core import (
 from em2.protocol.core import HttpError, InvalidSignature
 from em2.utils.core import MsgFormat
 from em2.utils.db import or404
-from em2.utils.storage import check_content_type
+from em2.utils.storage import check_content_type, set_image_url
 
 from .utils import ExecView, check_signature
 
@@ -473,18 +473,17 @@ async def get_profile(request):
     m = parse_request_query(request, ProfileQueryModel)
     conn: BuildPgConnection = request['conn']
     # TODO support visibility=private
-    raw_json = await or404(
+    row = await or404(
         conn.fetchrow(
             """
-            select row_to_json(t) from (
-              select profile_type, main_name, last_name, image_url, profile_status, profile_status_message,
-                profile_details details
-              from users
-              where email=$1 and user_type='local' and visibility!='private'
-            ) t
+            select profile_type, main_name, last_name, image_storage, profile_status, profile_status_message,
+              profile_details details
+            from users
+            where email=$1 and user_type='local' and visibility!='private'
             """,
             m.email,
         ),
         msg='user not found',
     )
-    return raw_json_response(raw_json)
+    user = set_image_url(row, request.app['settings'])
+    return json_response(**user)

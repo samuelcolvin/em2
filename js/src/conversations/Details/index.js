@@ -243,7 +243,9 @@ class ConvDetailsView extends React.Component {
       return <Loading/>
     }
     const new_message_locked = this.locked('new_message')
-    const request_file_upload = (...args) => window.logic.conversations.request_file_upload(this.state.conv.key, ...args)
+    const request_file_upload = (...args) => (
+      window.logic.conversations.request_file_upload(this.state.conv.key, ...args)
+    )
     return (
       <div>
         <Subject

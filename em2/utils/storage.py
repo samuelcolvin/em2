@@ -14,6 +14,7 @@ import aiobotocore
 from aiobotocore import AioSession
 from aiobotocore.client import AioBaseClient
 from aiohttp import ClientError, ClientResponse, ClientSession
+from asyncpg import Record
 from botocore.exceptions import ClientError as BotoClientError
 
 from em2.core import File
@@ -31,6 +32,7 @@ __all__ = (
     'DownloadError',
     'download_remote_file',
     'image_extensions',
+    'set_image_url',
 )
 
 uri_re = re.compile(r'^(s3)://([^/]+)/(.+)$')
@@ -281,3 +283,12 @@ async def download_remote_file(
         raise DownloadError('download_error')
     else:
         return content, content_type
+
+
+def set_image_url(r: Record, settings: Settings) -> Dict[str, Any]:
+    storage = r.get('image_storage')
+    data = {k: v for k, v in r.items() if v is not None and k != 'image_storage'}
+    if storage:
+        _, bucket, path = parse_storage_uri(storage)
+        data['image_url'] = S3(settings).signed_download_url(bucket, path)
+    return data

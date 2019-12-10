@@ -165,7 +165,7 @@ export default class Drop extends React.Component {
           progress: null,
           icon: failed_icon,
           preview_icon: failed_icon,
-          message: 'Invalid file'
+          message: 'Invalid file',
         })
       }
     }
