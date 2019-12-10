@@ -9,7 +9,6 @@ import ListView from '../utils/List'
 import {ContactImage, StatusDisplay} from './utils'
 
 const ContactsList = ({items, ctx}) => items.map((c, i) => (
-  // TODO show image
   <Link key={i} to={`/contacts/${c.id}/`} onClick={e => ctx.disable_nav && e.preventDefault()}>
     <div><ContactImage c={c}/></div>
     <div className="pl-3">{c.main_name} {c.last_name}</div>

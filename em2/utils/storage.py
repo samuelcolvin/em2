@@ -40,7 +40,7 @@ def file_upload_cache_key(conv_id: int, content_id: str) -> str:
     return f'file-upload-{conv_id}-{content_id}'
 
 
-def parse_storage_uri(uri):
+def parse_storage_uri(uri) -> Tuple[str, str, str]:
     m = uri_re.search(uri)
     if not m:
         raise RuntimeError(f'url not recognised: {uri!r}')
@@ -97,11 +97,16 @@ class S3Client:
         )
 
     async def upload(
-        self, bucket: str, path: str, content: bytes, content_type: Optional[str], content_disposition: Optional[str]
+        self,
+        bucket: str,
+        path: str,
+        content: bytes,
+        content_type: Optional[str] = None,
+        content_disposition: Optional[str] = None,
     ):
-        await self._client.put_object(
-            Bucket=bucket, Key=path, Body=content, ContentType=content_type, ContentDisposition=content_disposition
-        )
+        kwargs = dict(ContentType=content_type, ContentDisposition=content_disposition)
+        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        await self._client.put_object(Bucket=bucket, Key=path, Body=content, **kwargs)
         return f's3://{bucket}/{path}'
 
     async def delete(self, bucket: str, path: str):

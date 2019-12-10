@@ -9,8 +9,11 @@ from pydantic import BaseModel, EmailStr, conint, constr, validate_email, valida
 from typing_extensions import Literal
 
 from em2.search import build_query_function
-from em2.utils.storage import S3, image_extensions, parse_storage_uri
+from em2.utils.storage import S3, S3Client, image_extensions, parse_storage_uri
 
+from ...settings import Settings
+from ...utils import listify
+from ...utils.images import resize_image
 from .utils import ExecView, View
 
 
@@ -103,85 +106,90 @@ class ContactSearch(View):
 
 
 class ContactsList(View):
-    sql = """
-    select json_build_object(
-      'items', items,
-      'pages', pages
-    ) from (
-      select coalesce(array_to_json(array_agg(json_strip_nulls(row_to_json(t)))), '[]') items
-      from (
-        select
-          c.id,
-          p.email,
-          coalesce(c.main_name, p.main_name) main_name,
-          coalesce(c.last_name, p.last_name) last_name,
-          coalesce(c.strap_line, p.strap_line) strap_line,
-          coalesce(c.image_url, p.image_url) image_url,
-          coalesce(c.profile_type, p.profile_type) profile_type,
-          p.profile_status,
-          p.profile_status_message
-        from contacts c
-        join users p on c.profile_user = p.id
-        where :where
-        order by coalesce(c.main_name, p.main_name)
-        limit 50
-        offset :offset
-      ) t
-    ) items, (
-      select (count(*) - 1) / 50 + 1 pages from contacts c where :where
-    ) pages
+    items_sql = """
+    select
+      c.id,
+      p.email,
+      coalesce(c.main_name, p.main_name) main_name,
+      coalesce(c.last_name, p.last_name) last_name,
+      coalesce(c.strap_line, p.strap_line) strap_line,
+      coalesce(c.thumb_storage, p.thumb_storage) image_storage,
+      coalesce(c.profile_type, p.profile_type) profile_type,
+      p.profile_status,
+      p.profile_status_message
+    from contacts c
+    join users p on c.profile_user = p.id
+    where :where
+    order by coalesce(c.main_name, p.main_name)
+    limit 50
+    offset :offset
     """
+    pages_sql = 'select (count(*) - 1) / 50 + 1 pages from contacts c where :where'
 
     async def call(self):
-        raw_json = await self.conn.fetchval_b(
-            self.sql, where=V('c.owner') == self.session.user_id, offset=get_offset(self.request, paginate_by=50)
+        # can't currently use raw sql here due to signing download urls
+        where, offset = V('c.owner') == self.session.user_id, get_offset(self.request, paginate_by=50)
+        return json_response(
+            pages=await self.conn.fetchval_b(self.pages_sql, where=where),
+            items=await self.get_items(where=where, offset=offset),
         )
-        return raw_json_response(raw_json)
+
+    @listify
+    async def get_items(self, where, offset):
+        s3 = S3(self.settings)
+        for r in await self.conn.fetch_b(self.items_sql, where=where, offset=offset):
+            contact = dict(r)
+            image_storage = contact.pop('image_storage')
+            if image_storage:
+                _, bucket, path = parse_storage_uri(image_storage)
+                contact['image_url'] = s3.signed_download_url(bucket, path)
+            yield contact
 
 
 class ContactDetails(View):
     sql = """
-    select json_strip_nulls(row_to_json(contact))
-    from (
-      select
-        c.id,
-        c.profile_user user_id,
-        p.email,
+    select
+      c.id,
+      c.profile_user user_id,
+      p.email,
 
-        c.profile_type c_profile_type,
-        c.main_name c_main_name,
-        c.last_name c_last_name,
-        c.strap_line c_strap_line,
-        c.image_url c_image_url,
-        c.image_url c_image_url,
-        c.details c_details,
+      c.profile_type c_profile_type,
+      c.main_name c_main_name,
+      c.last_name c_last_name,
+      c.strap_line c_strap_line,
+      c.image_storage c_image_storage,
+      c.details c_details,
 
-        p.visibility p_visibility,
-        p.profile_type p_profile_type,
-        p.main_name p_main_name,
-        p.last_name p_last_name,
-        p.strap_line p_strap_line,
-        p.image_url p_image_url,
-        p.image_url p_image_url,
-        p.profile_details p_details,
-        p.profile_status,
-        p.profile_status_message
-      from contacts c
-      join users p on c.profile_user = p.id
-      where c.owner=$1 and c.id=$2
-    ) contact
+      p.visibility p_visibility,
+      p.profile_type p_profile_type,
+      p.main_name p_main_name,
+      p.last_name p_last_name,
+      p.strap_line p_strap_line,
+      p.image_storage p_image_storage,
+      p.profile_details p_details,
+      p.profile_status,
+      p.profile_status_message
+    from contacts c
+    join users p on c.profile_user = p.id
+    where c.owner=$1 and c.id=$2
     """
 
     async def call(self):
-        raw_json = await self.conn.fetchval(self.sql, self.session.user_id, int(self.request.match_info['id']))
-        return raw_json_response(raw_json)
+        contact = dict(await self.conn.fetchrow(self.sql, self.session.user_id, int(self.request.match_info['id'])))
+        s3 = S3(self.settings)
+        for prefix in ('c_', 'p_'):
+            storage = contact.pop(prefix + 'image_storage')
+            if storage:
+                _, bucket, path = parse_storage_uri(storage)
+                contact[prefix + 'image_url'] = s3.signed_download_url(bucket, path)
+
+        return json_response(**contact)
 
 
 class ContactCreate(ExecView):
     class Model(BaseModel):
         email: EmailStr
         profile_type: Literal['personal', 'work', 'organisation'] = 'personal'
-        # TODO image_url
         main_name: constr(max_length=63) = None
         last_name: constr(max_length=63) = None
         strap_line: constr(max_length=127) = None
@@ -207,16 +215,50 @@ class ContactCreate(ExecView):
         if not user_id:
             # email address already exists
             user_id = await self.conns.main.fetchval('select id from users where email=$1', contact.email)
-        contact_id = await self.conns.main.fetchval_b(
-            """
-            insert into contacts (:values__names) values :values
-            on conflict (owner, profile_user) do nothing returning id
-            """,
-            values=Values(owner=self.session.user_id, profile_user=user_id, **contact.dict(exclude={'email'})),
-        )
-        if not contact_id:
-            msg = 'you already have a contact with this email address'
-            raise JsonErrors.HTTPConflict(msg, details=[{'loc': ['email'], 'msg': msg}])
+
+        async with S3(self.settings) as s3_client:
+            s: Settings = self.settings
+            if not all((s.aws_secret_key, s.aws_access_key, s.s3_file_bucket)):  # pragma: no cover
+                raise HTTPNotImplemented(text="Storage keys not set, can't upload files")
+
+            if contact.image:
+                cache_key = tmp_image_cache_key(str(contact.image))
+                storage_path = await self.redis.get(cache_key)
+                key_exists = await self.redis.delete(cache_key)
+                if not key_exists:
+                    raise JsonErrors.HTTPBadRequest(message='image not found')
+
+                _, bucket, path = parse_storage_uri(storage_path)
+                body = await s3_client.download(bucket, path)
+                (image_data, thumbnail_data), _ = await asyncio.gather(
+                    resize_image(body, s.image_sizes, s.image_thumbnail_sizes), s3_client.delete(bucket, path)
+                )
+
+            async with self.conns.main.transaction():
+                contact_id = await self.conns.main.fetchval_b(
+                    """
+                    insert into contacts (:values__names) values :values
+                    on conflict (owner, profile_user) do nothing returning id
+                    """,
+                    values=Values(
+                        owner=self.session.user_id, profile_user=user_id, **contact.dict(exclude={'email', 'image'})
+                    ),
+                )
+                if not contact_id:
+                    msg = 'you already have a contact with this email address'
+                    raise JsonErrors.HTTPConflict(msg, details=[{'loc': ['email'], 'msg': msg}])
+
+                if image_data:
+                    path = f'contacts/{self.session.user_id}/{contact_id}/'
+                    image, thumb = await asyncio.gather(
+                        s3_client.upload(s.s3_file_bucket, path + 'main.jpg', image_data, 'image/jpeg'),
+                        s3_client.upload(s.s3_file_bucket, path + 'thumb.jpg', thumbnail_data, 'image/jpeg'),
+                    )
+                    del image_data, thumbnail_data
+                    await self.conns.main.execute(
+                        'update contacts set image_storage=$1, thumb_storage=$2 where id=$3', image, thumb, contact_id
+                    )
+
         return dict(id=contact_id, status_=201)
 
 
@@ -237,23 +279,22 @@ class UploadImage(View):
             return v
 
     async def call(self):
-        s = self.settings
+        s: Settings = self.settings
         if not all((s.aws_secret_key, s.aws_access_key, s.s3_file_bucket)):  # pragma: no cover
             raise HTTPNotImplemented(text="Storage keys not set, can't upload files")
 
         m = parse_request_query(self.request, self.QueryModel)
         image_id = str(uuid4())
 
-        bucket = s.s3_file_bucket
         d = S3(s).signed_upload_url(
-            bucket=bucket,
+            bucket=s.s3_file_bucket,
             path=f'contacts/temp/{self.session.user_id}/{image_id}/',
             filename=m.filename,
             content_type=m.content_type,
             content_disp=True,
             size=m.size,
         )
-        storage_path = 's3://{}/{}'.format(bucket, d['fields']['Key'])
+        storage_path = 's3://{}/{}'.format(s.s3_file_bucket, d['fields']['Key'])
         await self.redis.setex(tmp_image_cache_key(image_id), self.settings.upload_pending_ttl, storage_path)
         await self.redis.enqueue_job('delete_stale_image', image_id, _defer_by=self.settings.upload_pending_ttl)
         return json_response(file_id=image_id, **d)
@@ -263,8 +304,9 @@ async def delete_stale_image(ctx, image_id: str):
     """
     Delete an uploaded image if the cache key still exists.
     """
-    storage_path = await ctx['redis'].get(tmp_image_cache_key(image_id))
-    key_exists = await ctx['redis'].delete(tmp_image_cache_key(image_id))
+    cache_key = tmp_image_cache_key(image_id)
+    storage_path = await ctx['redis'].get(cache_key)
+    key_exists = await ctx['redis'].delete(cache_key)
     if key_exists:
         _, bucket, path = parse_storage_uri(storage_path)
         async with S3(ctx['settings']) as s3_client:

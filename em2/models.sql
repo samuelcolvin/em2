@@ -17,7 +17,8 @@ create table users (
   main_name varchar(63),
   last_name varchar(63),
   strap_line varchar(127),  -- organisation, titles, industry or legal name
-  image_url varchar(2047),
+  image_storage varchar(2047),
+  thumb_storage varchar(2047),
   profile_details text,
   profile_status ProfileStatus,
   profile_status_message varchar(511),
@@ -272,7 +273,8 @@ create table contacts (
   main_name varchar(63),
   last_name varchar(63),
   strap_line varchar(127),  -- organisation, titles, industry or legal name
-  image_url varchar(2047),
+  image_storage varchar(2047),
+  thumb_storage varchar(2047),
   -- TODO might need full name from coalesce for sorting
   details text,
   vector tsvector,

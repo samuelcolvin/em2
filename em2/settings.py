@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     max_ref_image_count = 20
     upload_pending_ttl = 3600
 
+    image_sizes = [(800, 800), (400, 400)]
+    image_thumbnail_sizes = [(120, 120)]
+
     vapid_private_key: str = None
     vapid_sub_email: EmailStr = None
 
