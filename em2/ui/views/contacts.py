@@ -15,7 +15,7 @@ from em2.utils.storage import S3, image_extensions, parse_storage_uri, set_image
 
 from ...settings import Settings
 from ...utils import listify
-from ...utils.images import resize_image
+from ...utils.images import InvalidImage, resize_image
 from .utils import ExecView, View
 
 
@@ -224,9 +224,12 @@ class ContactCreate(ExecView):
 
                 _, bucket, path = parse_storage_uri(storage_path)
                 body = await s3_client.download(bucket, path)
-                (image_data, thumbnail_data), _ = await asyncio.gather(
-                    resize_image(body, s.image_sizes, s.image_thumbnail_sizes), s3_client.delete(bucket, path)
-                )
+                await s3_client.delete(bucket, path)
+                try:
+                    image_data, thumbnail_data = await resize_image(body, s.image_sizes, s.image_thumbnail_sizes)
+                except InvalidImage as e:
+                    raise JsonErrors.HTTPBadRequest(str(e), details=[{'loc': ['image'], 'msg': str(e)}])
+                del body
 
             async with self.conns.main.transaction():
                 contact_id = await self.conns.main.fetchval_b(

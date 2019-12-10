@@ -4,6 +4,7 @@ import {Col, Row} from 'reactstrap'
 import {WithContext, Form} from 'reactstrap-toolbox'
 import {EditorInput} from './../Editor'
 import ImageInput from '../utils/ImageInput'
+import {form_fields} from './utils'
 
 const RenderFields = ({fields, RenderField}) => (
   <Row>
@@ -31,21 +32,6 @@ const Create = ({ctx, history}) => {
     ctx.setTitle('Create Contact')
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fields = {
-    email: {max_length: 255, type: 'email', required: true},
-    profile_type: {type: 'select', choices: ['personal', 'work', 'organisation'], default: 'personal'},
-    main_name: {title: 'First Name', max_length: 63},
-    last_name: {max_length: 63},
-    strap_line: {max_length: 127},
-    details: {type: 'rich_text'},
-    image: {type: 'image', extra: {request_file_upload: window.logic.contacts.request_image_upload}},
-  }
-
-  if (form_data.profile_type === 'organisation') {
-    fields.main_name = {title: 'Name', max_length: 63}
-    delete fields.last_action
-  }
-
   const submit_data = (data) => {
     data.details = (data.details && data.details.has_changed) ? data.details.markdown : null
     data.image = data.image ? data.image.file_id : null
@@ -55,7 +41,7 @@ const Create = ({ctx, history}) => {
   return (
     <div className="box">
       <Form
-        fields={fields}
+        fields={form_fields(form_data)}
         form_data={form_data}
         submit_data={submit_data}
         function={window.logic.contacts.create}
@@ -63,6 +49,7 @@ const Create = ({ctx, history}) => {
         RenderFields={RenderFields}
         type_lookup={{rich_text: EditorInput, image: ImageInput}}
         onChange={set_form_data}
+        save_label="Create Contact"
       />
     </div>
   )

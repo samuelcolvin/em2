@@ -9,15 +9,13 @@ const Help = ({onClick}) => (
   </span>
 )
 
-const image_content_types = (
-  'image/png,image/jpeg,image/gif,image/svg+xml,image/tiff,image/bmp,' +
-  'image/vnd.microsoft.icon,image/webp,image/x-icon,image/x‑xbm'
-)
+const image_content_types = 'image/png,image/jpeg,image/gif,image/svg+xml,image/tiff,image/bmp,image/webp,image/x‑xbm'
 
-export default ({className, field, error, value, onChange, request_file_upload}) => (
-  <FormGroup className={className || field.className}>
+export default ({className, field, error, value, onChange, request_file_upload, disabled}) => (
+  <FormGroup className={className || field.className} con={console.log('error:', error)}>
     <Drop
       help={Help}
+      locked={disabled}
       hover_msg="Drop image here"
       update_file={(key, update) => onChange({...(value || {}), ...update})}
       remove_file={() => onChange(null)}
@@ -29,10 +27,10 @@ export default ({className, field, error, value, onChange, request_file_upload})
     >
       <div className="image-preview">
         {value ? (
-          <FileSummary {...(value || {})} remove_file={() => onChange(null)}/>
+          <FileSummary {...(value || {})} remove_file={() => !disabled && onChange(null)} locked={disabled}/>
         ) : <div className="no-image"/>}
       </div>
-      {error && <FormFeedback>{error}</FormFeedback>}
+      {error && <FormFeedback className="d-block">{error}</FormFeedback>}
       <InputHelpText field={field}/>
     </Drop>
   </FormGroup>

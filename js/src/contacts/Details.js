@@ -99,7 +99,7 @@ class DetailView extends React.Component {
             <Detail name="Contact Type">{as_title(c.c_profile_type || c.p_profile_type || 'unknown')}</Detail>
             <Detail name="Visibility">
               {as_title(c.p_visibility || 'SMTP')}
-              <div className="smaller text-muted">({this.visibility_description(c)})</div>
+              <div className="smaller text-muted small">({this.visibility_description(c)})</div>
             </Detail>
             <Detail name="Contact Details">{c.c_details}</Detail>
             <Detail name="Profile Details">{c.p_details}</Detail>
@@ -111,6 +111,5 @@ class DetailView extends React.Component {
     )
   }
 }
-
 
 export default withRouter(WithContext(DetailView))

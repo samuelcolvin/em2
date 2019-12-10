@@ -40,7 +40,7 @@ export default class Contacts {
 
   create = async data => {
     return await this._requests.post(
-      'ui', `/${this._main.session.id}/contacts/create/`, data, {expected_status: [201, 409]}
+      'ui', `/${this._main.session.id}/contacts/create/`, data, {expected_status: [201, 400, 409]}
     )
   }
 

@@ -9,6 +9,10 @@ ImageSize = Tuple[int, int]
 ImageBox = Tuple[int, int, int, int]
 
 
+class InvalidImage(ValueError):
+    pass
+
+
 async def resize_image(
     image_data: bytes, sizes: Sequence[ImageSize], thumb_sizes: Sequence[ImageSize]
 ) -> Tuple[bytes, bytes]:
@@ -25,7 +29,7 @@ def _resize_image(
     try:
         img = Image.open(BytesIO(image_data))
     except OSError:
-        raise ValueError('invalid image')
+        raise InvalidImage('invalid image')
 
     img = _do_resize(img, sizes)
 
@@ -49,7 +53,7 @@ def _do_resize(img: Image, sizes: Sequence[ImageSize]) -> Image:
                 img = img.crop(crop_box)
             break
     else:
-        raise ValueError(f'image too small: {img.size}')
+        raise InvalidImage('image too small, minimum size {} x {}'.format(*sizes[-1]))
 
     return img
 

@@ -46,3 +46,21 @@ export const contact_name = c => {
     return c.email
   }
 }
+
+export const form_fields = d => {
+  const fields = {
+    email: {max_length: 255, type: 'email', required: true},
+    profile_type: {type: 'select', choices: ['personal', 'work', 'organisation'], default: 'personal'},
+    main_name: {title: 'First Name', max_length: 63},
+    last_name: {max_length: 63},
+    strap_line: {max_length: 127},
+    details: {type: 'rich_text'},
+    image: {type: 'image', extra: {request_file_upload: window.logic.contacts.request_image_upload}},
+  }
+
+  if (d.profile_type === 'organisation') {
+    fields.main_name = {title: 'Name', max_length: 63}
+    delete fields.last_action
+  }
+  return fields
+}
