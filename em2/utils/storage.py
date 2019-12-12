@@ -285,10 +285,10 @@ async def download_remote_file(
         return content, content_type
 
 
-def set_image_url(r: Record, settings: Settings) -> Dict[str, Any]:
+def set_image_url(r: Record, settings: Settings, *, field_name: str = 'image_url') -> Dict[str, Any]:
     storage = r.get('image_storage')
     data = {k: v for k, v in r.items() if v is not None and k != 'image_storage'}
     if storage:
         _, bucket, path = parse_storage_uri(storage)
-        data['image_url'] = S3(settings).signed_download_url(bucket, path)
+        data[field_name] = S3(settings).signed_download_url(bucket, path)
     return data

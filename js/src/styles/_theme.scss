@@ -265,9 +265,12 @@ body {
 }
 
 .contact-image {
-  background: #64B5F6;
-  color: white;
+  background: $gray-300;
   text-align: center;
+  &.dft {
+    background: #64B5F6;
+    color: white;
+  }
   &.large {
     margin-left: auto;
     border-radius: $border-radius;

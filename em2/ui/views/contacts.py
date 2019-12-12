@@ -284,7 +284,7 @@ class ContactEdit(ContactCreateEdit):
 
     async def get(self):
         r = await self.conn.fetchrow(self.get_sql, self.session.user_id, int(self.request.match_info['id']))
-        return json_response(**set_image_url(r, self.settings))
+        return json_response(**set_image_url(r, self.settings, field_name='image'))
 
     async def parse_request(self) -> ContactModel:
         return await parse_request_json_ignore_missing(self.request, self.Model)

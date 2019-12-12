@@ -32,7 +32,7 @@ export const FileSummary = props => {
             <FontAwesomeIcon icon={props.preview_icon} size="3x"/>
           )}
         </div>
-        <span className="file-name">{props.filename}</span>
+        <span className="file-name text-muted">{props.filename}</span>
         <div>
           {props.progress ? (
             <Progress value={props.progress} className="mt-1"/>
@@ -40,7 +40,7 @@ export const FileSummary = props => {
             props.message ? (
               <span>{props.icon && <FontAwesomeIcon icon={props.icon}/>} {props.message}</span>
             ) : (
-              <div className="font-weight-bold">{props.size}</div>
+              <div className="font-weight-bold text-muted">{props.size}</div>
             )
           )}
         </div>
@@ -140,27 +140,27 @@ export default class Drop extends React.Component {
     }
     this.setState({already_uploaded: false, dragging: false})
     for (let file of accepted_files) {
-      const key = this.get_key(file)
-      if (this.props.files.find(f => f.key === key)) {
+      const file_key = this.get_key(file)
+      if (this.props.files.find(f => f.file_key === file_key)) {
         this.setState({already_uploaded: true})
       } else {
-        const f = {key, filename: file.name, size: file_size(file.size), file_key: key, progress: 1}
+        const f = {filename: file.name, size: file_size(file.size), file_key, progress: 1}
         if (file.type.startsWith('image/')) {
           f.preview = URL.createObjectURL(file)
         } else {
           f.preview_icon = file_icon(file.type)
         }
         this.props.add_file(f)
-        this.upload_file(key, file)
+        this.upload_file(file_key, file)
       }
     }
     for (let file of refused_files) {
-      const key = this.get_key(file)
-      if (this.props.files.find(f => f.key === key)) {
+      const file_key = this.get_key(file)
+      if (this.props.files.find(f => f.file_key === file_key)) {
         this.setState({already_uploaded: true})
       } else {
         this.props.add_file({
-          key,
+          file_key,
           filename: file.name,
           progress: null,
           icon: failed_icon,

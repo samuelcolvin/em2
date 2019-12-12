@@ -27,7 +27,7 @@ export const ContactImage = ({c, large}) => {
   const image_url = c.image_url || c.c_image_url || c.p_image_url
   const img_size = large ? 150 : 40
   return (
-    <div className={`contact-image ${large ? 'large' : 'small'}`}>
+    <div className={`contact-image${image_url ? '' : ' dft'} ${large ? 'large' : 'small'}`}>
       {image_url ? (
         <img src={image_url} width={img_size} height={img_size} alt={contact_name(c)}/>
       ) : (

@@ -44,6 +44,21 @@ export default class Contacts {
     )
   }
 
+  edit_initial = async id => {
+    const online = await this._main.online()
+    if (online) {
+      const r = await this._requests.get('ui', `/${this._main.session.id}/contacts/${id}/edit/`)
+      return r.data
+    }
+    return {}
+  }
+
+  edit = async data => {
+    return await this._requests.post(
+      'ui', `/${this._main.session.id}/contacts/${data.id}/edit/`, data, {expected_status: [200, 400, 409]}
+    )
+  }
+
   email_lookup = async (query, callback) => {
     const raw_email = parse_address(query)
     // TODO search for email addresses in indexeddb

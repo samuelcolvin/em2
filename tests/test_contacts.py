@@ -291,6 +291,27 @@ async def test_edit_contact(factory: Factory, cli: UserTestClient, db_conn):
     assert c == {'owner': user.id, 'profile_user': contact_user_id, 'main_name': 'before', 'last_name': 'after'}
 
 
+async def test_edit_contact_get(factory: Factory, cli: UserTestClient, dummy_server):
+    user = await factory.create_user()
+
+    q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
+    obj = await cli.get_json(factory.url('ui:contacts-upload-image', query=q))
+    path = obj['fields']['Key']
+    dummy_server.app['s3_files'][path] = create_image()
+
+    data = dict(email='foobar@example.org', image=obj['file_id'], main_name='before')
+    r = await cli.post_json(factory.url('ui:contacts-create'), data=data, status=201)
+    contact_id = (await r.json())['id']
+
+    r = await cli.get_json(factory.url('ui:contacts-edit', id=contact_id))
+    assert r == {
+        'email': 'testing-1@example.com',
+        'profile_type': 'personal',
+        'main_name': 'before',
+        'image': RegexStr(fr'https://s3_files_bucket\.example\.com/contacts/{user.id}/{contact_id}/main\.jpg.*'),
+    }
+
+
 async def test_edit_contact_user(factory: Factory, cli: UserTestClient, db_conn):
     user = await factory.create_user()
 
