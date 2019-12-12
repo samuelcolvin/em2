@@ -30,6 +30,7 @@ class ContactSearch(View):
       coalesce(c.last_name, u.last_name) last_name,
       coalesce(c.strap_line, u.strap_line) strap_line,
       coalesce(c.thumb_storage, u.thumb_storage) image_storage,
+      coalesce(c.profile_type, u.profile_type) profile_type,
       u.profile_status,
       u.profile_status_message
     from users u
@@ -48,7 +49,7 @@ class ContactSearch(View):
         m = parse_request_query(self.request, self.Model)
 
         self.response = StreamResponse()
-        self.response.content_type = 'application/x-ndjson'
+        self.response.content_type = 'text/plain'
         await self.response.prepare(self.request)
 
         email = None

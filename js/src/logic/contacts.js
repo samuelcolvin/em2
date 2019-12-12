@@ -94,7 +94,7 @@ export default class Contacts {
   }
 
   _raw_lookup = async (query, callback) => {
-    const config = {raw_response: true, headers: {'Accept': 'application/x-ndjson'}}
+    const config = {raw_response: true, headers: {'Accept': 'text/plain'}}
     const r = await this._requests.get('ui', `/${this._main.session.id}/contacts/search/`, {query}, config)
     const stream = await ndjsonStream(r.body)
     const reader = stream.getReader()

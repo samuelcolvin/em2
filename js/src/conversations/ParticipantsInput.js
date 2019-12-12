@@ -5,14 +5,20 @@ import {FormGroup, FormFeedback} from 'reactstrap'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, InputLabel, InputHelpText, message_toast} from 'reactstrap-toolbox'
 import jw_distance from 'jaro-winkler'
+import {ContactImage} from '../contacts/utils'
 
 const renderToken = (option, props, index) => (
   <Token key={index} onRemove={props.onRemove}>
     {option.main_name ? (
-      <div>
-        {option.main_name} {option.last_name || ''}
+      <div className="d-flex justify-content-start">
+        <div className="mr-2">
+          <ContactImage c={option}/>
+        </div>
         <div>
-          <small className="text-muted">{option.email}</small>
+          {option.main_name} {option.last_name || ''}
+          <div>
+            <small className="text-muted">{option.email}</small>
+          </div>
         </div>
       </div>
     ) : (
@@ -23,18 +29,25 @@ const renderToken = (option, props, index) => (
 
 const renderMenuItemChildren = (option, props) => {
   if (option.main_name) {
-    return [
-      <div key="1">
-        <Highlighter search={props.text}>
-          {`${option.main_name} ${option.last_name || ''}`}
-        </Highlighter>
-      </div>,
-      <small key="2" className="text-muted">
-        <Highlighter search={props.text}>
-          {option.email}
-        </Highlighter>
-      </small>,
-    ]
+    return (
+      <div className="d-flex justify-content-start">
+        <div className="mr-2 mt-1">
+          <ContactImage c={option}/>
+        </div>
+        <div>
+          <div>
+          <Highlighter search={props.text}>
+            {`${option.main_name} ${option.last_name || ''}`}
+          </Highlighter>
+        </div>
+          <small className="text-muted">
+            <Highlighter search={props.text}>
+              {option.email}
+            </Highlighter>
+          </small>
+        </div>
+      </div>
+    )
   } else {
     return [
       <div key="1">

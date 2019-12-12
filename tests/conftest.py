@@ -167,7 +167,7 @@ class UserTestClient(TestClient):
     async def get_ndjson(self, path, *, status=200, **kwargs):
         r = await self.get(path, **kwargs)
         assert r.status == status, await r.text()
-        assert r.content_type == 'application/x-ndjson'
+        assert r.content_type == 'text/plain'
         text = await r.text()
         return [json.loads(line) for line in text.split('\n') if line]
 
