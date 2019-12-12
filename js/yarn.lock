@@ -8766,10 +8766,10 @@ react@^16.8.6:
     object-assign "^4.1.1"
     prop-types "^15.6.2"
 
-reactstrap-toolbox@^0.0.27:
-  version "0.0.27"
-  resolved "https://registry.yarnpkg.com/reactstrap-toolbox/-/reactstrap-toolbox-0.0.27.tgz#14b7902995eb81c603ed876358b02882eac41d1d"
-  integrity sha512-yC1UJLMen9aGXRTXQDHT1ajxDXZJ/NJ9x76oxqGYtKBjeeu6HrVtALBTjn9a573YltkNBzg9Z/55t+vtkYLdhw==
+reactstrap-toolbox@^0.0.28:
+  version "0.0.28"
+  resolved "https://registry.yarnpkg.com/reactstrap-toolbox/-/reactstrap-toolbox-0.0.28.tgz#3666bc836fdfd0ed1cff22f063272cc94960426f"
+  integrity sha512-qe6JF3Brm5vZiHZxY0w9HZbS0tu+oFCDDYpEfKVh2Fw/NEGPCIJp4w+GkEEwnBeuyKyII4n7jey2wG6i+EskDg==
   dependencies:
     "@babel/runtime" "^7.4.3"
     dev "^0.1.3"

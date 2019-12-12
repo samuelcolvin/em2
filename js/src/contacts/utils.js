@@ -38,7 +38,9 @@ export const ContactImage = ({c, large}) => {
 }
 
 export const contact_name = c => {
-  if (c.c_main_name) {
+  if (c.main_name) {
+    return `${c.main_name} ${c.last_name || ''}`.trim()
+  } else if (c.c_main_name) {
     return `${c.c_main_name} ${c.c_last_name || ''}`.trim()
   } else if (c.p_main_name) {
     return `${c.p_main_name} ${c.p_last_name || ''}`.trim()

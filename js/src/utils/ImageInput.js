@@ -12,7 +12,7 @@ const Help = ({onClick}) => (
 const image_content_types = 'image/png,image/jpeg,image/gif,image/svg+xml,image/tiff,image/bmp,image/webp,image/x‑xbm'
 
 export default ({className, field, error, value, onChange, request_file_upload, disabled}) => (
-  <FormGroup className={className || field.className} con={console.log('error:', error)}>
+  <FormGroup className={className || field.className}>
     <Drop
       help={Help}
       locked={disabled}

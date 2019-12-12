@@ -105,7 +105,7 @@ class S3Client:
         content: bytes,
         content_type: Optional[str] = None,
         content_disposition: Optional[str] = None,
-    ):
+    ) -> str:
         kwargs = dict(ContentType=content_type, ContentDisposition=content_disposition)
         kwargs = {k: v for k, v in kwargs.items() if v is not None}
         await self._client.put_object(Bucket=bucket, Key=path, Body=content, **kwargs)
@@ -148,7 +148,7 @@ class S3:
         await self._client.__aexit__(exc_type, exc_val, exc_tb)
         self._client = None
 
-    def signed_download_url(self, bucket: str, path: str, *, ttl: int = 10000) -> str:
+    def signed_download_url(self, bucket: str, path: str, *, ttl: int = 10_000) -> str:
         """
         Sign a path to authenticate download.
 

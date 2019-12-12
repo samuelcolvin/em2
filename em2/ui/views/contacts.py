@@ -1,17 +1,18 @@
 import asyncio
+from typing import Optional, Tuple
 from uuid import UUID, uuid4
 
 import ujson
 from aiohttp.web import StreamResponse
 from aiohttp.web_exceptions import HTTPNotImplemented
 from asyncpg import Record
-from atoolbox import JsonErrors, get_offset, json_response, parse_request_query
-from buildpg import V, Values, funcs
+from atoolbox import JsonErrors, get_offset, json_response, parse_request_json_ignore_missing, parse_request_query
+from buildpg import SetValues, V, Values, funcs
 from pydantic import BaseModel, EmailStr, conint, constr, validate_email, validator
 from typing_extensions import Literal
 
 from em2.search import build_query_function
-from em2.utils.storage import S3, image_extensions, parse_storage_uri, set_image_url
+from em2.utils.storage import S3, S3Client, image_extensions, parse_storage_uri, set_image_url
 
 from ...settings import Settings
 from ...utils import listify
@@ -181,52 +182,74 @@ class ContactDetails(View):
         return json_response(**contact)
 
 
-class ContactCreate(ExecView):
-    class Model(BaseModel):
-        email: EmailStr
-        profile_type: Literal['personal', 'work', 'organisation'] = 'personal'
-        main_name: constr(max_length=63) = None
-        last_name: constr(max_length=63) = None
-        strap_line: constr(max_length=127) = None
-        details: constr(max_length=2000) = None
-        image: UUID = None
+class ContactModel(BaseModel):
+    email: EmailStr
+    profile_type: Literal['personal', 'work', 'organisation'] = 'personal'
+    main_name: constr(max_length=63) = None
+    last_name: constr(max_length=63) = None
+    strap_line: constr(max_length=127) = None
+    details: constr(max_length=2000) = None
+    image: UUID = None
 
-        @validator('last_name')
-        def clear_last_name_organisation(cls, v, values):
-            if values.get('profile_type') == 'organisation':
-                return None
-            return v
+    @validator('last_name')
+    def clear_last_name_organisation(cls, v, values):
+        if values.get('profile_type') == 'organisation':
+            return None
+        return v
 
-    async def execute(self, contact: Model):
+
+class ContactCreateEdit(ExecView):
+    Model = ContactModel
+
+    async def get_create_user(self, email: str) -> int:
         user_id = await self.conns.main.fetchval(
-            'insert into users (email) values ($1) on conflict (email) do nothing returning id', contact.email
+            'insert into users (email) values ($1) on conflict (email) do nothing returning id', email
         )
         if not user_id:
             # email address already exists
-            user_id = await self.conns.main.fetchval('select id from users where email=$1', contact.email)
+            user_id = await self.conns.main.fetchval('select id from users where email=$1', email)
+        return user_id
+
+    async def get_image_data(self, s3_client: S3Client, image: UUID) -> Optional[Tuple[bytes, bytes]]:
+        s: Settings = self.settings
+        if not all((s.aws_secret_key, s.aws_access_key, s.s3_file_bucket)):  # pragma: no cover
+            raise HTTPNotImplemented(text="Storage keys not set, can't upload files")
+
+        if not image:
+            return None
+
+        cache_key = tmp_image_cache_key(str(image))
+        storage_path = await self.redis.get(cache_key)
+        key_exists = await self.redis.delete(cache_key)
+        if not key_exists:
+            msg = 'image not found'
+            raise JsonErrors.HTTPBadRequest(msg, details=[{'loc': ['image'], 'msg': msg}])
+
+        _, bucket, path = parse_storage_uri(storage_path)
+        body = await s3_client.download(bucket, path)
+        await s3_client.delete(bucket, path)
+        try:
+            return await resize_image(body, s.image_sizes, s.image_thumbnail_sizes)
+        except InvalidImage as e:
+            raise JsonErrors.HTTPBadRequest(str(e), details=[{'loc': ['image'], 'msg': str(e)}])
+
+    async def get_image_paths(
+        self, images: Tuple[bytes, bytes], contact_id: int, s3_client: S3Client
+    ) -> Optional[Tuple[str, str]]:
+        image_data, thumbnail_data = images
+        path = f'contacts/{self.session.user_id}/{contact_id}/'
+        return await asyncio.gather(
+            s3_client.upload(self.settings.s3_file_bucket, path + 'main.jpg', image_data, 'image/jpeg'),
+            s3_client.upload(self.settings.s3_file_bucket, path + 'thumb.jpg', thumbnail_data, 'image/jpeg'),
+        )
+
+
+class ContactCreate(ContactCreateEdit):
+    async def execute(self, contact: ContactModel):
+        user_id = await self.get_create_user(contact.email)
 
         async with S3(self.settings) as s3_client:
-            s: Settings = self.settings
-            if not all((s.aws_secret_key, s.aws_access_key, s.s3_file_bucket)):  # pragma: no cover
-                raise HTTPNotImplemented(text="Storage keys not set, can't upload files")
-
-            image_data = None
-            if contact.image:
-                cache_key = tmp_image_cache_key(str(contact.image))
-                storage_path = await self.redis.get(cache_key)
-                key_exists = await self.redis.delete(cache_key)
-                if not key_exists:
-                    msg = 'image not found'
-                    raise JsonErrors.HTTPBadRequest(msg, details=[{'loc': ['image'], 'msg': msg}])
-
-                _, bucket, path = parse_storage_uri(storage_path)
-                body = await s3_client.download(bucket, path)
-                await s3_client.delete(bucket, path)
-                try:
-                    image_data, thumbnail_data = await resize_image(body, s.image_sizes, s.image_thumbnail_sizes)
-                except InvalidImage as e:
-                    raise JsonErrors.HTTPBadRequest(str(e), details=[{'loc': ['image'], 'msg': str(e)}])
-                del body
+            images = await self.get_image_data(s3_client, contact.image)
 
             async with self.conns.main.transaction():
                 contact_id = await self.conns.main.fetchval_b(
@@ -242,18 +265,52 @@ class ContactCreate(ExecView):
                     msg = 'you already have a contact with this email address'
                     raise JsonErrors.HTTPConflict(msg, details=[{'loc': ['email'], 'msg': msg}])
 
-                if image_data:
-                    path = f'contacts/{self.session.user_id}/{contact_id}/'
-                    image, thumb = await asyncio.gather(
-                        s3_client.upload(s.s3_file_bucket, path + 'main.jpg', image_data, 'image/jpeg'),
-                        s3_client.upload(s.s3_file_bucket, path + 'thumb.jpg', thumbnail_data, 'image/jpeg'),
-                    )
-                    del image_data, thumbnail_data
+                if images:
+                    image, thumb = await self.get_image_paths(images, contact_id, s3_client)
                     await self.conns.main.execute(
                         'update contacts set image_storage=$1, thumb_storage=$2 where id=$3', image, thumb, contact_id
                     )
 
         return dict(id=contact_id, status_=201)
+
+
+class ContactEdit(ContactCreateEdit):
+    get_sql = """
+    select p.email, c.profile_type, c.main_name, c.last_name, c.strap_line, c.image_storage, c.details
+    from contacts c
+    join users p on c.owner = p.id
+    where c.owner=$1 and c.id=$2
+    """
+
+    async def get(self):
+        r = await self.conn.fetchrow(self.get_sql, self.session.user_id, int(self.request.match_info['id']))
+        return json_response(**set_image_url(r, self.settings))
+
+    async def parse_request(self) -> ContactModel:
+        return await parse_request_json_ignore_missing(self.request, self.Model)
+
+    async def execute(self, contact: ContactModel):
+        data = contact.dict(exclude_unset=True, exclude={'image'})
+        contact_id = int(self.request.match_info['id'])
+
+        email = data.pop('email', None)
+        if email:
+            data['profile_user'] = await self.get_create_user(email)
+
+        async with S3(self.settings) as s3_client:
+            images = await self.get_image_data(s3_client, contact.image)
+            if images:
+                image, thumb = await self.get_image_paths(images, contact_id, s3_client)
+                data.update(image_storage=image, thumb_storage=thumb)
+
+        v = await self.conn.execute_b(
+            'update contacts set :values where id=:id and owner=:owner',
+            values=SetValues(**data),
+            id=contact_id,
+            owner=self.session.user_id,
+        )
+        if v != 'UPDATE 1':
+            raise JsonErrors.HTTPNotFound('contact not found')
 
 
 def tmp_image_cache_key(content_id: str) -> str:

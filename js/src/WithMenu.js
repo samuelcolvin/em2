@@ -12,6 +12,7 @@ import Wait from './conversations/Wait'
 import ContactsList from './contacts/List'
 import ContactsDetails from './contacts/Details'
 import ContactsCreate from './contacts/Create'
+import ContactsEdit from './contacts/Edit'
 
 const ListGroupItem = ({className, to, active, icon, title, count, count_unseen}) => (
   <BsListGroupItem tag={Link} to={to} action active={active} className={className}>
@@ -253,6 +254,7 @@ export const RoutesWithMenu = () => (
       <Route path="/wait/:key([a-f0-9]{10,64})/" component={Wait}/>
       <Route exact path="/contacts/" component={ContactsList}/>
       <Route exact path="/contacts/:id(\d+)/" component={ContactsDetails}/>
+      <Route exact path="/contacts/:id(\d+)/edit/" component={ContactsEdit}/>
       <Route exact path="/contacts/create/" component={ContactsCreate}/>
       <Route component={NotFound}/>
     </Switch>

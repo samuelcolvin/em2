@@ -242,6 +242,10 @@ async def test_create_org_contact(factory: Factory, cli: UserTestClient, db_conn
     assert c['last_name'] is None
 
 
+async def test_create_contact_not_logged_in(factory: Factory, cli: UserTestClient):
+    await cli.post_json(factory.url('ui:contacts-create', session_id=123), data={}, status=401)
+
+
 async def test_delete_stale_image(factory: Factory, cli: UserTestClient, worker_ctx):
     await factory.create_user()
 
@@ -270,3 +274,61 @@ def test_do_resize():
 
     with pytest.raises(InvalidImage, match='image too small, minimum size 200 x 200'):
         _do_resize(create_raw_image(100, 300), [(200, 200)])
+
+
+async def test_edit_contact(factory: Factory, cli: UserTestClient, db_conn):
+    user = await factory.create_user()
+
+    contact_user_id = await factory.create_simple_user(email='foobar@example.org')
+    contact_id = await factory.create_contact(owner=user.id, user_id=contact_user_id, main_name='before')
+
+    data = dict(last_name='after')
+    await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
+
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from users') == 2
+    c = dict(await db_conn.fetchrow('select owner, profile_user, main_name, last_name from contacts'))
+    assert c == {'owner': user.id, 'profile_user': contact_user_id, 'main_name': 'before', 'last_name': 'after'}
+
+
+async def test_edit_contact_user(factory: Factory, cli: UserTestClient, db_conn):
+    user = await factory.create_user()
+
+    contact_user_id = await factory.create_simple_user(email='foobar@example.org')
+    contact_id = await factory.create_contact(owner=user.id, user_id=contact_user_id)
+    assert await db_conn.fetchval('select count(*) from users') == 2
+
+    data = dict(email='different@example.org')
+    await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
+
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from users') == 3
+    new_user_email = await db_conn.fetchval('select email from contacts c join users u on c.profile_user = u.id')
+    assert new_user_email == 'different@example.org'
+
+
+async def test_edit_contact_image(factory: Factory, cli: UserTestClient, db_conn, dummy_server):
+    user = await factory.create_user()
+
+    contact_user_id = await factory.create_simple_user(email='foobar@example.org')
+    contact_id = await factory.create_contact(owner=user.id, user_id=contact_user_id)
+
+    q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
+    obj = await cli.get_json(factory.url('ui:contacts-upload-image', query=q))
+    path = obj['fields']['Key']
+    dummy_server.app['s3_files'][path] = create_image()
+
+    data = dict(image=obj['file_id'])
+    await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
+
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    image, thumb = await db_conn.fetchrow('select image_storage, thumb_storage from contacts')
+    assert image == f's3://s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/main.jpg'
+    assert thumb == f's3://s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/thumb.jpg'
+
+    assert dummy_server.log == [
+        RegexStr(r'GET /s3_endpoint_url/s3_files_bucket\.example\.com/contacts/temp/.+/testing\.png > 200'),
+        RegexStr(r'DELETE /s3_endpoint_url/s3_files_bucket\.example\.com/contacts/temp/.+/testing\.png > 200'),
+        f'PUT /s3_endpoint_url/s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/main.jpg > 200',
+        f'PUT /s3_endpoint_url/s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/thumb.jpg > 200',
+    ]

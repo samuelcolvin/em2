@@ -32,7 +32,7 @@ const Create = ({ctx, history}) => {
     ctx.setTitle('Create Contact')
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const submit_data = (data) => {
+  const submit_data = data => {
     data.details = (data.details && data.details.has_changed) ? data.details.markdown : null
     data.image = data.image ? data.image.file_id : null
     return data

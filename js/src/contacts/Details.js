@@ -104,9 +104,9 @@ class DetailView extends React.Component {
             <Detail name="Contact Details">{c.c_details}</Detail>
             <Detail name="Profile Details">{c.p_details}</Detail>
             {/*<code><pre className="text-muted">{JSON.stringify(c, null, 2)}</pre></code>*/}
+            <i className="text-muted d-block mt-4">(TODO: show recent conversations)</i>
           </Col>
         </Row>
-        <i className="text-danger">(TODO: show recent conversations)</i>
       </div>
     )
   }
