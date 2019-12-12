@@ -18,12 +18,12 @@ async def test_get_file_link(cli, factory: Factory):
 
     q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
     obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q))
-    content_id = obj['content_id']
+    file_id = obj['file_id']
     assert obj == {
-        'content_id': RegexStr('.{36}'),
+        'file_id': RegexStr('.{36}'),
         'url': 'https://s3_files_bucket.example.com/',
         'fields': {
-            'Key': f'{conv.key}/{content_id}/testing.png',
+            'Key': f'{conv.key}/{file_id}/testing.png',
             'Content-Type': 'image/jpeg',
             'AWSAccessKeyId': 'testing_access_key',
             'Content-Disposition': 'attachment; filename="testing.png"',
@@ -97,11 +97,11 @@ async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_ser
 
     q = dict(filename='testing.png', content_type='image/jpeg', size='14')
     obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q))
-    content_id = obj['content_id']
+    file_id = obj['file_id']
 
-    dummy_server.app['s3_files'][f'{conv.key}/{content_id}/testing.png'] = 'this is a test'
+    dummy_server.app['s3_files'][f'{conv.key}/{file_id}/testing.png'] = 'this is a test'
 
-    data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': [content_id]}]}
+    data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': [file_id]}]}
     await cli.post_json(factory.url('ui:act', conv=conv.key), data)
 
     assert await worker.run_check(max_burst_jobs=2) == 2
@@ -117,7 +117,7 @@ async def test_message_with_attachment(cli, factory: Factory, db_conn, dummy_ser
         'content_disp': 'inline',
         # hashlib.sha256(b'this is a test').hexdigest() == '2e99758...
         'hash': '2e99758548972a8e8822ad47fa1017ff72f06f3ff6a016851f45c398732bc50c',
-        'content_id': content_id,
+        'content_id': file_id,
         'name': 'testing.png',
         'content_type': 'text/plain; charset=utf-8',
         'size': 14,
@@ -141,11 +141,11 @@ async def test_message_with_attachment_not_uploaded(cli, factory: Factory, worke
 
     q = dict(filename='testing.png', content_type='image/jpeg', size='14')
     obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q))
-    content_id = obj['content_id']
+    file_id = obj['file_id']
 
-    data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': [content_id]}]}
+    data = {'actions': [{'act': 'message:add', 'body': 'this is another message', 'files': [file_id]}]}
     r = await cli.post_json(factory.url('ui:act', conv=conv.key), data, status=400)
-    assert await r.json() == {'message': f"file '{content_id}' not uploaded"}
+    assert await r.json() == {'message': f"file '{file_id}' not uploaded"}
 
 
 async def test_get_images_ok(worker_ctx, factory: Factory, dummy_server, db_conn):
@@ -348,11 +348,11 @@ async def test_add_to_draft(cli, factory: Factory, db_conn, dummy_server: DummyS
 
     q = dict(filename='testing.png', content_type='image/jpeg', size='14')
     obj = await cli.get_json(factory.url('ui:upload-file', conv=conv.key, query=q))
-    content_id = obj['content_id']
+    file_id = obj['file_id']
 
-    dummy_server.app['s3_files'][f'{conv.key}/{content_id}/testing.png'] = 'testing' * 100
+    dummy_server.app['s3_files'][f'{conv.key}/{file_id}/testing.png'] = 'testing' * 100
 
-    data = {'actions': [{'act': 'message:add', 'body': 'message 2', 'files': [content_id]}]}
+    data = {'actions': [{'act': 'message:add', 'body': 'message 2', 'files': [file_id]}]}
     await cli.post_json(factory.url('ui:act', conv=conv.key), data)
 
     assert await worker.run_check(max_burst_jobs=2) == 2

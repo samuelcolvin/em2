@@ -39,7 +39,8 @@
 @import '~bootstrap/scss/utilities';
 //@import '~bootstrap/scss/print';
 
-@import '~reactstrap-toolbox/lib/styles';
+//@import '~reactstrap-toolbox/lib/styles';
+@import '../extra_modules/reactstrap-toolbox/lib/styles';
 
 @import 'theme';
 @import 'general';

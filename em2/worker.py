@@ -8,6 +8,7 @@ from buildpg import asyncpg
 from pydantic.utils import import_string
 
 from em2.background import user_actions_with_files
+from em2.protocol.contacts import update_profiles
 from em2.protocol.core import get_signing_key
 from em2.protocol.files import download_push_file
 from em2.protocol.push import follower_push_actions, push_actions
@@ -15,6 +16,7 @@ from em2.protocol.smtp import BaseSmtpHandler, smtp_send
 from em2.protocol.smtp.images import get_images
 from em2.protocol.smtp.receive import post_receipt
 from em2.settings import Settings
+from em2.ui.views.contacts import delete_stale_image
 from em2.ui.views.files import delete_stale_upload
 from em2.utils.web_push import web_push
 
@@ -48,6 +50,8 @@ functions = [
     get_images,
     download_push_file,
     user_actions_with_files,
+    update_profiles,
+    delete_stale_image,
 ]
 worker_settings = dict(functions=functions, on_startup=startup, on_shutdown=shutdown)
 

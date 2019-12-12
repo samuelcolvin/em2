@@ -14,6 +14,7 @@ import aiobotocore
 from aiobotocore import AioSession
 from aiobotocore.client import AioBaseClient
 from aiohttp import ClientError, ClientResponse, ClientSession
+from asyncpg import Record
 from botocore.exceptions import ClientError as BotoClientError
 
 from em2.core import File
@@ -31,6 +32,7 @@ __all__ = (
     'DownloadError',
     'download_remote_file',
     'image_extensions',
+    'set_image_url',
 )
 
 uri_re = re.compile(r'^(s3)://([^/]+)/(.+)$')
@@ -40,7 +42,7 @@ def file_upload_cache_key(conv_id: int, content_id: str) -> str:
     return f'file-upload-{conv_id}-{content_id}'
 
 
-def parse_storage_uri(uri):
+def parse_storage_uri(uri) -> Tuple[str, str, str]:
     m = uri_re.search(uri)
     if not m:
         raise RuntimeError(f'url not recognised: {uri!r}')
@@ -97,11 +99,16 @@ class S3Client:
         )
 
     async def upload(
-        self, bucket: str, path: str, content: bytes, content_type: Optional[str], content_disposition: Optional[str]
-    ):
-        await self._client.put_object(
-            Bucket=bucket, Key=path, Body=content, ContentType=content_type, ContentDisposition=content_disposition
-        )
+        self,
+        bucket: str,
+        path: str,
+        content: bytes,
+        content_type: Optional[str] = None,
+        content_disposition: Optional[str] = None,
+    ) -> str:
+        kwargs = dict(ContentType=content_type, ContentDisposition=content_disposition)
+        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        await self._client.put_object(Bucket=bucket, Key=path, Body=content, **kwargs)
         return f's3://{bucket}/{path}'
 
     async def delete(self, bucket: str, path: str):
@@ -141,7 +148,7 @@ class S3:
         await self._client.__aexit__(exc_type, exc_val, exc_tb)
         self._client = None
 
-    def signed_download_url(self, bucket: str, path: str, *, ttl: int = 10000) -> str:
+    def signed_download_url(self, bucket: str, path: str, *, ttl: int = 10_000, version: Optional[str] = None) -> str:
         """
         Sign a path to authenticate download.
 
@@ -156,6 +163,8 @@ class S3:
         to_sign = f'GET\n\n\n{expires}\n/{bucket}/{path}'
         signature = self._signature(to_sign)
         args = {'AWSAccessKeyId': self._settings.aws_access_key, 'Signature': signature, 'Expires': expires}
+        if version:
+            args['v'] = version
         return f'https://{bucket}/{path}?{urlencode(args)}'
 
     def signed_upload_url(
@@ -276,3 +285,12 @@ async def download_remote_file(
         raise DownloadError('download_error')
     else:
         return content, content_type
+
+
+def set_image_url(r: Record, settings: Settings, *, field_name: str = 'image_url') -> Dict[str, Any]:
+    data = {k: v for k, v in r.items() if v is not None and k not in {'image_storage', 'v'}}
+    storage = r.get('image_storage')
+    if storage:
+        _, bucket, path = parse_storage_uri(storage)
+        data[field_name] = S3(settings).signed_download_url(bucket, path, version=r.get('v'))
+    return data

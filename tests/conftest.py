@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from enum import Enum
 from io import BytesIO
-from typing import List
+from typing import List, Optional
 from uuid import uuid4
 
 import pytest
@@ -35,6 +35,8 @@ from em2.worker import worker_settings
 
 from . import dummy_server
 from .resolver import TestDNSResolver
+
+commit_transactions = 'KEEP_DB' in os.environ
 
 
 @pytest.fixture(scope='session', name='settings_session')
@@ -114,7 +116,10 @@ async def _fix_db_conn(loop, settings, main_db_create):
 
     yield DummyPgPool(conn)
 
-    await tr.rollback()
+    if commit_transactions:
+        await tr.commit()
+    else:
+        await tr.rollback()
     await conn.close()
 
 
@@ -159,10 +164,17 @@ class UserTestClient(TestClient):
         assert r.status == status, await r.text()
         return await r.json()
 
+    async def get_ndjson(self, path, *, status=200, **kwargs):
+        r = await self.get(path, **kwargs)
+        assert r.status == status, await r.text()
+        assert r.content_type == 'text/plain'
+        text = await r.text()
+        return [json.loads(line) for line in text.split('\n') if line]
+
 
 @pytest.fixture(name='resolver')
-def _fix_resolver(dummy_server: DummyServer):
-    return TestDNSResolver(dummy_server)
+def _fix_resolver(dummy_server: DummyServer, loop):
+    return TestDNSResolver(dummy_server, loop=loop)
 
 
 @pytest.fixture(name='cli')
@@ -268,8 +280,8 @@ class User:
     last_name: str
     password: str
     auth_user_id: int
-    id: int = None
-    session_id: int = None
+    id: Optional[int] = None
+    session_id: Optional[int] = None
 
 
 @dataclass
@@ -322,6 +334,52 @@ class Factory:
         self.user = self.user or user
         return user
 
+    async def create_simple_user(
+        self,
+        email: str = None,
+        visibility: str = None,
+        profile_type: str = None,
+        main_name: str = 'John',
+        last_name: str = None,
+        strap_line: str = None,
+        image_storage: str = None,
+        profile_status: str = None,
+        profile_status_message: str = None,
+        profile_details: str = None,
+    ):
+        if email is None:
+            email = f'testing-{self.email_index}@example.com'
+            self.email_index += 1
+        user_id = await self.conn.fetchval_b(
+            'insert into users (:values__names) values :values on conflict (email) do nothing returning id',
+            values=Values(
+                email=email,
+                visibility=visibility,
+                profile_type=profile_type,
+                main_name=main_name,
+                last_name=last_name,
+                strap_line=strap_line,
+                image_storage=image_storage,
+                profile_status=profile_status,
+                profile_status_message=profile_status_message,
+                profile_details=profile_details,
+            ),
+        )
+        if not user_id:
+            raise RuntimeError(f'user with email {email} already exists')
+
+        await self.conn.execute(
+            """
+            update users set
+              vector=setweight(to_tsvector(main_name || ' ' || coalesce(last_name, '')), 'A') ||
+                     setweight(to_tsvector(coalesce(strap_line, '')), 'B') ||
+                     to_tsvector(coalesce(profile_details, ''))
+            where id=$1
+            """,
+            user_id,
+        )
+        return user_id
+
     def url(self, name, *, query=None, **kwargs):
         if self.user and name.startswith('ui:'):
             kwargs.setdefault('session_id', self.user.session_id)
@@ -360,9 +418,9 @@ class Factory:
 
     async def create_label(self, name='Test Label', *, user_id=None, ordering=None, color=None, description=None):
         val = dict(name=name, user_id=user_id or self.user.id, ordering=ordering, color=color, description=description)
-        values = Values(**{k: v for k, v in val.items() if v is not None})
         return await self.conn.fetchval_b(
-            'insert into labels (:values__names) values :values returning id', values=values
+            'insert into labels (:values__names) values :values returning id',
+            values=Values(**{k: v for k, v in val.items() if v is not None}),
         )
 
     async def act(self, conv_id: int, action: Action) -> List[int]:
@@ -376,6 +434,35 @@ class Factory:
             if action_ids:
                 await push_multiple(self.conns, conv_id, action_ids)
             return action_ids
+
+    async def create_contact(
+        self,
+        owner: int,
+        user_id: int,
+        *,
+        profile_type: str = None,
+        main_name: str = None,
+        last_name: str = None,
+        strap_line: str = None,
+        image_storage: str = None,
+        **kwargs,
+    ):
+        val = dict(
+            owner=owner,
+            profile_user=user_id,
+            profile_type=profile_type,
+            main_name=main_name,
+            last_name=last_name,
+            strap_line=strap_line,
+            image_storage=image_storage,
+            **kwargs,
+        )
+        contact_id = await self.conn.fetchval_b(
+            'insert into contacts (:values__names) values :values returning id',
+            values=Values(**{k: v for k, v in val.items() if v is not None}),
+        )
+        # TODO update contact search vector
+        return contact_id
 
 
 @pytest.fixture(name='factory')
@@ -629,7 +716,10 @@ async def _fix_alt_db_conn(loop, alt_settings, alt_db_create):
 
     yield DummyPgPool(conn)
 
-    await tr.rollback()
+    if commit_transactions:
+        await tr.commit()
+    else:
+        await tr.rollback()
     await conn.close()
 
 
@@ -706,3 +796,16 @@ async def _fix_alt_worker(alt_redis, alt_worker_ctx):
 
     worker.pool = None
     await worker.close()
+
+
+def create_raw_image(width: int = 600, height: int = 600, mode: str = 'RGB') -> Image:
+    image = Image.new(mode, (width, height), (50, 100, 150))
+    ImageDraw.Draw(image).line((0, 0) + image.size, fill=128)
+    return image
+
+
+def create_image(width: int = 600, height: int = 600, mode: str = 'RGB', format: str = 'JPEG') -> bytes:
+    image = create_raw_image(width, height, mode)
+    stream = BytesIO()
+    image.save(stream, format=format, optimize=True)
+    return stream.getvalue()

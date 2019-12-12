@@ -11,7 +11,7 @@ from em2.utils.web import add_access_control, build_index
 
 from .middleware import user_middleware
 from .views.auth import AuthExchangeToken, auth_check, logout
-from .views.contacts import ContactSearch
+from .views.contacts import ContactCreate, ContactDetails, ContactEdit, ContactSearch, ContactsList, UploadImage
 from .views.conversations import (
     ConvAct,
     ConvActions,
@@ -66,8 +66,13 @@ async def create_app_ui(main_app: web.Application):
         web.route('*', '/auth/token/', AuthExchangeToken.view(), name='auth-token'),
         web.get(s + 'auth/check/', auth_check, name='auth-check'),
         web.post(s + 'auth/logout/', logout, name='auth-logout'),
-        # different app?:
-        web.get(s + 'contacts/lookup-email/', ContactSearch.view(), name='contacts-lookup-email'),
+        # contacts views:
+        web.get(s + 'contacts/', ContactsList.view(), name='contacts-list'),
+        web.get(s + 'contacts/search/', ContactSearch.view(), name='contacts-search'),
+        web.post(s + 'contacts/create/', ContactCreate.view(), name='contacts-create'),
+        web.get(s + 'contacts/upload-image/', UploadImage.view(), name='contacts-upload-image'),
+        web.get(s + r'contacts/{id:\d+}/', ContactDetails.view(), name='contacts-details'),
+        web.route('*', s + r'contacts/{id:\d+}/edit/', ContactEdit.view(), name='contacts-edit'),
     ]
     middleware = (
         csrf_middleware,

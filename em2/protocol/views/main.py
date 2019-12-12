@@ -4,7 +4,8 @@ from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
 import nacl.encoding
-from atoolbox import JsonErrors, json_response
+from atoolbox import JsonErrors, json_response, parse_request_query
+from buildpg.asyncpg import BuildPgConnection
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, Extra, PositiveInt, conint, constr, validator
 from typing_extensions import Literal
 
@@ -22,9 +23,9 @@ from em2.core import (
 from em2.protocol.core import HttpError, InvalidSignature
 from em2.utils.core import MsgFormat
 from em2.utils.db import or404
-from em2.utils.storage import check_content_type
+from em2.utils.storage import check_content_type, set_image_url
 
-from .utils import ExecView
+from .utils import ExecView, check_signature
 
 logger = logging.getLogger('em2.protocol.views')
 
@@ -186,17 +187,7 @@ class _PushBase(ExecView):
     """
 
     async def execute(self, m: PushModel):  # noqa: C901 (ignore complexity)
-        try:
-            request_em2_node = self.request.query['node']
-        except KeyError:
-            raise JsonErrors.HTTPBadRequest("'node' get parameter missing")
-
-        try:
-            await self.em2.check_body_signature(request_em2_node, self.request)
-        except InvalidSignature as e:
-            msg = e.args[0]
-            logger.info('unauthorized em2 push msg="%s" em2-node="%s"', msg, request_em2_node)
-            raise JsonErrors.HTTPUnauthorized(msg)
+        request_em2_node = await check_signature(self.request)
 
         if m.upstream_signature:
             data = await self.request.json()
@@ -252,6 +243,13 @@ class _PushBase(ExecView):
 
 
 class Em2Push(_PushBase):
+    """
+    Receives actions from the conversation leader, these actions could have been originally performed by:
+    * the leader
+    * this node, e.g. they're being sent back after a follower push
+    * another follower pushed to the leader which is now pushing to us
+    """
+
     class Model(PushModel):
         upstream_signature: constr(min_length=128, max_length=128) = None
         upstream_em2_node: Optional[str] = None
@@ -344,7 +342,7 @@ class Em2Push(_PushBase):
         ]
 
         try:
-            await apply_actions(self.conns, conv_id, actions)
+            await apply_actions(self.conns, conv_id, actions, allow_multiple_actors=True)
         except JsonErrors.HTTPNotFound:
             # happens when an actor hasn't yet been added to the conversation, any other times?
             # TODO any other errors?
@@ -396,6 +394,11 @@ class Em2Push(_PushBase):
 
 
 class Em2FollowerPush(_PushBase):
+    """
+    Used to push actions from a follower (non-leader) node to the leader, actions are not "official" until
+    this request has completed.
+    """
+
     class Model(PushModel):
         upstream_signature: constr(min_length=128, max_length=128)
         upstream_em2_node: str
@@ -441,7 +444,7 @@ class Em2FollowerPush(_PushBase):
         ]
 
         try:
-            action_ids = await apply_actions(self.conns, conv_id, actions)
+            action_ids = await apply_actions(self.conns, conv_id, actions, allow_multiple_actors=True)
         except JsonErrors.HTTPNotFound:
             # happens when an actor hasn't yet been added to the conversation, any other times?
             # TODO any other errors?
@@ -450,9 +453,6 @@ class Em2FollowerPush(_PushBase):
             return conv_id, action_ids
 
     async def re_push(self, m: PushModel, conv_id: Optional[int], action_ids: Optional[List[int]]):
-        import asyncio
-
-        await asyncio.sleep(0.5)
         await push_multiple(
             self.conns,
             conv_id,
@@ -462,3 +462,28 @@ class Em2FollowerPush(_PushBase):
             upstream_signature=m.upstream_signature,
             upstream_em2_node=m.upstream_em2_node,
         )
+
+
+class ProfileQueryModel(BaseModel):
+    email: EmailStr
+
+
+async def get_profile(request):
+    await check_signature(request)
+    m = parse_request_query(request, ProfileQueryModel)
+    conn: BuildPgConnection = request['conn']
+    # TODO support visibility=private
+    row = await or404(
+        conn.fetchrow(
+            """
+            select profile_type, main_name, last_name, image_storage, profile_status, profile_status_message,
+              profile_details details
+            from users
+            where email=$1 and user_type='local' and visibility!='private'
+            """,
+            m.email,
+        ),
+        msg='user not found',
+    )
+    user = set_image_url(row, request.app['settings'])
+    return json_response(**user)

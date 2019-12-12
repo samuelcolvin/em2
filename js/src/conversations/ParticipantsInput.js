@@ -1,23 +1,75 @@
 import React from 'react'
-import {AsyncTypeahead, Token} from 'react-bootstrap-typeahead'
+import {withRouter} from 'react-router-dom'
+import {AsyncTypeahead, Token, Highlighter} from 'react-bootstrap-typeahead'
 import {FormGroup, FormFeedback} from 'reactstrap'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, InputLabel, InputHelpText, message_toast} from 'reactstrap-toolbox'
+import jw_distance from 'jaro-winkler'
+import {ContactImage} from '../contacts/utils'
 
-const render_option = o => o.name ? `${o.name} <${o.email}>` : o.email
-const token = (option, props, index) => (
+const renderToken = (option, props, index) => (
   <Token key={index} onRemove={props.onRemove}>
-    {render_option(option)}
+    {option.main_name ? (
+      <div className="d-flex justify-content-start">
+        <div className="mr-2">
+          <ContactImage c={option}/>
+        </div>
+        <div>
+          {option.main_name} {option.last_name || ''}
+          <div>
+            <small className="text-muted">{option.email}</small>
+          </div>
+        </div>
+      </div>
+    ) : (
+      <div>{option.email}</div>
+    )}
   </Token>
 )
 
+const renderMenuItemChildren = (option, props) => {
+  if (option.main_name) {
+    return (
+      <div className="d-flex justify-content-start">
+        <div className="mr-2 mt-1">
+          <ContactImage c={option}/>
+        </div>
+        <div>
+          <div>
+          <Highlighter search={props.text}>
+            {`${option.main_name} ${option.last_name || ''}`}
+          </Highlighter>
+        </div>
+          <small className="text-muted">
+            <Highlighter search={props.text}>
+              {option.email}
+            </Highlighter>
+          </small>
+        </div>
+      </div>
+    )
+  } else {
+    return [
+      <div key="1">
+        <Highlighter search={props.text}>
+          {option.email}
+        </Highlighter>
+      </div>,
+      <small key="2" className="text-muted">
+        &nbsp;
+      </small>,
+    ]
+  }
+}
+
 const static_props = {
+  renderMenuItemChildren,
+  renderToken,
+  filterBy: () => true,
   multiple: true,
   className: 'participants-input',
   minLength: 3,
-  filterBy: ['name', 'email'],  // might have to modify this to take care of cases like extra and missing spaces
-  labelKey: render_option,
-  renderToken: token,
+  labelKey: 'email',
   useCache: false,
   allowNew: false,
   delay: 100,
@@ -27,27 +79,29 @@ const static_props = {
 const max_participants = 64
 
 class Participants extends React.Component {
-  state = {options: [], ongoing_searches: 0}
+  state = {options: [], ongoing_searches: 0, text: ''}
 
-  selected = () => this.state.options.filter(o => this.props.value.includes(o.email))
+  async componentDidMount () {
+    // could maybe do this more efficiently using multiple get args
+    const m = this.props.location.search.match(/participant=([^&=]+)/i)
+    if (m) {
+      await window.logic.contacts.email_lookup(m[1],o => this.props.onChange([o]))
+      this.props.history.replace(this.props.location.pathname)
+    }
+  }
 
   search = async query => {
     this.setState(s => ({ongoing_searches: s.ongoing_searches + 1}))
+    const skip = new Set([...this.props.value.map(v => v.email), ...(this.props.ignore || [])])
 
-    const options1 = await window.logic.contacts.fast_email_lookup(query)
-    // null when the address is invalid
-    if (options1) {
-      this.setState({options: options1})
-      // this.setState({options: this.selected().concat(options1)})
-    }
+    await window.logic.contacts.email_lookup(query,o => {
+      if (!skip.has(o.email)) {
+        const ref = [o.email, o.main_name, o.last_name, o.strap_line]
+        Object.assign(o, {ref: ref.filter(v => v).join(' ').toLowerCase()})
+        this.setState(s => ({options: Object.assign({}, s.options, {[o.email]: o})}))
+      }
+    })
 
-    const options2 = await window.logic.contacts.slow_email_lookup(query)
-    // null when the request was cancelled, or offline
-    if (options2 && options2.length) {
-      // could combine first and second set of options, but in general second set will override first
-      // eg. options2.concat(options1 || [])
-      this.setState({options: options2})
-    }
     this.setState(s => ({ongoing_searches: s.ongoing_searches - 1}))
   }
 
@@ -71,25 +125,35 @@ class Participants extends React.Component {
       message_toast({icon: fas.faTimes, message: `Maximum ${max_participants} participants permitted`})
     } else {
       this.props.onChange(addresses)
+      this.setState({options: {}})
     }
   }
 
+  distance = o => o.ref.includes(this.state.text) + jw_distance(this.state.text, o.ref)
+
   render () {
     const count = this.props.value.length
+    const options = Object.values(this.state.options)
+      .map(o => Object.assign(o, {s: this.distance(o)}))
+      .sort((a, b) => b.s - a.s)
+
+    const input_id = this.props.id || 'participants-input'
+    const input_name = this.props.name || 'participants-input'
     return (
       <div>
         <AsyncTypeahead
           {...static_props}
-          {...this.state}
+          options={options}
           isLoading={this.state.ongoing_searches > 0}
           onSearch={this.search}
           selected={this.props.value}
           disabled={this.props.disabled}
-          name={this.props.name}
-          id={this.props.name}
+          name={input_name}
+          id={input_id}
           required={this.props.required}
-          inputProps={{onPaste: this.onPaste}}
+          inputProps={{onPaste: this.onPaste, id: input_id, name: input_name}}
           onChange={this.onChange}
+          onInputChange={t => this.setState({text: t.toLocaleString()})}
         />
         {count ? (
           <small className="text-muted">{count} {count === 1 ? 'Person' : 'People'}</small>
@@ -99,19 +163,18 @@ class Participants extends React.Component {
   }
 }
 
-const ParticipantsWithContext = WithContext(Participants)
+const ParticipantsWithContext = WithContext(withRouter(Participants))
 
-export default ({className, field, disabled, error, value, onChange, existing_participants}) => (
+export default ({className, field, error, value, existing_participants, ...props}) => (
   <FormGroup className={className || field.className}>
     <InputLabel field={field}/>
     <ParticipantsWithContext
       value={value || []}
-      disabled={disabled}
       name={field.name}
       id={field.name}
       required={field.required}
       existing_participants={existing_participants || 0}
-      onChange={onChange}
+      {...props}
     />
     {error && <FormFeedback>{error}</FormFeedback>}
     <InputHelpText field={field}/>

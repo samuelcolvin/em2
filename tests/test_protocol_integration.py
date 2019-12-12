@@ -45,7 +45,7 @@ async def test_em2_second_message(factory: Factory, worker: Worker, alt_factory:
     assert await alt_conns.main.fetchval('select count(*) from users') == 1
 
     conv = await factory.create_conv(participants=[{'email': recip}], publish=True)
-    assert await worker.run_check() == 2
+    assert await worker.run_check() == 3
     assert await conns.main.fetchval('select count(*) from conversations') == 1
     assert await conns.main.fetchval('select count(*) from actions') == 4
     assert await alt_conns.main.fetchval('select count(*) from conversations') == 1
@@ -53,7 +53,7 @@ async def test_em2_second_message(factory: Factory, worker: Worker, alt_factory:
 
     action = Action(actor_id=factory.user.id, act=ActionTypes.msg_add, body='msg 2')
     await factory.act(conv.id, action)
-    assert await worker.run_check() == 4
+    assert await worker.run_check() == 6
 
     conv_summary = await construct_conv(conns, factory.user.id, conv.key)
     assert conv_summary == {
@@ -92,7 +92,7 @@ async def test_em2_reply(factory: Factory, worker: Worker, alt_factory: Factory,
     assert await conns.main.fetchval('select count(*) from actions') == 4
     assert await alt_conns.main.fetchval('select count(*) from conversations') == 0
 
-    assert await worker.run_check() == 2
+    assert await worker.run_check() == 3
 
     assert await conns.main.fetchval('select count(*) from conversations') == 1
     assert await conns.main.fetchval('select count(*) from actions') == 4
@@ -112,7 +112,7 @@ async def test_em2_reply(factory: Factory, worker: Worker, alt_factory: Factory,
     assert await conns.main.fetchval('select count(*) from actions') == 5
     assert await alt_conns.main.fetchval('select count(*) from actions') == 4
 
-    assert await worker.run_check() == 4
+    assert await worker.run_check() == 6
 
     assert await conns.main.fetchval('select count(*) from actions') == 5
     assert await alt_conns.main.fetchval('select count(*) from actions') == 5

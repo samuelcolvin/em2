@@ -24,6 +24,7 @@
 /js/.env.development.local
 /js/.env.test.local
 /js/.env.production.local
+/js/src/extra_modules/
 
 npm-debug.log*
 yarn-debug.log*

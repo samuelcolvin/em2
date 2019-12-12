@@ -102,7 +102,13 @@ async def sns_signing_endpoint(request):
 async def s3_endpoint(request):
     # very VERY simple mock of s3
     if request.method == METH_GET:
-        return Response(text=request.app['s3_files'][request.match_info['key']])
+        body = request.app['s3_files'].get(request.match_info['key'])
+        if body is None:
+            return Response(text='', status=404)
+        elif isinstance(body, str):
+            return Response(text=body)
+        else:
+            return Response(body=body)
     if request.method == METH_HEAD:
         f = request.app['s3_files'].get(request.match_info['key'])
         if f:

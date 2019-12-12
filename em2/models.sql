@@ -1,15 +1,34 @@
 create extension pg_trgm;
 
 create type UserTypes as enum ('new', 'local', 'remote_em2', 'remote_other');
+create type ProfileTypes as enum ('personal', 'work', 'organisation');
+create type ProfileVisibility as enum ('private', 'public', 'public-searchable');
+create type ProfileStatus as enum ('active', 'away', 'dormant');
 
 -- includes both local and remote users, TODO somehow record unsubscribed when people repeatedly complain
 create table users (
   id bigserial primary key,
   user_type UserTypes not null default 'new',
   email varchar(255) not null unique,
-  v bigint default 1  -- null for remote users, set thus when the local check returns false
+  v bigint default 1,  -- null for remote users, set thus when the local check returns false
+  update_ts timestamptz,
+  visibility ProfileVisibility,
+  profile_type ProfileTypes,
+  main_name varchar(63),
+  last_name varchar(63),
+  strap_line varchar(127),  -- organisation, titles, industry or legal name
+  image_storage varchar(2047),
+  thumb_storage varchar(2047),
+  profile_details text,
+  profile_status ProfileStatus,
+  profile_status_message varchar(511),
+  vector tsvector
 );
-create index idx_user_type on users using btree (user_type);
+create index idx_users_visibility on users using btree (visibility);
+create index idx_users_type on users using btree (user_type);
+-- for looking up partial email address
+create index idx_users_email_trgm on users using gin (email gin_trgm_ops);
+create index idx_users_vector on users using gin (vector);
 
 create table labels (
   id bigserial primary key,
@@ -46,12 +65,14 @@ create table conversations (
   live bool not null,  -- used when conversations are created but not yet ready to be read, also perhaps for deletion
   details json
 );
-create index idx_conversations_key on conversations using gin (key gin_trgm_ops);
+create index idx_conversations_key on conversations using btree (key);
 create index idx_conversations_creator on conversations using btree (creator);
 create index idx_conversations_created_ts on conversations using btree (created_ts);
 create index idx_conversations_updated_ts on conversations using btree (updated_ts);
 create index idx_conversations_publish_ts on conversations using btree (publish_ts);
 create index idx_conversations_leader_node on conversations using btree (leader_node);
+-- for looking up conversations by key prefix
+create index idx_conversations_key_trgm on conversations using gin (key gin_trgm_ops);
 
 create table participants (
   id bigserial primary key,
@@ -74,8 +95,9 @@ create index idx_participants_user_removal_action on participants using btree (u
 create index idx_participants_user_seen on participants using btree (user_id, seen);
 create index idx_participants_user_inbox on participants using btree (user_id, inbox);
 create index idx_participants_user_deleted on participants using btree (user_id, deleted);
-create index idx_participants_deleted_ts on participants using btree (deleted_ts);
 create index idx_participants_user_spam on participants using btree (user_id, spam);
+create index idx_participants_conv on participants using btree (conv);
+create index idx_participants_deleted_ts on participants using btree (deleted_ts);
 create index idx_participants_label_ids on participants using gin (label_ids);
 
 -- see core.ActionTypes enum which matches this
@@ -239,11 +261,33 @@ create table image_cache (
 );
 create index idx_image_cache_created on image_cache using btree (created);
 
----------------------------------------------------------------------------
--- search table, this references conversations so must be the same db,   --
--- other search solutions would need to record conv details and key      --
--- in search entries.                                                    --
----------------------------------------------------------------------------
+-------------------------------------------------------------------------
+-- contacts                                                            --
+-------------------------------------------------------------------------
+
+create table contacts (
+  id bigserial primary key,
+  owner bigint not null references users,
+  profile_user bigint not null references users,
+  profile_type ProfileTypes,
+  main_name varchar(63),
+  last_name varchar(63),
+  strap_line varchar(127),  -- organisation, titles, industry or legal name
+  image_storage varchar(2047),
+  thumb_storage varchar(2047),
+  v int not null default 1,
+  -- TODO might need full name from coalesce for sorting
+  details text,
+  vector tsvector,
+  unique (owner, profile_user)
+);
+create index idx_contacts_vector on contacts using gin (vector);
+
+-------------------------------------------------------------------------
+-- search table, this references conversations so must be the same db, --
+-- other search solutions would need to record conv details and key    --
+-- in search entries.                                                  --
+-------------------------------------------------------------------------
 create table search (
   id bigserial primary key,
   conv bigint references conversations,
@@ -314,7 +358,7 @@ create table auth_session_events (
 );
 create index idx_auth_session_event_session on auth_session_events using btree (session);
 
--- todo add address book, domains, organisations and teams, perhaps new db/app.
+-- todo add domains, organisations and teams, perhaps new db/app.
 
 create or replace function or_now(v timestamptz) returns timestamptz as $$
   begin

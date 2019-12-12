@@ -4,7 +4,6 @@ import logging
 from datetime import datetime
 from typing import Any, List, Set, Tuple
 
-from aiohttp import ClientSession
 from arq import ArqRedis
 from asyncpg.pool import Pool
 from cryptography.fernet import Fernet
@@ -34,17 +33,16 @@ class Pusher:
         self.settings: Settings = ctx['settings']
         self.job_try = ctx['job_try']
         self.auth_fernet = Fernet(self.settings.auth_key)
-        self.session: ClientSession = ctx['client_session']
         self.pg: Pool = ctx['pg']
         self.redis: ArqRedis = ctx['redis']
-        self.em2 = Em2Comms(self.settings, self.session, ctx['signing_key'], self.redis, ctx['resolver'])
+        self.em2 = Em2Comms(self.settings, ctx['client_session'], ctx['signing_key'], self.redis, ctx['resolver'])
 
     async def push(self, actions_data: str, users: List[Tuple[str, UserTypes]], **extra: Any):
         results = await asyncio.gather(*[self.resolve_user(*u) for u in users])
         retry_users, smtp_addresses, em2_nodes = set(), set(), set()
         for node, email in filter(None, results):
             if node == RETRY:
-                retry_users.add((email, False))
+                retry_users.add((email, None))
             elif node == SMTP:
                 smtp_addresses.add(email)
             else:
@@ -69,7 +67,10 @@ class Pusher:
                 await self.redis.enqueue_job('smtp_send', conversation, actions)
         if em2_nodes:
             logger.info('%d em2 nodes to push action to', len(em2_nodes))
-            await self.em2_send(conversation, actions, em2_nodes, **extra)
+            await asyncio.gather(
+                self.em2_send(conversation, actions, em2_nodes, **extra), self.update_profiles(conversation)
+            )
+
         return f'retry={len(retry_users)} smtp={len(smtp_addresses)} em2={len(em2_nodes)}'
 
     async def follower_push(self, conv_key: str, leader_node: str, interaction_id: str, actions: List[Action]):
@@ -152,3 +153,19 @@ class Pusher:
         except HttpError:
             # TODO retry
             raise
+
+    async def update_profiles(self, conv_key: str):
+        # could make '1 day' a settings variable
+        v = await self.pg.fetch(
+            """
+            select u.id, u.email from participants p
+            join users u on p.user_id = u.id
+            join conversations c on p.conv = c.id
+            where c.key=$1 and u.user_type='remote_em2' and
+            (now() - u.update_ts > interval '1 day' or u.update_ts is null)
+            """,
+            conv_key,
+        )
+        update_users = [tuple(r) for r in v]
+        if update_users:
+            await self.redis.enqueue_job('update_profiles', update_users)
