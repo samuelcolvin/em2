@@ -275,6 +275,7 @@ create table contacts (
   strap_line varchar(127),  -- organisation, titles, industry or legal name
   image_storage varchar(2047),
   thumb_storage varchar(2047),
+  v int not null default 1,
   -- TODO might need full name from coalesce for sorting
   details text,
   vector tsvector,

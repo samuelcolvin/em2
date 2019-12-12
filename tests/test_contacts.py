@@ -169,20 +169,21 @@ async def test_create_contact_with_image(factory: Factory, cli: UserTestClient, 
 
     data = dict(email='foobar@example.org', image=obj['file_id'])
     await cli.post_json(factory.url('ui:contacts-create'), data=data, status=201)
-    contact = dict(await db_conn.fetchrow('select * from contacts'))
 
-    assert contact == {
-        'id': AnyInt(),
+    contact_id = await db_conn.fetchval('select id from contacts')
+    assert dict(await db_conn.fetchrow('select * from contacts')) == {
+        'id': contact_id,
         'owner': user.id,
         'profile_user': AnyInt(),
         'profile_type': 'personal',
         'main_name': None,
         'last_name': None,
         'strap_line': None,
-        'image_storage': RegexStr(fr's3://s3_files_bucket.example.com/contacts/{user.id}/\d+/main.jpg'),
-        'thumb_storage': RegexStr(fr's3://s3_files_bucket.example.com/contacts/{user.id}/\d+/thumb.jpg'),
+        'image_storage': f's3://s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/main.jpg',
+        'thumb_storage': f's3://s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/thumb.jpg',
         'details': None,
         'vector': None,
+        'v': 1,
     }
 
 

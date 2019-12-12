@@ -148,7 +148,7 @@ class S3:
         await self._client.__aexit__(exc_type, exc_val, exc_tb)
         self._client = None
 
-    def signed_download_url(self, bucket: str, path: str, *, ttl: int = 10_000) -> str:
+    def signed_download_url(self, bucket: str, path: str, *, ttl: int = 10_000, version: Optional[str] = None) -> str:
         """
         Sign a path to authenticate download.
 
@@ -163,6 +163,8 @@ class S3:
         to_sign = f'GET\n\n\n{expires}\n/{bucket}/{path}'
         signature = self._signature(to_sign)
         args = {'AWSAccessKeyId': self._settings.aws_access_key, 'Signature': signature, 'Expires': expires}
+        if version:
+            args['v'] = version
         return f'https://{bucket}/{path}?{urlencode(args)}'
 
     def signed_upload_url(
@@ -286,9 +288,9 @@ async def download_remote_file(
 
 
 def set_image_url(r: Record, settings: Settings, *, field_name: str = 'image_url') -> Dict[str, Any]:
+    data = {k: v for k, v in r.items() if v is not None and k not in {'image_storage', 'v'}}
     storage = r.get('image_storage')
-    data = {k: v for k, v in r.items() if v is not None and k != 'image_storage'}
     if storage:
         _, bucket, path = parse_storage_uri(storage)
-        data[field_name] = S3(settings).signed_download_url(bucket, path)
+        data[field_name] = S3(settings).signed_download_url(bucket, path, version=r.get('v'))
     return data

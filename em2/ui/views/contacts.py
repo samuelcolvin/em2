@@ -117,7 +117,8 @@ class ContactsList(View):
       coalesce(c.thumb_storage, p.thumb_storage) image_storage,
       coalesce(c.profile_type, p.profile_type) profile_type,
       p.profile_status,
-      p.profile_status_message
+      p.profile_status_message,
+      c.v
     from contacts c
     join users p on c.profile_user = p.id
     where :where
@@ -154,6 +155,7 @@ class ContactDetails(View):
       c.strap_line c_strap_line,
       c.image_storage c_image_storage,
       c.details c_details,
+      c.v,
 
       p.visibility p_visibility,
       p.profile_type p_profile_type,
@@ -171,13 +173,13 @@ class ContactDetails(View):
 
     async def call(self):
         r = await self.conn.fetchrow(self.sql, self.session.user_id, int(self.request.match_info['id']))
-        contact = {k: v for k, v in r.items() if v is not None and not k.endswith('image_storage')}
+        contact = {k: v for k, v in r.items() if v is not None and not k.endswith('image_storage') and k != 'v'}
         s3 = S3(self.settings)
         for prefix in ('c_', 'p_'):
             storage = r[prefix + 'image_storage']
             if storage:
                 _, bucket, path = parse_storage_uri(storage)
-                contact[prefix + 'image_url'] = s3.signed_download_url(bucket, path)
+                contact[prefix + 'image_url'] = s3.signed_download_url(bucket, path, version=r['v'])
 
         return json_response(**contact)
 
@@ -276,7 +278,7 @@ class ContactCreate(ContactCreateEdit):
 
 class ContactEdit(ContactCreateEdit):
     get_sql = """
-    select p.email, c.profile_type, c.main_name, c.last_name, c.strap_line, c.image_storage, c.details
+    select p.email, c.profile_type, c.main_name, c.last_name, c.strap_line, c.image_storage, c.details, c.v
     from contacts c
     join users p on c.owner = p.id
     where c.owner=$1 and c.id=$2
@@ -301,7 +303,7 @@ class ContactEdit(ContactCreateEdit):
             images = await self.get_image_data(s3_client, contact.image)
             if images:
                 image, thumb = await self.get_image_paths(images, contact_id, s3_client)
-                data.update(image_storage=image, thumb_storage=thumb)
+                data.update(image_storage=image, thumb_storage=thumb, v=V('v') + V('1'))
 
         v = await self.conn.execute_b(
             'update contacts set :values where id=:id and owner=:owner',
