@@ -235,15 +235,19 @@ class ContactCreateEdit(ExecView):
         except InvalidImage as e:
             raise JsonErrors.HTTPBadRequest(str(e), details=[{'loc': ['image'], 'msg': str(e)}])
 
-    async def get_image_paths(
+    async def upload_images(
         self, images: Tuple[bytes, bytes], contact_id: int, s3_client: S3Client
     ) -> Optional[Tuple[str, str]]:
         image_data, thumbnail_data = images
-        path = f'contacts/{self.session.user_id}/{contact_id}/'
+        main_path, thumb_path = self.image_paths(contact_id)
         return await asyncio.gather(
-            s3_client.upload(self.settings.s3_file_bucket, path + 'main.jpg', image_data, 'image/jpeg'),
-            s3_client.upload(self.settings.s3_file_bucket, path + 'thumb.jpg', thumbnail_data, 'image/jpeg'),
+            s3_client.upload(self.settings.s3_file_bucket, main_path, image_data, 'image/jpeg'),
+            s3_client.upload(self.settings.s3_file_bucket, thumb_path, thumbnail_data, 'image/jpeg'),
         )
+
+    def image_paths(self, contact_id: int) -> Tuple[str, str]:
+        path = f'contacts/{self.session.user_id}/{contact_id}/'
+        return path + 'main.jpg', path + 'thumb.jpg'
 
 
 class ContactCreate(ContactCreateEdit):
@@ -253,25 +257,24 @@ class ContactCreate(ContactCreateEdit):
         async with S3(self.settings) as s3_client:
             images = await self.get_image_data(s3_client, contact.image)
 
-            async with self.conns.main.transaction():
-                contact_id = await self.conns.main.fetchval_b(
-                    """
-                    insert into contacts (:values__names) values :values
-                    on conflict (owner, profile_user) do nothing returning id
-                    """,
-                    values=Values(
-                        owner=self.session.user_id, profile_user=user_id, **contact.dict(exclude={'email', 'image'})
-                    ),
-                )
-                if not contact_id:
-                    msg = 'you already have a contact with this email address'
-                    raise JsonErrors.HTTPConflict(msg, details=[{'loc': ['email'], 'msg': msg}])
+            contact_id = await self.conns.main.fetchval_b(
+                """
+                insert into contacts (:values__names) values :values
+                on conflict (owner, profile_user) do nothing returning id
+                """,
+                values=Values(
+                    owner=self.session.user_id, profile_user=user_id, **contact.dict(exclude={'email', 'image'})
+                ),
+            )
+            if not contact_id:
+                msg = 'you already have a contact with this email address'
+                raise JsonErrors.HTTPConflict(msg, details=[{'loc': ['email'], 'msg': msg}])
 
-                if images:
-                    image, thumb = await self.get_image_paths(images, contact_id, s3_client)
-                    await self.conns.main.execute(
-                        'update contacts set image_storage=$1, thumb_storage=$2 where id=$3', image, thumb, contact_id
-                    )
+            if images:
+                image, thumb = await self.upload_images(images, contact_id, s3_client)
+                await self.conns.main.execute(
+                    'update contacts set image_storage=$1, thumb_storage=$2 where id=$3', image, thumb, contact_id
+                )
 
         return dict(id=contact_id, status_=201)
 
@@ -292,6 +295,8 @@ class ContactEdit(ContactCreateEdit):
         return await parse_request_json_ignore_missing(self.request, self.Model)
 
     async def execute(self, contact: ContactModel):
+        if not contact.__fields_set__:
+            raise JsonErrors.HTTPBadRequest('no data provided')
         data = contact.dict(exclude_unset=True, exclude={'image'})
         contact_id = int(self.request.match_info['id'])
 
@@ -299,11 +304,14 @@ class ContactEdit(ContactCreateEdit):
         if email:
             data['profile_user'] = await self.get_create_user(email)
 
-        async with S3(self.settings) as s3_client:
-            images = await self.get_image_data(s3_client, contact.image)
-            if images:
-                image, thumb = await self.get_image_paths(images, contact_id, s3_client)
-                data.update(image_storage=image, thumb_storage=thumb, v=V('v') + V('1'))
+        if contact.image:
+            async with S3(self.settings) as s3_client:
+                images = await self.get_image_data(s3_client, contact.image)
+                image, thumb = await self.upload_images(images, contact_id, s3_client)
+            data.update(image_storage=image, thumb_storage=thumb, v=V('v') + V('1'))
+        elif 'image' in contact.__fields_set__:
+            await self.delete_images(contact_id)
+            data.update(image_storage=None, thumb_storage=None, v=V('v') + V('1'))
 
         v = await self.conn.execute_b(
             'update contacts set :values where id=:id and owner=:owner',
@@ -313,6 +321,14 @@ class ContactEdit(ContactCreateEdit):
         )
         if v != 'UPDATE 1':
             raise JsonErrors.HTTPNotFound('contact not found')
+
+    async def delete_images(self, contact_id: int):
+        main_path, thumb_path = self.image_paths(contact_id)
+        async with S3(self.settings) as s3_client:
+            await asyncio.gather(
+                s3_client.delete(self.settings.s3_file_bucket, main_path),
+                s3_client.delete(self.settings.s3_file_bucket, thumb_path),
+            )
 
 
 def tmp_image_cache_key(content_id: str) -> str:

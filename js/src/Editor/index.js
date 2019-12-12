@@ -376,6 +376,9 @@ export class MarkdownRenderer extends React.Component {
   }
 
   render () {
+    if (!this.props.value) {
+      return null
+    }
     return (
       <div className="md">
         <SlateEditor
@@ -390,10 +393,20 @@ export class MarkdownRenderer extends React.Component {
   }
 }
 
+const editor_content = value => {
+  if (!value) {
+    return empty_editor
+  } else if (typeof value === 'string') {
+    return from_markdown(value)
+  } else {
+    return value
+  }
+}
+
 export const EditorInput = ({className, field, disabled, error, value, onChange}) => (
   <FormGroup className={className || field.className}>
     <InputLabel field={field}/>
-    <Editor content={value || empty_editor} disabled={disabled} onChange={onChange} error={error}/>
+    <Editor content={editor_content(value)} disabled={disabled} onChange={onChange} error={error}/>
     <FormFeedback className={error ? 'd-block': ''}>{error}</FormFeedback>
     <InputHelpText field={field}/>
   </FormGroup>

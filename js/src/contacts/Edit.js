@@ -51,9 +51,20 @@ class Edit extends React.Component {
   }
 
   submit_data = data => {
-    data.details = (data.details && data.details.has_changed) ? data.details.markdown : null
-    data.image = data.image ? data.image.file_id : null
-    data.id = this.props.match.params.id
+    if (data.details && data.details.has_changed) {
+      data.details = data.details.markdown
+    } else {
+      delete data.details
+    }
+    console.log(data)
+    if (data.image) {
+      data.image = data.image.file_id
+    } else if (data.image !== null) {
+      delete data.image
+    }
+    if (Object.keys(data).length !== 0) {
+      data.id = this.props.match.params.id
+    }
     return data
   }
 

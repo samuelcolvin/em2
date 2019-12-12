@@ -354,3 +354,53 @@ async def test_edit_contact_image(factory: Factory, cli: UserTestClient, db_conn
         f'PUT /s3_endpoint_url/s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/main.jpg > 200',
         f'PUT /s3_endpoint_url/s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/thumb.jpg > 200',
     ]
+
+
+async def test_edit_contact_remove_image(factory: Factory, cli: UserTestClient, db_conn, dummy_server):
+    user = await factory.create_user()
+
+    contact_user_id = await factory.create_simple_user(email='foobar@example.org')
+    contact_id = await factory.create_contact(owner=user.id, user_id=contact_user_id)
+
+    q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
+    obj = await cli.get_json(factory.url('ui:contacts-upload-image', query=q))
+    path = obj['fields']['Key']
+    dummy_server.app['s3_files'][path] = create_image()
+
+    data = dict(image=obj['file_id'])
+    await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
+
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    image, thumb, v = await db_conn.fetchrow('select image_storage, thumb_storage, v from contacts')
+    assert image == f's3://s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/main.jpg'
+    assert thumb == f's3://s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/thumb.jpg'
+    assert v == 2
+
+    data = dict(image=None)
+    await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
+    image, thumb, v = await db_conn.fetchrow('select image_storage, thumb_storage, v from contacts')
+    assert image is None
+    assert thumb is None
+    assert v == 3
+
+
+async def test_edit_contact_empty(factory: Factory, cli: UserTestClient):
+    user = await factory.create_user()
+
+    contact_user_id = await factory.create_simple_user(email='foobar@example.org')
+    contact_id = await factory.create_contact(owner=user.id, user_id=contact_user_id)
+
+    r = await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data={}, status=400)
+    assert await r.json() == {'message': 'no data provided'}
+
+
+async def test_edit_contact_wrong_owner(factory: Factory, cli: UserTestClient):
+    await factory.create_user()
+    user2 = await factory.create_user()
+
+    contact_user_id = await factory.create_simple_user(email='foobar@example.org')
+    contact_id = await factory.create_contact(owner=user2.id, user_id=contact_user_id)
+
+    data = dict(last_name='foobar')
+    r = await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data, status=404)
+    assert await r.json() == {'message': 'contact not found'}

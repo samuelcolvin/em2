@@ -6,6 +6,7 @@ import {withRouter} from 'react-router-dom'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
 import {WithContext, as_title} from 'reactstrap-toolbox'
+import {MarkdownRenderer} from '../Editor'
 import {StatusDisplay, ContactImage, contact_name} from './utils'
 
 
@@ -101,8 +102,8 @@ class DetailView extends React.Component {
               {as_title(c.p_visibility || 'SMTP')}
               <div className="smaller text-muted small">({this.visibility_description(c)})</div>
             </Detail>
-            <Detail name="Contact Details">{c.c_details}</Detail>
-            <Detail name="Profile Details">{c.p_details}</Detail>
+            <Detail name="Contact Details" showIf={!!c.c_details}><MarkdownRenderer value={c.c_details}/></Detail>
+            <Detail name="Profile Details" showIf={!!c.p_details}><MarkdownRenderer value={c.p_details}/></Detail>
             {/*<code><pre className="text-muted">{JSON.stringify(c, null, 2)}</pre></code>*/}
             <i className="text-muted d-block mt-4">(TODO: show recent conversations)</i>
           </Col>
