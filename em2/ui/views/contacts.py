@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
 
 import ujson
@@ -21,6 +21,10 @@ from .utils import ExecView, View
 
 
 class ContactSearch(View):
+    """
+    Used when adding new participants to a conversation.
+    """
+
     response = None
     search_sql = """
     select
@@ -105,6 +109,47 @@ class ContactSearch(View):
         q = await pg.fetch_b(self.search_sql, this_user=self.session.user_id, where=where)
         for r in q:
             await self.write_line(r)
+
+
+class ContactEmailLookup(View):
+    """
+    Look up user and contact details by one or more email addresses.
+    """
+
+    class QueryModel(BaseModel):
+        email: List[EmailStr]
+
+        @validator('email', each_item=True)
+        def lower_emails(cls, v):
+            return v.lower()
+
+    sql = """
+    select
+      u.email,
+      coalesce(full_name(c.main_name, c.last_name), full_name(u.main_name, u.last_name)) as name,
+      coalesce(c.strap_line, u.strap_line) strap_line,
+      coalesce(c.thumb_storage, u.thumb_storage) image_storage,
+      coalesce(c.profile_type, u.profile_type) profile_type,
+      u.profile_status,
+      u.profile_status_message,
+      c.id contact_id,
+      c.v
+    from users u
+    left join contacts c on c.profile_user=u.id and c.owner=$1
+    where email=any($2) and (c.id is not null or u.visibility = any('{public-searchable,public}'))
+    """
+
+    async def call(self):
+        # can't currently use raw sql here due to signing download urls
+        m = parse_request_query(self.request, self.QueryModel)
+        users = {}
+        for r in await self.conn.fetch(self.sql, self.session.user_id, m.email):
+            u = set_image_url(r, self.settings)
+            email = u.pop('email')
+            if u:
+                # no point in returning users with no information
+                users[email] = u
+        return json_response(**users)
 
 
 class ContactsList(View):

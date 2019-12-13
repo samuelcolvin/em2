@@ -5,6 +5,15 @@ create type ProfileTypes as enum ('personal', 'work', 'organisation');
 create type ProfileVisibility as enum ('private', 'public', 'public-searchable');
 create type ProfileStatus as enum ('active', 'away', 'dormant');
 
+
+create or replace function full_name(main_name varchar(255), last_name varchar(255),
+    email varchar(255) default null) returns varchar(255) as $$
+  declare
+  begin
+    return coalesce(main_name || ' ' || last_name, main_name, last_name, email);
+  end;
+$$ language plpgsql;
+
 -- includes both local and remote users, TODO somehow record unsubscribed when people repeatedly complain
 create table users (
   id bigserial primary key,
