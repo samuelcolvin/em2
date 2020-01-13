@@ -1,6 +1,7 @@
 import React from 'react'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
+import {combine_classes} from 'reactstrap-toolbox'
 
 const _status = (className, text, icon) => (
   <span className={className}>{text} <FontAwesomeIcon icon={icon}/></span>
@@ -22,12 +23,13 @@ const dft_icons = {
   work: fas.faUserTie,
   organisation: fas.faBuilding,
 }
+const image_sizes = {large: 150, small: 40, tiny: 26}
 
-export const ContactImage = ({c, large}) => {
+export const ContactImage = ({c, size = 'small', className}) => {
   const image_url = c.image_url || c.c_image_url || c.p_image_url
-  const img_size = large ? 150 : 40
+  const img_size = image_sizes[size]
   return (
-    <div className={`contact-image${image_url ? '' : ' dft'} ${large ? 'large' : 'small'}`}>
+    <div className={combine_classes('contact-image', image_url ? null : 'dft', size, className)}>
       {image_url ? (
         <img src={image_url} width={img_size} height={img_size} alt={contact_name(c)}/>
       ) : (

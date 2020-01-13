@@ -118,6 +118,10 @@ export default class Session {
         'spam',
         'labels',
       ].join(','),
+      contacts: [
+        '&email',
+        'last_updated',
+      ].join(','),
       actions: [
         '[conv+id]',
         '[conv+act]',

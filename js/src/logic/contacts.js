@@ -29,6 +29,55 @@ export default class Contacts {
     return {}
   }
 
+  lookup_details = async p => {
+    // deep copy of participants
+    const contacts = {...p}
+    let emails = Object.keys(contacts)
+    console.log(this._main.session.current)
+    if (!emails.length) {
+      return contacts
+    }
+
+    const update_contacts = contact_details => {
+      for (let [email, details] of Object.entries(contact_details)) {
+        const contact = contacts[email]
+        if (contact) {
+          // avoid mutating contact since contacts is only a shallow copy of p
+          contacts[email] = Object.assign({}, contact, details)
+        }
+      }
+    }
+    update_contacts({[this._main.session.current.email]: {you: true}})
+
+    const now = Math.round(new Date().getTime() / 1000)
+    const old = now - 24 * 3600
+    const results = await this._main.session.db.contacts
+      .where('email').anyOf(emails).filter(c => c.last_updated > old).toArray()
+    if (results.length) {
+      const db_contacts = Object.assign(...results.map(c => ({[c.email]: c})))
+      update_contacts(db_contacts)
+      const db_emails = new Set(Object.keys(db_contacts))
+      emails = emails.filter(e => !db_emails.has(e))
+      if (!emails.length) {
+        // we've got details locally of all contacts, no need to look up db
+        return contacts
+      }
+    }
+    const online = await this._main.online()
+    if (!online) {
+      return contacts
+    }
+    const path = `/${this._main.session.id}/contacts/email-lookup/`
+    const r = await this._requests.get('ui', path, {emails})
+
+    if (Object.keys(r.data).length) {
+      update_contacts(r.data)
+      await this._main.session.db.contacts.bulkPut(Object.entries(r.data)
+        .map(([email, c]) => ({...c, email: email, last_updated: now})))
+    }
+    return contacts
+}
+
   details = async id => {
     const online = await this._main.online()
     if (online) {

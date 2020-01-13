@@ -2,8 +2,9 @@ import React from 'react'
 import {Button, UncontrolledDropdown, DropdownToggle, DropdownMenu, DropdownItem} from 'reactstrap'
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome'
 import * as fas from '@fortawesome/free-solid-svg-icons'
-import {on_mobile, WithContext} from 'reactstrap-toolbox'
+import {on_mobile, combine_classes, WithContext} from 'reactstrap-toolbox'
 import ParticipantsInput from '../ParticipantsInput'
+import {ContactImage} from '../../contacts/utils'
 
 const scroll_threshold = 108
 // needs to match $grid-breakpoints: xl
@@ -41,6 +42,22 @@ const ScrollSpy = ({children}) => {
   return <div ref={scroll_ref}>{children}</div>
 }
 
+const ParticipantSummary = ({participant, className}) => (
+  <div className={combine_classes(className, 'd-flex justify-content-start')}>
+    <div className="mr-2 mt-1">
+      <ContactImage c={participant}/>
+    </div>
+    <div>
+      <div>
+        {participant.name}
+      </div>
+      <small className="text-muted">
+        {participant.email}
+      </small>
+    </div>
+  </div>
+)
+
 
 const RightPanel = ({state, locked, set_participants, add_participants, remove_participants, ctx}) => {
   const disabled = locked('extra_prts')
@@ -72,18 +89,20 @@ const RightPanel = ({state, locked, set_participants, add_participants, remove_p
           </div>
         </div>
         {participants.map(p => (
-          <div key={p.id} className="d-flex">
-            <div className="py-1">{p.email}</div>
-            {p.email !== ctx.user.email ? (
-              <UncontrolledDropdown>
-                <DropdownToggle color="link" size="sm" disabled={disabled}>
-                  edit <FontAwesomeIcon icon={fas.faCaretDown}/>
-                </DropdownToggle>
-                <DropdownMenu>
-                  <DropdownItem onClick={() => remove_participants(p)}>Remove</DropdownItem>
-                </DropdownMenu>
-              </UncontrolledDropdown>
-            ) : null}
+          <div key={p.id} className="d-flex justify-content-between py-2">
+            <ParticipantSummary participant={p}/>
+            <div>
+              {p.email !== ctx.user.email ? (
+                <UncontrolledDropdown>
+                  <DropdownToggle color="link" size="sm" disabled={disabled} className="py-0 mb-0">
+                    edit <FontAwesomeIcon icon={fas.faCaretDown}/>
+                  </DropdownToggle>
+                  <DropdownMenu right>
+                    <DropdownItem onClick={() => remove_participants(p)}>Remove</DropdownItem>
+                  </DropdownMenu>
+                </UncontrolledDropdown>
+              ) : null}
+            </div>
           </div>
         ))}
         {state.extra_prts ? (

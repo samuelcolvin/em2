@@ -412,12 +412,12 @@ async def test_contact_email_lookup(factory: Factory, cli: UserTestClient):
     contact_user_id = await factory.create_simple_user(email='foobar@example.org')
     contact_id = await factory.create_contact(owner=user.id, user_id=contact_user_id, main_name='Fred', last_name='X')
 
-    data = await cli.get_json(factory.url('ui:contacts-email-lookup'), params={'email': 'foobar@example.org'})
+    data = await cli.get_json(factory.url('ui:contacts-email-lookup'), params={'emails': 'foobar@example.org'})
     assert data == {'foobar@example.org': {'name': 'Fred X', 'contact_id': contact_id}}
 
     data = await cli.get_json(
         factory.url('ui:contacts-email-lookup'),
-        params=[('email', 'foobar@example.org'), ('email', 'other@example.org')],
+        params=[('emails', 'foobar@example.org'), ('emails', 'other@example.org')],
     )
     assert data == {'foobar@example.org': {'name': 'Fred X', 'contact_id': contact_id}}
 
@@ -431,7 +431,7 @@ async def test_contact_email_lookup_multiple(factory: Factory, cli: UserTestClie
     contact2_user_id = await factory.create_simple_user(email='ben@example.org', last_name='User', visibility='public')
 
     data = await cli.get_json(
-        factory.url('ui:contacts-email-lookup'), params=[('email', 'anne@example.org'), ('email', 'ben@example.org')]
+        factory.url('ui:contacts-email-lookup'), params=[('emails', 'anne@example.org'), ('emails', 'ben@example.org')]
     )
     assert data == {
         'anne@example.org': {'name': 'Anne X', 'contact_id': contact1_id},
@@ -440,7 +440,7 @@ async def test_contact_email_lookup_multiple(factory: Factory, cli: UserTestClie
 
     await db_conn.execute('update users set main_name=null, last_name=null where id=$1', contact2_user_id)
     data = await cli.get_json(
-        factory.url('ui:contacts-email-lookup'), params=[('email', 'anne@example.org'), ('email', 'ben@example.org')]
+        factory.url('ui:contacts-email-lookup'), params=[('emails', 'anne@example.org'), ('emails', 'ben@example.org')]
     )
     assert data == {'anne@example.org': {'name': 'Anne X', 'contact_id': contact1_id}}
 
@@ -452,10 +452,10 @@ async def test_contact_email_lookup_contact_owner(factory: Factory, cli: UserTes
     contact_user_id = await factory.create_simple_user(email='foobar@example.org', main_name='foobar')
     await factory.create_contact(owner=other_owner, user_id=contact_user_id, main_name='on-contact')
 
-    data = await cli.get_json(factory.url('ui:contacts-email-lookup'), params={'email': 'foobar@example.org'})
+    data = await cli.get_json(factory.url('ui:contacts-email-lookup'), params={'emails': 'foobar@example.org'})
     assert data == {}
 
     await db_conn.execute("update users set visibility='public-searchable' where id=$1", contact_user_id)
 
-    data = await cli.get_json(factory.url('ui:contacts-email-lookup'), params={'email': 'foobar@example.org'})
+    data = await cli.get_json(factory.url('ui:contacts-email-lookup'), params={'emails': 'foobar@example.org'})
     assert data == {'foobar@example.org': {'name': 'foobar'}}

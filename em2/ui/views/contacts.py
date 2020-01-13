@@ -117,9 +117,9 @@ class ContactEmailLookup(View):
     """
 
     class QueryModel(BaseModel):
-        email: List[EmailStr]
+        emails: List[EmailStr]
 
-        @validator('email', each_item=True)
+        @validator('emails', each_item=True)
         def lower_emails(cls, v):
             return v.lower()
 
@@ -143,7 +143,7 @@ class ContactEmailLookup(View):
         # can't currently use raw sql here due to signing download urls
         m = parse_request_query(self.request, self.QueryModel)
         users = {}
-        for r in await self.conn.fetch(self.sql, self.session.user_id, m.email):
+        for r in await self.conn.fetch(self.sql, self.session.user_id, m.emails):
             u = set_image_url(r, self.settings)
             email = u.pop('email')
             if u:

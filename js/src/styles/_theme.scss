@@ -264,6 +264,9 @@ body {
   }
 }
 
+$image-large: 150px;
+$image-small: 40px;
+$image-tiny: 26px;
 .contact-image {
   background: $gray-300;
   text-align: center;
@@ -271,11 +274,15 @@ body {
     background: #64B5F6;
     color: white;
   }
+  border-radius: 50%;
+  img {
+    border-radius: 50%;
+  }
   &.large {
     margin-left: auto;
     border-radius: $border-radius;
-    width: 150px;
-    height: 150px;
+    width: $image-large;
+    height: $image-large;
     svg {
       margin-top: 1.4rem;
       font-size: 7em;
@@ -285,15 +292,19 @@ body {
     }
   }
   &.small {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
+    width: $image-small;
+    height: $image-small;
     svg {
       margin-top: 0.55rem;
       font-size: 1.8em;
     }
-    img {
-      border-radius: 50%;
+  }
+  &.tiny {
+    width: $image-tiny;
+    height: $image-tiny;
+    svg {
+      margin-top: 0.26rem;
+      font-size: 1em;
     }
   }
 }
