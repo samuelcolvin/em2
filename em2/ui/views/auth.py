@@ -18,7 +18,17 @@ class AuthExchangeToken(ExecView):
     async def execute(self, m: Model):
         d = decrypt_json(self.app, m.auth_token, ttl=30)
         session = await get_session(self.request)
-        user_id = await get_create_user(conns_from_request(self.request), d['email'], UserTypes.local)
+        conns = conns_from_request(self.request)
+        user_id = await get_create_user(conns, d['email'], UserTypes.local)
+        # create the contact so they're visible in contacts as yourself
+        await conns.main.execute(
+            """
+            insert into contacts (owner, profile_user)
+            values ($1, $1)
+            on conflict (owner, profile_user) do nothing
+            """,
+            user_id,
+        )
         session[d['session_id']] = {'user_id': user_id, 'email': d['email'], 'ts': d['ts']}
         return {'user_id': user_id}
 
