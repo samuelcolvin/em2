@@ -36,10 +36,10 @@ const renderMenuItemChildren = (option, props) => {
         </div>
         <div>
           <div>
-          <Highlighter search={props.text}>
-            {`${option.main_name} ${option.last_name || ''}`}
-          </Highlighter>
-        </div>
+            <Highlighter search={props.text}>
+              {`${option.main_name} ${option.last_name || ''}`}
+            </Highlighter>
+          </div>
           <small className="text-muted">
             <Highlighter search={props.text}>
               {option.email}

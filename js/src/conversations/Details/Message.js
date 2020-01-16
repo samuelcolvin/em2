@@ -17,6 +17,7 @@ import {make_url} from '../../logic/network'
 import MessageBody from './MessageBody'
 import {file_icon, file_size} from '../../utils/files'
 import {Editor, empty_editor} from '../../Editor'
+import {ContactImage} from '../../contacts/utils'
 
 const CommentButton = ({msg, setState, children, locked}) => {
   const [tooltip_open, set_tooltip_open] = React.useState(false)
@@ -96,12 +97,25 @@ const ModifyMessage = ({state, locked, setState, msg_modify, msg_modify_release}
   )
 }
 
-const Comment = ({msg, depth = 1, ...props}) => {
+const ParticipantShortSummary = ({participants, creator}) => {
+  const details = participants[creator] || {}
+  return (
+    <span className="mr-1">
+      <ContactImage className="d-inline-block mr-2" size="tiny" c={details}/>
+      <b>
+        {details.name || creator}
+      </b>
+      {details.you && <span> (you)</span>}
+    </span>
+  )
+}
+
+const Comment = ({msg, contact, depth = 1, ...props}) => {
   const commenting = props.state.comment_parent === msg.first_action
   return (
     <div className="ml-3">
       <div className="border-top pt-1 mt-2">
-        <b className="mr-1">{msg.creator}</b>
+        <ParticipantShortSummary participants={props.state.conv.participants} creator={msg.creator}/>
         <span className="text-muted small">{format_ts(msg.created)}</span>
       </div>
       <div>
@@ -180,7 +194,7 @@ export default ({msg, msg_modify_lock, ...props}) => (
   <div className="box no-pad msg-details">
     <div className="border-bottom py-2 d-flex justify-content-between">
       <div>
-        <b className="mr-1">{msg.creator}</b>
+        <ParticipantShortSummary participants={props.state.conv.participants} creator={msg.creator}/>
         <span className="text-muted small">{format_ts(msg.created)}</span>
       </div>
       <div>

@@ -75,7 +75,7 @@ class DetailView extends React.Component {
       <div className="box pt-3">
         <Row>
           <Col lg="4">
-            <ContactImage c={c} large/>
+            <ContactImage c={c} size="large"/>
             <div className="mt-3 text-right">
               <ButtonGroup size="sm">
                 <Button color="success" tag={Link} to={`/create/?participant=${encodeURI(c.email)}`}>

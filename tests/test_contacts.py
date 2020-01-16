@@ -14,15 +14,15 @@ from .conftest import Factory, UserTestClient, create_image, create_raw_image
 async def test_create_conv(cli: UserTestClient, factory: Factory, db_conn):
     user = await factory.create_user()
 
-    assert await db_conn.fetchval('select count(*) from contacts') == 0
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
     await cli.post_json(
         factory.url('ui:create'),
         {'subject': 'Sub', 'message': 'Msg', 'participants': [{'email': 'foobar@example.com'}]},
         status=201,
     )
 
-    assert await db_conn.fetchval('select count(*) from contacts') == 1
-    owner, profile_user = await db_conn.fetchrow('select owner, profile_user from contacts')
+    assert await db_conn.fetchval('select count(*) from contacts') == 2
+    owner, profile_user = await db_conn.fetchrow('select owner, profile_user from contacts order by id desc')
     assert owner == user.id
     assert profile_user == await db_conn.fetchval('select id from users where email=$1', 'foobar@example.com')
 
@@ -32,12 +32,12 @@ async def test_act_add_contact(cli: UserTestClient, factory: Factory, db_conn):
     conv = await factory.create_conv()
     assert 2 == await db_conn.fetchval('select v from users where id=$1', user.id)
 
-    assert await db_conn.fetchval('select count(*) from contacts') == 0
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
     data = {'actions': [{'act': 'participant:add', 'participant': 'new@example.com'}]}
     await cli.post_json(factory.url('ui:act', conv=conv.key), data)
 
-    assert await db_conn.fetchval('select count(*) from contacts') == 1
-    owner, profile_user = await db_conn.fetchrow('select owner, profile_user from contacts')
+    assert await db_conn.fetchval('select count(*) from contacts') == 2
+    owner, profile_user = await db_conn.fetchrow('select owner, profile_user from contacts order by id desc')
     assert owner == user.id
     assert profile_user == await db_conn.fetchval('select id from users where email=$1', 'new@example.com')
 
@@ -48,12 +48,14 @@ async def test_add_contacts(factory: Factory, db_conn, conns):
 
     action = Action(actor_id=user.id, act=ActionTypes.prt_add, participant='new@example.com')
     assert [4] == await factory.act(conv.id, action)
-    assert await db_conn.fetchval('select count(*) from contacts') == 0
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
     await add_contacts(conns, conv.id, user.id)
     await add_contacts(conns, conv.id, user.id)
 
-    assert await db_conn.fetchval('select count(*) from contacts') == 1
-    owner, profile_user, profile_type = await db_conn.fetchrow('select owner, profile_user, profile_type from contacts')
+    assert await db_conn.fetchval('select count(*) from contacts') == 2
+    owner, profile_user, profile_type = await db_conn.fetchrow(
+        'select owner, profile_user, profile_type from contacts order by id desc'
+    )
     assert owner == user.id
     assert profile_user == await db_conn.fetchval('select id from users where email=$1', 'new@example.com')
     assert profile_type is None
@@ -97,15 +99,16 @@ async def test_lookup_contact_is_contact(factory: Factory, cli: UserTestClient, 
     assert lines == [{'email': 'other@example.com', 'is_contact': True, 'main_name': 'John', 'last_name': 'different'}]
 
 
-async def test_contact_list(factory: Factory, cli: UserTestClient):
+async def test_contact_list(factory: Factory, cli: UserTestClient, db_conn):
     user = await factory.create_user()
+    user_contact_id = await db_conn.fetchval('select id from contacts')
 
-    contact1_id = await factory.create_contact(
+    contact2_id = await factory.create_contact(
         owner=user.id,
         user_id=await factory.create_simple_user(email='foobar@example.org', main_name='a'),
         last_name='xx',
     )
-    contact2_id = await factory.create_contact(
+    contact3_id = await factory.create_contact(
         owner=user.id,
         user_id=await factory.create_simple_user(email='second@example.org', main_name='b'),
         thumb_storage='s3://testing.com/whatever.png',
@@ -114,9 +117,10 @@ async def test_contact_list(factory: Factory, cli: UserTestClient):
     assert contacts == {
         'pages': 1,
         'items': [
-            {'id': contact1_id, 'email': 'foobar@example.org', 'main_name': 'a', 'last_name': 'xx'},
+            {'id': user_contact_id, 'email': 'testing-1@example.com'},
+            {'id': contact2_id, 'email': 'foobar@example.org', 'main_name': 'a', 'last_name': 'xx'},
             {
-                'id': contact2_id,
+                'id': contact3_id,
                 'email': 'second@example.org',
                 'main_name': 'b',
                 'image_url': RegexStr(r'https://testing.com/whatever\.png\?AWSAccessKeyId=testing_access_key.*'),
@@ -146,11 +150,11 @@ async def test_contact_details(factory: Factory, cli: UserTestClient):
 async def test_create_contact(factory: Factory, cli: UserTestClient, db_conn):
     user = await factory.create_user()
 
-    assert await db_conn.fetchval('select count(*) from contacts') == 0
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
     data = dict(email='foobar@example.org', main_name='Frank', last_name='Skinner')
     r = await cli.post_json(factory.url('ui:contacts-create'), data=data, status=201)
-    assert await db_conn.fetchval('select count(*) from contacts') == 1
-    c = dict(await db_conn.fetchrow('select * from contacts'))
+    assert await db_conn.fetchval('select count(*) from contacts') == 2
+    c = dict(await db_conn.fetchrow('select * from contacts order by id desc'))
     assert await r.json() == {'id': c['id']}
 
     assert c['owner'] == user.id
@@ -170,8 +174,8 @@ async def test_create_contact_with_image(factory: Factory, cli: UserTestClient, 
     data = dict(email='foobar@example.org', image=obj['file_id'])
     await cli.post_json(factory.url('ui:contacts-create'), data=data, status=201)
 
-    contact_id = await db_conn.fetchval('select id from contacts')
-    assert dict(await db_conn.fetchrow('select * from contacts')) == {
+    contact_id = await db_conn.fetchval('select id from contacts order by id desc')
+    assert dict(await db_conn.fetchrow('select * from contacts where id=$1', contact_id)) == {
         'id': contact_id,
         'owner': user.id,
         'profile_user': AnyInt(),
@@ -213,23 +217,23 @@ async def test_create_contact_invalid_image(factory: Factory, cli: UserTestClien
 async def test_create_duplicate_contact(factory: Factory, cli: UserTestClient, db_conn):
     await factory.create_user()
 
-    assert await db_conn.fetchval('select count(*) from contacts') == 0
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
     data = dict(email='foobar@example.org', main_name='Frank')
     await cli.post_json(factory.url('ui:contacts-create'), data=data, status=201)
-    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from contacts') == 2
     await cli.post_json(factory.url('ui:contacts-create'), data=data, status=409)
-    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from contacts') == 2
 
 
 async def test_create_contact_existing_user(factory: Factory, cli: UserTestClient, db_conn):
     await factory.create_user()
 
-    contact_user_id = await factory.create_simple_user(email='foobar@example.org', main_name='a')
-    assert await db_conn.fetchval('select count(*) from contacts') == 0
+    con_user_id = await factory.create_simple_user(email='foobar@example.org', main_name='a')
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
     data = dict(email='foobar@example.org', main_name='Frank')
     await cli.post_json(factory.url('ui:contacts-create'), data=data, status=201)
-    assert await db_conn.fetchval('select count(*) from contacts') == 1
-    assert await db_conn.fetchval('select profile_user from contacts') == contact_user_id
+    assert await db_conn.fetchval('select count(*) from contacts') == 2
+    assert await db_conn.fetchval('select profile_user from contacts order by id desc') == con_user_id
 
 
 async def test_create_org_contact(factory: Factory, cli: UserTestClient, db_conn):
@@ -237,7 +241,7 @@ async def test_create_org_contact(factory: Factory, cli: UserTestClient, db_conn
 
     data = dict(email='foobar@example.org', profile_type='organisation', main_name='Frank', last_name='xxx')
     await cli.post_json(factory.url('ui:contacts-create'), data=data, status=201)
-    c = await db_conn.fetchrow('select * from contacts')
+    c = await db_conn.fetchrow('select * from contacts order by id desc')
     assert c['profile_type'] == 'organisation'
     assert c['main_name'] == 'Frank'
     assert c['last_name'] is None
@@ -279,6 +283,8 @@ def test_do_resize():
 
 async def test_edit_contact(factory: Factory, cli: UserTestClient, db_conn):
     user = await factory.create_user()
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from users') == 1
 
     contact_user_id = await factory.create_simple_user(email='foobar@example.org')
     contact_id = await factory.create_contact(owner=user.id, user_id=contact_user_id, main_name='before')
@@ -286,9 +292,9 @@ async def test_edit_contact(factory: Factory, cli: UserTestClient, db_conn):
     data = dict(last_name='after')
     await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
 
-    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from contacts') == 2
     assert await db_conn.fetchval('select count(*) from users') == 2
-    c = dict(await db_conn.fetchrow('select owner, profile_user, main_name, last_name from contacts'))
+    c = dict(await db_conn.fetchrow('select owner, profile_user, main_name, last_name from contacts order by id desc'))
     assert c == {'owner': user.id, 'profile_user': contact_user_id, 'main_name': 'before', 'last_name': 'after'}
 
 
@@ -323,9 +329,11 @@ async def test_edit_contact_user(factory: Factory, cli: UserTestClient, db_conn)
     data = dict(email='different@example.org')
     await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
 
-    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from contacts') == 2
     assert await db_conn.fetchval('select count(*) from users') == 3
-    new_user_email = await db_conn.fetchval('select email from contacts c join users u on c.profile_user = u.id')
+    new_user_email = await db_conn.fetchval(
+        'select email from contacts c join users u on c.profile_user = u.id order by c.id desc'
+    )
     assert new_user_email == 'different@example.org'
 
 
@@ -343,8 +351,8 @@ async def test_edit_contact_image(factory: Factory, cli: UserTestClient, db_conn
     data = dict(image=obj['file_id'])
     await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
 
-    assert await db_conn.fetchval('select count(*) from contacts') == 1
-    image, thumb = await db_conn.fetchrow('select image_storage, thumb_storage from contacts')
+    assert await db_conn.fetchval('select count(*) from contacts') == 2
+    image, thumb = await db_conn.fetchrow('select image_storage, thumb_storage from contacts order by id desc')
     assert image == f's3://s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/main.jpg'
     assert thumb == f's3://s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/thumb.jpg'
 
@@ -370,15 +378,15 @@ async def test_edit_contact_remove_image(factory: Factory, cli: UserTestClient, 
     data = dict(image=obj['file_id'])
     await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
 
-    assert await db_conn.fetchval('select count(*) from contacts') == 1
-    image, thumb, v = await db_conn.fetchrow('select image_storage, thumb_storage, v from contacts')
+    assert await db_conn.fetchval('select count(*) from contacts') == 2
+    image, thumb, v = await db_conn.fetchrow('select image_storage, thumb_storage, v from contacts order by id desc')
     assert image == f's3://s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/main.jpg'
     assert thumb == f's3://s3_files_bucket.example.com/contacts/{user.id}/{contact_id}/thumb.jpg'
     assert v == 2
 
     data = dict(image=None)
     await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
-    image, thumb, v = await db_conn.fetchrow('select image_storage, thumb_storage, v from contacts')
+    image, thumb, v = await db_conn.fetchrow('select image_storage, thumb_storage, v from contacts order by id desc')
     assert image is None
     assert thumb is None
     assert v == 3
@@ -404,3 +412,117 @@ async def test_edit_contact_wrong_owner(factory: Factory, cli: UserTestClient):
     data = dict(last_name='foobar')
     r = await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data, status=404)
     assert await r.json() == {'message': 'contact not found'}
+
+
+async def test_edit_contact_self(factory: Factory, cli: UserTestClient, db_conn):
+    user = await factory.create_user(last_name='before')
+    contact_id = await db_conn.fetchval('select id from contacts')
+
+    await db_conn.execute('update users set last_name=$1', 'before')
+
+    data = dict(last_name='after')
+    await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
+
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from users') == 1
+    c = dict(await db_conn.fetchrow('select owner, profile_user, main_name, last_name from contacts'))
+    assert c == {'owner': user.id, 'profile_user': user.id, 'main_name': None, 'last_name': None}
+    u = dict(await db_conn.fetchrow('select main_name, last_name from users'))
+    assert u == {'main_name': None, 'last_name': 'after'}
+
+
+async def test_edit_contact_self_image(factory: Factory, cli: UserTestClient, db_conn, dummy_server):
+    user = await factory.create_user(last_name='before')
+    contact_id = await db_conn.fetchval('select id from contacts')
+
+    q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
+    obj = await cli.get_json(factory.url('ui:contacts-upload-image', query=q))
+    path = obj['fields']['Key']
+    dummy_server.app['s3_files'][path] = create_image()
+
+    data = dict(main_name='thing', image=obj['file_id'])
+
+    await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
+
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from users') == 1
+    c = dict(await db_conn.fetchrow('select main_name, last_name, image_storage, thumb_storage from contacts'))
+    assert c == {'main_name': None, 'last_name': None, 'image_storage': None, 'thumb_storage': None}
+    u = dict(await db_conn.fetchrow('select main_name, last_name, image_storage, thumb_storage from users'))
+    assert u == {
+        'main_name': 'thing',
+        'last_name': None,
+        'image_storage': f's3://s3_files_bucket.example.com/users/{user.id}/main.jpg',
+        'thumb_storage': f's3://s3_files_bucket.example.com/users/{user.id}/thumb.jpg',
+    }
+
+
+async def test_edit_contact_self_email(factory: Factory, cli: UserTestClient, db_conn):
+    user = await factory.create_user(last_name='before')
+    contact_id = await db_conn.fetchval('select id from contacts')
+
+    data = dict(last_name='after', email='different@example.org')
+    r = await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data, status=400)
+    assert await r.json() == {'message': 'you may not edit your own email address'}
+
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from users') == 1
+    c = dict(await db_conn.fetchrow('select owner, profile_user, main_name, last_name from contacts'))
+    assert c == {'owner': user.id, 'profile_user': user.id, 'main_name': None, 'last_name': None}
+    u = dict(await db_conn.fetchrow('select main_name, last_name from users'))
+    assert u == {'main_name': None, 'last_name': None}
+
+
+async def test_contact_email_lookup(factory: Factory, cli: UserTestClient):
+    user = await factory.create_user()
+
+    contact_user_id = await factory.create_simple_user(email='foobar@example.org')
+    contact_id = await factory.create_contact(owner=user.id, user_id=contact_user_id, main_name='Fred', last_name='X')
+
+    data = await cli.get_json(factory.url('ui:contacts-email-lookup'), params={'emails': 'foobar@example.org'})
+    assert data == {'foobar@example.org': {'name': 'Fred X', 'contact_id': contact_id}}
+
+    data = await cli.get_json(
+        factory.url('ui:contacts-email-lookup'),
+        params=[('emails', 'foobar@example.org'), ('emails', 'other@example.org')],
+    )
+    assert data == {'foobar@example.org': {'name': 'Fred X', 'contact_id': contact_id}}
+
+
+async def test_contact_email_lookup_multiple(factory: Factory, cli: UserTestClient, db_conn):
+    user = await factory.create_user()
+
+    contact1_user_id = await factory.create_simple_user(email='anne@example.org')
+    contact1_id = await factory.create_contact(owner=user.id, user_id=contact1_user_id, main_name='Anne', last_name='X')
+
+    contact2_user_id = await factory.create_simple_user(email='ben@example.org', last_name='User', visibility='public')
+
+    data = await cli.get_json(
+        factory.url('ui:contacts-email-lookup'), params=[('emails', 'anne@example.org'), ('emails', 'ben@example.org')]
+    )
+    assert data == {
+        'anne@example.org': {'name': 'Anne X', 'contact_id': contact1_id},
+        'ben@example.org': {'name': 'John User'},
+    }
+
+    await db_conn.execute('update users set main_name=null, last_name=null where id=$1', contact2_user_id)
+    data = await cli.get_json(
+        factory.url('ui:contacts-email-lookup'), params=[('emails', 'anne@example.org'), ('emails', 'ben@example.org')]
+    )
+    assert data == {'anne@example.org': {'name': 'Anne X', 'contact_id': contact1_id}}
+
+
+async def test_contact_email_lookup_contact_owner(factory: Factory, cli: UserTestClient, db_conn):
+    await factory.create_user()
+
+    other_owner = await factory.create_simple_user(email='owner@example.org')
+    contact_user_id = await factory.create_simple_user(email='foobar@example.org', main_name='foobar')
+    await factory.create_contact(owner=other_owner, user_id=contact_user_id, main_name='on-contact')
+
+    data = await cli.get_json(factory.url('ui:contacts-email-lookup'), params={'emails': 'foobar@example.org'})
+    assert data == {}
+
+    await db_conn.execute("update users set visibility='public-searchable' where id=$1", contact_user_id)
+
+    data = await cli.get_json(factory.url('ui:contacts-email-lookup'), params={'emails': 'foobar@example.org'})
+    assert data == {'foobar@example.org': {'name': 'foobar'}}

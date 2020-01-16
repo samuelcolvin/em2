@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
 
 import ujson
@@ -21,6 +21,10 @@ from .utils import ExecView, View
 
 
 class ContactSearch(View):
+    """
+    Used when adding new participants to a conversation.
+    """
+
     response = None
     search_sql = """
     select
@@ -107,23 +111,64 @@ class ContactSearch(View):
             await self.write_line(r)
 
 
+class ContactEmailLookup(View):
+    """
+    Look up user and contact details by one or more email addresses.
+    """
+
+    class QueryModel(BaseModel):
+        emails: List[EmailStr]
+
+        @validator('emails', each_item=True)
+        def lower_emails(cls, v):
+            return v.lower()
+
+    sql = """
+    select
+      u.email,
+      coalesce(full_name(c.main_name, c.last_name), full_name(u.main_name, u.last_name)) as name,
+      coalesce(c.strap_line, u.strap_line) strap_line,
+      coalesce(c.thumb_storage, u.thumb_storage) image_storage,
+      coalesce(c.profile_type, u.profile_type) profile_type,
+      u.profile_status,
+      u.profile_status_message,
+      c.id contact_id,
+      c.v
+    from users u
+    left join contacts c on c.profile_user=u.id and c.owner=$1
+    where email=any($2) and (c.id is not null or u.visibility = any('{public-searchable,public}'))
+    """
+
+    async def call(self):
+        # can't currently use raw sql here due to signing download urls
+        m = parse_request_query(self.request, self.QueryModel)
+        users = {}
+        for r in await self.conn.fetch(self.sql, self.session.user_id, m.emails):
+            u = set_image_url(r, self.settings)
+            email = u.pop('email')
+            if u:
+                # no point in returning users with no information
+                users[email] = u
+        return json_response(**users)
+
+
 class ContactsList(View):
     items_sql = """
     select
       c.id,
-      p.email,
-      coalesce(c.main_name, p.main_name) main_name,
-      coalesce(c.last_name, p.last_name) last_name,
-      coalesce(c.strap_line, p.strap_line) strap_line,
-      coalesce(c.thumb_storage, p.thumb_storage) image_storage,
-      coalesce(c.profile_type, p.profile_type) profile_type,
-      p.profile_status,
-      p.profile_status_message,
+      u.email,
+      coalesce(c.main_name, u.main_name) main_name,
+      coalesce(c.last_name, u.last_name) last_name,
+      coalesce(c.strap_line, u.strap_line) strap_line,
+      coalesce(c.thumb_storage, u.thumb_storage) image_storage,
+      coalesce(c.profile_type, u.profile_type) profile_type,
+      u.profile_status,
+      u.profile_status_message,
       c.v
     from contacts c
-    join users p on c.profile_user = p.id
+    join users u on c.profile_user = u.id
     where :where
-    order by coalesce(c.main_name, p.main_name)
+    order by c.profile_user=c.owner desc, coalesce(c.main_name, u.main_name)
     limit 50
     offset :offset
     """
@@ -205,12 +250,12 @@ class ContactCreateEdit(ExecView):
     Model = ContactModel
 
     async def get_create_user(self, email: str) -> int:
-        user_id = await self.conns.main.fetchval(
+        user_id = await self.conn.fetchval(
             'insert into users (email) values ($1) on conflict (email) do nothing returning id', email
         )
         if not user_id:
             # email address already exists
-            user_id = await self.conns.main.fetchval('select id from users where email=$1', email)
+            user_id = await self.conn.fetchval('select id from users where email=$1', email)
         return user_id
 
     async def get_image_data(self, s3_client: S3Client, image: UUID) -> Optional[Tuple[bytes, bytes]]:
@@ -237,7 +282,7 @@ class ContactCreateEdit(ExecView):
             raise JsonErrors.HTTPBadRequest(str(e), details=[{'loc': ['image'], 'msg': str(e)}])
 
     async def upload_images(
-        self, images: Tuple[bytes, bytes], contact_id: int, s3_client: S3Client
+        self, images: Tuple[bytes, bytes], contact_id: Optional[int], s3_client: S3Client
     ) -> Optional[Tuple[str, str]]:
         image_data, thumbnail_data = images
         main_path, thumb_path = self.image_paths(contact_id)
@@ -246,8 +291,14 @@ class ContactCreateEdit(ExecView):
             s3_client.upload(self.settings.s3_file_bucket, thumb_path, thumbnail_data, 'image/jpeg'),
         )
 
-    def image_paths(self, contact_id: int) -> Tuple[str, str]:
-        path = f'contacts/{self.session.user_id}/{contact_id}/'
+    def image_paths(self, contact_id: Optional[int]) -> Tuple[str, str]:
+        """
+        contact_id is None if the user is editing themselves
+        """
+        if contact_id is None:
+            path = f'users/{self.session.user_id}/'
+        else:
+            path = f'contacts/{self.session.user_id}/{contact_id}/'
         return path + 'main.jpg', path + 'thumb.jpg'
 
 
@@ -298,38 +349,63 @@ class ContactEdit(ContactCreateEdit):
     async def execute(self, contact: ContactModel):
         if not contact.__fields_set__:
             raise JsonErrors.HTTPBadRequest('no data provided')
-        data = contact.dict(exclude_unset=True, exclude={'image'})
         contact_id = int(self.request.match_info['id'])
 
-        email = data.pop('email', None)
-        if email:
-            data['profile_user'] = await self.get_create_user(email)
-
-        if contact.image:
-            async with S3(self.settings) as s3_client:
-                images = await self.get_image_data(s3_client, contact.image)
-                image, thumb = await self.upload_images(images, contact_id, s3_client)
-            data.update(image_storage=image, thumb_storage=thumb, v=V('v') + V('1'))
-        elif 'image' in contact.__fields_set__:
-            await self.delete_images(contact_id)
-            data.update(image_storage=None, thumb_storage=None, v=V('v') + V('1'))
-
-        v = await self.conn.execute_b(
-            'update contacts set :values where id=:id and owner=:owner',
-            values=SetValues(**data),
-            id=contact_id,
-            owner=self.session.user_id,
+        contact_user = await self.conn.fetchval(
+            'select profile_user from contacts where id=$1 and owner=$2', contact_id, self.session.user_id
         )
-        if v != 'UPDATE 1':
+        if not contact_user:
             raise JsonErrors.HTTPNotFound('contact not found')
 
-    async def delete_images(self, contact_id: int):
-        main_path, thumb_path = self.image_paths(contact_id)
+        data = contact.dict(exclude_unset=True, exclude={'image'})
+
+        editing_self = contact_user == self.session.user_id
+        email = data.pop('email', None)
+        if editing_self:
+            contact_id = None
+            if email:
+                raise JsonErrors.HTTPBadRequest('you may not edit your own email address')
+
+        if 'image' in contact.__fields_set__:
+            image, thumb = await self.update_images(contact_id, contact.image)
+            data.update(image_storage=image, thumb_storage=thumb, v=V('v') + V('1'))
+
+        async with self.conn.transaction():
+            if editing_self:
+                user_data = {k: v for k, v in data.items() if k not in {'v', 'details'}}
+                await self.conn.execute_b(
+                    'update users set :values where id=:id', values=SetValues(**user_data), id=self.session.user_id
+                )
+                data = {k: v for k, v in data.items() if k in {'v', 'details'}}
+            elif email:
+                data['profile_user'] = await self.get_create_user(email)
+
+            if data:
+                # could check here for this returning 'UPDATE 1', but seems unnecessary given the above check
+                # that the contact exists
+                await self.conn.execute_b(
+                    'update contacts set :values where id=:id and owner=:owner',
+                    values=SetValues(**data),
+                    id=contact_id,
+                    owner=self.session.user_id,
+                )
+        # TODO if editing_self we need some way to propagate the change to the user's profile to the world
+
+    async def update_images(
+        self, contact_id: Optional[int], image: Optional[UUID]
+    ) -> Tuple[Optional[str], Optional[str]]:
         async with S3(self.settings) as s3_client:
-            await asyncio.gather(
-                s3_client.delete(self.settings.s3_file_bucket, main_path),
-                s3_client.delete(self.settings.s3_file_bucket, thumb_path),
-            )
+            if image:
+                images = await self.get_image_data(s3_client, image)
+                image, thumb = await self.upload_images(images, contact_id, s3_client)
+                return image, thumb
+            else:
+                main_path, thumb_path = self.image_paths(contact_id)
+                await asyncio.gather(
+                    s3_client.delete(self.settings.s3_file_bucket, main_path),
+                    s3_client.delete(self.settings.s3_file_bucket, thumb_path),
+                )
+                return None, None
 
 
 def tmp_image_cache_key(content_id: str) -> str:

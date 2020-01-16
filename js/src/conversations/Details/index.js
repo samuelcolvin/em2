@@ -95,37 +95,46 @@ class ConvDetailsView extends React.Component {
   update = async data => {
     // console.log('conversation update:', data)
     if (data && this.state.conv && data.conv !== this.state.conv.key) {
-      // different conversation
-    } else if (data && data.new_key) {
+      // different conversation was updated, ignore
+      return
+    }
+    if (data && data.new_key) {
       // conversation just got published and its key changed
       this.props.history.push(`/${data.new_key.substr(0, 10)}/`)
-    } else {
-      let conv = await window.logic.conversations.get(this.props.match.params.key)
-      if (!this.mounted) {
-        return
-      }
-      if (!conv) {
-        this.setState({not_found: true})
-        return
-      }
-      this.props.ctx.setMenuItem(conv.primary_flag)
-      this.props.ctx.setTitle(conv.subject)
-      this.props.ctx.setConvTitle(conv.subject)
-      this.setState({conv})
-      if (this.pending_interaction && this.state.locked && this.pending_interaction === data.interaction) {
-        this.pending_interaction = null
-        this.last_action_id = data.last_action_id
-        if (this.interaction_type === 'message:lock') {
-          this.setState({locked: false})
-        } else if (this.interaction_type !== 'subject:lock')  {
-          this.setState(initial_state)
-        }
-      }
-      if (!this.marked_seen && this.state.conv) {
-        this.marked_seen = true
-        await window.logic.conversations.seen(this.state.conv.key)
+      return
+    }
+
+    let conv = await window.logic.conversations.get(this.props.match.params.key)
+    if (!this.mounted) {
+      return
+    }
+    if (!conv) {
+      this.setState({not_found: true})
+      return
+    }
+    this.props.ctx.setMenuItem(conv.primary_flag)
+    this.props.ctx.setTitle(conv.subject)
+    this.props.ctx.setConvTitle(conv.subject)
+    this.setState({conv})
+    this.update_contacts(conv.participants)
+    if (this.pending_interaction && this.state.locked && this.pending_interaction === data.interaction) {
+      this.pending_interaction = null
+      this.last_action_id = data.last_action_id
+      if (this.interaction_type === 'message:lock') {
+        this.setState({locked: false})
+      } else if (this.interaction_type !== 'subject:lock') {
+        this.setState(initial_state)
       }
     }
+    if (!this.marked_seen && this.state.conv) {
+      this.marked_seen = true
+      await window.logic.conversations.seen(this.state.conv.key)
+    }
+  }
+
+  update_contacts = async p => {
+    const participants = await window.logic.contacts.lookup_details(p)
+    this.setState({conv: {...this.state.conv, participants}})
   }
 
   publish = async () => {
