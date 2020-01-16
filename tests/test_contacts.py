@@ -406,6 +406,68 @@ async def test_edit_contact_wrong_owner(factory: Factory, cli: UserTestClient):
     assert await r.json() == {'message': 'contact not found'}
 
 
+async def test_edit_contact_self(factory: Factory, cli: UserTestClient, db_conn):
+    user = await factory.create_user(last_name='before')
+
+    contact_id = await factory.create_contact(owner=user.id, user_id=user.id)
+
+    await db_conn.execute('update users set last_name=$1', 'before')
+
+    data = dict(last_name='after')
+    await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
+
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from users') == 1
+    c = dict(await db_conn.fetchrow('select owner, profile_user, main_name, last_name from contacts'))
+    assert c == {'owner': user.id, 'profile_user': user.id, 'main_name': None, 'last_name': None}
+    u = dict(await db_conn.fetchrow('select main_name, last_name from users'))
+    assert u == {'main_name': None, 'last_name': 'after'}
+
+
+async def test_edit_contact_self_image(factory: Factory, cli: UserTestClient, db_conn, dummy_server):
+    user = await factory.create_user(last_name='before')
+
+    contact_id = await factory.create_contact(owner=user.id, user_id=user.id)
+
+    q = dict(filename='testing.png', content_type='image/jpeg', size='123456')
+    obj = await cli.get_json(factory.url('ui:contacts-upload-image', query=q))
+    path = obj['fields']['Key']
+    dummy_server.app['s3_files'][path] = create_image()
+
+    data = dict(main_name='thing', image=obj['file_id'])
+
+    await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data)
+
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from users') == 1
+    c = dict(await db_conn.fetchrow('select main_name, last_name, image_storage, thumb_storage from contacts'))
+    assert c == {'main_name': None, 'last_name': None, 'image_storage': None, 'thumb_storage': None}
+    u = dict(await db_conn.fetchrow('select main_name, last_name, image_storage, thumb_storage from users'))
+    assert u == {
+        'main_name': 'thing',
+        'last_name': None,
+        'image_storage': f's3://s3_files_bucket.example.com/users/{user.id}/main.jpg',
+        'thumb_storage': f's3://s3_files_bucket.example.com/users/{user.id}/thumb.jpg',
+    }
+
+
+async def test_edit_contact_self_email(factory: Factory, cli: UserTestClient, db_conn):
+    user = await factory.create_user(last_name='before')
+
+    contact_id = await factory.create_contact(owner=user.id, user_id=user.id)
+
+    data = dict(last_name='after', email='different@example.org')
+    r = await cli.post_json(factory.url('ui:contacts-edit', id=contact_id), data=data, status=400)
+    assert await r.json() == {'message': 'you may not edit your own email address'}
+
+    assert await db_conn.fetchval('select count(*) from contacts') == 1
+    assert await db_conn.fetchval('select count(*) from users') == 1
+    c = dict(await db_conn.fetchrow('select owner, profile_user, main_name, last_name from contacts'))
+    assert c == {'owner': user.id, 'profile_user': user.id, 'main_name': None, 'last_name': None}
+    u = dict(await db_conn.fetchrow('select main_name, last_name from users'))
+    assert u == {'main_name': None, 'last_name': None}
+
+
 async def test_contact_email_lookup(factory: Factory, cli: UserTestClient):
     user = await factory.create_user()
 

@@ -282,7 +282,7 @@ class ContactCreateEdit(ExecView):
             raise JsonErrors.HTTPBadRequest(str(e), details=[{'loc': ['image'], 'msg': str(e)}])
 
     async def upload_images(
-        self, images: Tuple[bytes, bytes], contact_id: int, s3_client: S3Client
+        self, images: Tuple[bytes, bytes], contact_id: Optional[int], s3_client: S3Client
     ) -> Optional[Tuple[str, str]]:
         image_data, thumbnail_data = images
         main_path, thumb_path = self.image_paths(contact_id)
@@ -291,8 +291,14 @@ class ContactCreateEdit(ExecView):
             s3_client.upload(self.settings.s3_file_bucket, thumb_path, thumbnail_data, 'image/jpeg'),
         )
 
-    def image_paths(self, contact_id: int) -> Tuple[str, str]:
-        path = f'contacts/{self.session.user_id}/{contact_id}/'
+    def image_paths(self, contact_id: Optional[int]) -> Tuple[str, str]:
+        """
+        contact_id is None if the user is editing themselves
+        """
+        if contact_id is None:
+            path = f'users/{self.session.user_id}/'
+        else:
+            path = f'contacts/{self.session.user_id}/{contact_id}/'
         return path + 'main.jpg', path + 'thumb.jpg'
 
 
@@ -345,43 +351,61 @@ class ContactEdit(ContactCreateEdit):
             raise JsonErrors.HTTPBadRequest('no data provided')
         contact_id = int(self.request.match_info['id'])
 
-        contact_exists = await self.conn.fetchval(
-            'select 1 from contacts where id=$1 and owner=$2', contact_id, self.session.user_id
+        contact_user = await self.conn.fetchval(
+            'select profile_user from contacts where id=$1 and owner=$2', contact_id, self.session.user_id
         )
-        if not contact_exists:
+        if not contact_user:
             raise JsonErrors.HTTPNotFound('contact not found')
 
         data = contact.dict(exclude_unset=True, exclude={'image'})
-        if 'image' in contact.__fields_set__:
-            data['v'] = V('v') + V('1')
-            if contact.image:
-                async with S3(self.settings) as s3_client:
-                    images = await self.get_image_data(s3_client, contact.image)
-                    image, thumb = await self.upload_images(images, contact_id, s3_client)
-                data.update(image_storage=image, thumb_storage=thumb)
-            else:
-                await self.delete_images(contact_id)
-                data.update(image_storage=None, thumb_storage=None)
 
+        editing_self = contact_user == self.session.user_id
         email = data.pop('email', None)
-        async with self.conn.transaction():
+        if editing_self:
+            contact_id = None
             if email:
-                data['profile_user'] = await self.get_create_user(email)
-            # could here here for this returning 'UPDATE 1', but seems unnecessary given the above check
-            await self.conn.execute_b(
-                'update contacts set :values where id=:id and owner=:owner',
-                values=SetValues(**data),
-                id=contact_id,
-                owner=self.session.user_id,
-            )
+                raise JsonErrors.HTTPBadRequest('you may not edit your own email address')
 
-    async def delete_images(self, contact_id: int):
-        main_path, thumb_path = self.image_paths(contact_id)
+        if 'image' in contact.__fields_set__:
+            image, thumb = await self.update_images(contact_id, contact.image)
+            data.update(image_storage=image, thumb_storage=thumb, v=V('v') + V('1'))
+
+        async with self.conn.transaction():
+            if editing_self:
+                user_data = {k: v for k, v in data.items() if k not in {'v', 'details'}}
+                await self.conn.execute_b(
+                    'update users set :values where id=:id', values=SetValues(**user_data), id=self.session.user_id
+                )
+                data = {k: v for k, v in data.items() if k in {'v', 'details'}}
+            elif email:
+                data['profile_user'] = await self.get_create_user(email)
+
+            if data:
+                # could check here for this returning 'UPDATE 1', but seems unnecessary given the above check
+                # that the contact exists
+                await self.conn.execute_b(
+                    'update contacts set :values where id=:id and owner=:owner',
+                    values=SetValues(**data),
+                    id=contact_id,
+                    owner=self.session.user_id,
+                )
+        # TODO if editing_self we need some way to propagate the change to the user's profile to the world
+
+    async def update_images(
+        self, contact_id: Optional[int], image: Optional[UUID]
+    ) -> Tuple[Optional[str], Optional[str]]:
         async with S3(self.settings) as s3_client:
-            await asyncio.gather(
-                s3_client.delete(self.settings.s3_file_bucket, main_path),
-                s3_client.delete(self.settings.s3_file_bucket, thumb_path),
-            )
+            if image:
+                images = await self.get_image_data(s3_client, image)
+                image, thumb = await self.upload_images(images, contact_id, s3_client)
+                return image, thumb
+            else:
+                main_path, thumb_path = self.image_paths(contact_id)
+                await asyncio.gather(
+                    s3_client.delete(self.settings.s3_file_bucket, main_path),
+                    s3_client.delete(self.settings.s3_file_bucket, thumb_path),
+                )
+                return None, None
 
 
 def tmp_image_cache_key(content_id: str) -> str:
