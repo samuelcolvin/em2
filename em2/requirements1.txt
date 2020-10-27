@@ -2,7 +2,7 @@
 # hence the split requirements file
 aiohttp==3.5.4
 asyncpg==0.18.3
-cryptography==2.5
+cryptography==3.2
 misaka==2.1.1
 pycares==3.0.0
 pycryptodome==3.7.3
