@@ -1,6 +1,6 @@
 # these packages are slow to install so it's a pain to have to reinstall them every time a dependency changes
 # hence the split requirements file
-aiohttp==3.5.4
+aiohttp==3.7.4
 asyncpg==0.18.3
 cryptography==2.5
 misaka==2.1.1
